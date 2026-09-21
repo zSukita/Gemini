@@ -1,0 +1,68 @@
+{
+  "name": "arcanasheet",
+  "private": true,
+  "version": "1.0.0",
+  "description": "ArcanaSheet - VTT e Ficha de RPG D&D 5e",
+  "author": "ArcanaSheet",
+  "main": "electron/main.cjs",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "test": "vitest run",
+    "preview": "vite preview",
+    "electron:dev": "concurrently -k \"vite\" \"wait-on tcp:5173 && electron .\"",
+    "electron:preview": "npm run build && cross-env NODE_ENV=production electron .",
+    "electron:pack": "npm run build && npx electron-builder --dir",
+    "electron:dist": "npm run build && npx electron-builder --win"
+  },
+  "build": {
+    "appId": "com.arcanasheet.vtt",
+    "productName": "ArcanaSheet",
+    "directories": {
+      "output": "C:/Users/Escritorio G/AppData/Local/Temp/arcanasheet-build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
+    "win": {
+      "target": [
+        "portable",
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "ArcanaSheet"
+    }
+  },
+  "dependencies": {
+    "canvas-confetti": "^1.9.4",
+    "firebase": "^12.19.0",
+    "lucide-react": "^1.47.0",
+    "peerjs": "^1.5.5",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/canvas-confetti": "^1.9.0",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "autoprefixer": "^10.6.1",
+    "concurrently": "^10.0.5",
+    "cross-env": "^10.1.0",
+    "electron": "^44.4.3",
+    "oxlint": "^1.81.0",
+    "postcss": "^8.5.28",
+    "tailwindcss": "^3.4.19",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1",
+    "wait-on": "^9.1.0"
+  }
+}

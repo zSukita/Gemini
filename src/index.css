@@ -1,0 +1,266 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-slate-950 text-slate-100 font-sans antialiased;
+    background-image: 
+      radial-gradient(at 0% 0%, rgba(212, 175, 55, 0.04) 0px, transparent 50%),
+      radial-gradient(at 100% 100%, rgba(155, 17, 30, 0.05) 0px, transparent 50%);
+  }
+
+  /* Custom Scrollbars */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #090a0f;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #2b3145;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+  }
+}
+
+/* Glass & Card effects */
+.rpg-card {
+  background: rgba(22, 25, 34, 0.85);
+  border: 1px solid rgba(43, 49, 69, 0.8);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+}
+
+.rpg-card:hover {
+  border-color: rgba(212, 175, 55, 0.35);
+}
+
+.rpg-input {
+  @apply bg-slate-900/80 border border-slate-700/80 rounded px-2 py-1 text-slate-100 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all;
+}
+
+.rpg-button {
+  @apply px-3 py-1.5 rounded font-medium transition-all duration-150 flex items-center justify-center gap-1.5 text-sm active:scale-95 select-none;
+}
+
+/* 3D Dice Roll Animations */
+@keyframes diceTumble {
+  0% {
+    transform: perspective(1000px) translateY(-140px) rotateX(0deg) rotateY(0deg) rotateZ(0deg) scale(0.65);
+    opacity: 0.2;
+  }
+  25% {
+    transform: perspective(1000px) translateY(25px) rotateX(240deg) rotateY(360deg) rotateZ(120deg) scale(1.15);
+    opacity: 1;
+  }
+  50% {
+    transform: perspective(1000px) translateY(-45px) rotateX(480deg) rotateY(720deg) rotateZ(240deg) scale(0.9);
+  }
+  75% {
+    transform: perspective(1000px) translateY(12px) rotateX(620deg) rotateY(920deg) rotateZ(310deg) scale(1.06);
+  }
+  100% {
+    transform: perspective(1000px) translateY(0) rotateX(720deg) rotateY(1080deg) rotateZ(360deg) scale(1);
+  }
+}
+
+@keyframes diceImpact {
+  0% {
+    transform: scale(1.3) translateY(-15px);
+  }
+  45% {
+    transform: scale(0.92) translateY(6px);
+  }
+  75% {
+    transform: scale(1.05) translateY(-2px);
+  }
+  100% {
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes shockwave {
+  0% {
+    transform: scale(0.2);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(2.5);
+    opacity: 0;
+  }
+}
+
+@keyframes goldRaySpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes critFailTremor {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  20% { transform: translate(-4px, 3px) rotate(-1.5deg); }
+  40% { transform: translate(4px, -3px) rotate(1.5deg); }
+  60% { transform: translate(-3px, -2px) rotate(-1deg); }
+  80% { transform: translate(3px, 2px) rotate(1deg); }
+}
+
+.animate-dice-tumble {
+  animation: diceTumble 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.animate-dice-impact {
+  animation: diceImpact 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+.animate-shockwave {
+  animation: shockwave 0.7s cubic-bezier(0, 0.7, 0.1, 1) forwards;
+}
+
+.animate-ray-spin {
+  animation: goldRaySpin 12s linear infinite;
+}
+
+.animate-crit-fail {
+  animation: critFailTremor 0.5s ease-in-out infinite;
+}
+
+/* Regras de Impressão e Exportação em PDF Oficial */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Ocultar elementos fora do container de impressão */
+  body > * {
+    visibility: hidden;
+  }
+
+  #printable-dnd-sheet,
+  #printable-dnd-sheet * {
+    visibility: visible;
+  }
+
+  #printable-dnd-sheet {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}
+
+/* ==========================================================================
+   SISTEMA DE TEMAS VISUAIS ALTERNATIVOS
+   ========================================================================== */
+
+/* 1. TEMA PERGAMINHO ANTIGO (Parchment) */
+body.theme-parchment,
+.theme-parchment {
+  background-color: #1c1813 !important;
+  color: #f5eedb !important;
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(217, 163, 94, 0.12) 0px, transparent 55%),
+    radial-gradient(at 100% 100%, rgba(168, 108, 54, 0.1) 0px, transparent 55%) !important;
+}
+
+body.theme-parchment .rpg-card,
+.theme-parchment .rpg-card {
+  background: rgba(38, 31, 23, 0.92) !important;
+  border-color: rgba(184, 134, 72, 0.45) !important;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.6) !important;
+}
+
+body.theme-parchment .rpg-card:hover,
+.theme-parchment .rpg-card:hover {
+  border-color: rgba(224, 169, 101, 0.7) !important;
+}
+
+body.theme-parchment .rpg-input,
+.theme-parchment .rpg-input {
+  background-color: rgba(28, 22, 16, 0.95) !important;
+  border-color: rgba(184, 134, 72, 0.45) !important;
+  color: #faeed7 !important;
+}
+
+/* 2. TEMA CARMESIM & GÓTICO (Crimson) */
+body.theme-crimson,
+.theme-crimson {
+  background-color: #0d0407 !important;
+  color: #ffe4e8 !important;
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(225, 29, 72, 0.14) 0px, transparent 55%),
+    radial-gradient(at 100% 100%, rgba(136, 19, 55, 0.18) 0px, transparent 55%) !important;
+}
+
+body.theme-crimson .rpg-card,
+.theme-crimson .rpg-card {
+  background: rgba(28, 10, 16, 0.92) !important;
+  border-color: rgba(225, 29, 72, 0.42) !important;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.7) !important;
+}
+
+body.theme-crimson .rpg-card:hover,
+.theme-crimson .rpg-card:hover {
+  border-color: rgba(244, 63, 94, 0.75) !important;
+}
+
+body.theme-crimson .rpg-input,
+.theme-crimson .rpg-input {
+  background-color: rgba(20, 6, 11, 0.95) !important;
+  border-color: rgba(225, 29, 72, 0.45) !important;
+  color: #ffe4e8 !important;
+}
+
+/* 3. TEMA MÍSTICO ARCANO (Arcane) */
+body.theme-arcane,
+.theme-arcane {
+  background-color: #060614 !important;
+  color: #e0e7ff !important;
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.16) 0px, transparent 55%),
+    radial-gradient(at 100% 100%, rgba(6, 182, 212, 0.14) 0px, transparent 55%) !important;
+}
+
+body.theme-arcane .rpg-card,
+.theme-arcane .rpg-card {
+  background: rgba(14, 14, 38, 0.92) !important;
+  border-color: rgba(129, 140, 248, 0.42) !important;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.7) !important;
+}
+
+body.theme-arcane .rpg-card:hover,
+.theme-arcane .rpg-card:hover {
+  border-color: rgba(165, 180, 252, 0.75) !important;
+}
+
+body.theme-arcane .rpg-input,
+.theme-arcane .rpg-input {
+  background-color: rgba(10, 10, 28, 0.95) !important;
+  border-color: rgba(129, 140, 248, 0.45) !important;
+  color: #e0e7ff !important;
+}
+

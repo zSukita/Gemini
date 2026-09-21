@@ -40,6 +40,7 @@ import { CharacterResources } from './components/CharacterResources';
 import { CampaignModal } from './components/CampaignModal';
 import { HandoutModal } from './components/dm/HandoutModal';
 import { HandoutViewerModal } from './components/HandoutViewerModal';
+import { AiDungeonMasterModal } from './components/ai/AiDungeonMasterModal';
 import {
   type CampaignHandout,
   type CampaignPartyMember,
@@ -167,6 +168,7 @@ export function App() {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isLevelUpOpen, setIsLevelUpOpen] = useState(false);
   const [isMusicPlayerOpen, setIsMusicPlayerOpen] = useState(false);
+  const [isAiDmOpen, setIsAiDmOpen] = useState(false);
   const [currentTheme, setCurrentTheme] = useState<ThemeId>(() => {
     try {
       return (localStorage.getItem('arcanasheet_theme') as ThemeId) || 'default';
@@ -708,6 +710,7 @@ export function App() {
         onSelectTheme={handleThemeChange}
         onOpenMultiplayer={() => setIsMultiplayerOpen(true)}
         onOpenCampaigns={() => setIsCampaignModalOpen(true)}
+        onOpenAiDm={() => setIsAiDmOpen(true)}
         onOpenPrint={() => setIsPrintOpen(true)}
         onToggleChat={() => setIsChatOpen((prev) => !prev)}
         onOpenMusicPlayer={() => setIsMusicPlayerOpen(true)}
@@ -934,6 +937,7 @@ export function App() {
             onAddCoinsToCharacter={handleAddCoinsToCharacter}
             onAddToSharedLoot={handleAddToSharedLoot}
             onSaveNpcToJournal={handleSaveNpcToJournal}
+            onOpenAiDm={() => setIsAiDmOpen(true)}
           />
         </div>
       )}
@@ -1163,6 +1167,19 @@ export function App() {
       <MusicPlayerModal
         isOpen={isMusicPlayerOpen}
         onClose={() => setIsMusicPlayerOpen(false)}
+      />
+
+      {/* Modal do Mestre IA / Oráculo (Arcana AI Dungeon Master) */}
+      <AiDungeonMasterModal
+        isOpen={isAiDmOpen}
+        onClose={() => setIsAiDmOpen(false)}
+        activeCharacter={character}
+        onTransmitHandout={(handout) => {
+          handleBroadcastHandout(handout);
+        }}
+        onSaveNpcToJournal={(npc) => {
+          handleSaveNpcToJournal(npc);
+        }}
       />
     </div>
   );

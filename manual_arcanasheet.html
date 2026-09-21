@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Manual Oficial do Jogador e Mestre - ArcanaSheet</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Inter:wght@400;500;600;700&family=MedievalSharp&display=swap" rel="stylesheet">
+  <style>
+    @page {
+      size: A4;
+      margin: 15mm;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', sans-serif;
+      background-color: #090d16;
+      color: #e2e8f0;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 850px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    /* CAPA */
+    .cover-page {
+      min-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      border: 3px double #d97706;
+      border-radius: 20px;
+      padding: 50px 30px;
+      background: radial-gradient(circle at center, #1e1b18 0%, #090d16 100%);
+      page-break-after: always;
+      position: relative;
+    }
+
+    .cover-icon {
+      font-size: 64px;
+      margin-bottom: 20px;
+      color: #f59e0b;
+      text-shadow: 0 0 25px rgba(245, 158, 11, 0.4);
+    }
+
+    .cover-title {
+      font-family: 'Cinzel', serif;
+      font-size: 42px;
+      font-weight: 900;
+      letter-spacing: 4px;
+      color: #fef3c7;
+      text-transform: uppercase;
+      margin: 0 0 10px 0;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
+    }
+
+    .cover-subtitle {
+      font-family: 'Cinzel', serif;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      color: #f59e0b;
+      text-transform: uppercase;
+      margin-bottom: 25px;
+    }
+
+    .cover-tagline {
+      font-size: 14px;
+      color: #94a3b8;
+      max-width: 500px;
+      margin-bottom: 40px;
+    }
+
+    .cover-badge {
+      display: inline-block;
+      padding: 10px 22px;
+      border: 1px solid #d97706;
+      border-radius: 9999px;
+      background: rgba(217, 119, 6, 0.15);
+      font-family: monospace;
+      font-size: 13px;
+      color: #fde68a;
+      font-weight: bold;
+    }
+
+    .cover-footer {
+      margin-top: 60px;
+      font-size: 11px;
+      color: #64748b;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    /* PÁGINAS DE CONTEÚDO */
+    .page-section {
+      page-break-after: always;
+      padding: 20px 0;
+    }
+
+    .page-section:last-child {
+      page-break-after: avoid;
+    }
+
+    .section-header {
+      border-bottom: 2px solid #b45309;
+      padding-bottom: 8px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .section-title {
+      font-family: 'Cinzel', serif;
+      font-size: 22px;
+      font-weight: 800;
+      color: #fde68a;
+      margin: 0;
+      letter-spacing: 1px;
+    }
+
+    .card {
+      background: #111827;
+      border: 1px solid #374151;
+      border-left: 4px solid #f59e0b;
+      border-radius: 12px;
+      padding: 16px 20px;
+      margin-bottom: 18px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    }
+
+    .card-title {
+      font-family: 'Cinzel', serif;
+      font-size: 15px;
+      font-weight: 700;
+      color: #fbbf24;
+      margin-top: 0;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    p, li {
+      font-size: 13px;
+      color: #cbd5e1;
+      margin-bottom: 6px;
+    }
+
+    ul, ol {
+      margin: 0 0 10px 0;
+      padding-left: 20px;
+    }
+
+    li {
+      margin-bottom: 4px;
+    }
+
+    strong {
+      color: #f8fafc;
+    }
+
+    .highlight-box {
+      background: rgba(245, 158, 11, 0.08);
+      border: 1px dashed #d97706;
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin: 12px 0;
+      font-size: 12px;
+      color: #fef3c7;
+    }
+
+    .secret-box {
+      background: rgba(109, 40, 217, 0.12);
+      border: 1px solid #7c3aed;
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin: 12px 0;
+      font-size: 12px;
+      color: #ddd6fe;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .key-badge {
+      display: inline-block;
+      padding: 2px 7px;
+      background: #1f2937;
+      border: 1px solid #4b5563;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 11px;
+      color: #fbbf24;
+      font-weight: bold;
+    }
+
+    .footer-note {
+      text-align: center;
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 30px;
+      border-top: 1px solid #1f2937;
+      padding-top: 12px;
+    }
+
+    /* BOTÃO DE IMPRESSÃO (Oculto no PDF) */
+    .print-bar {
+      position: fixed;
+      top: 15px;
+      right: 15px;
+      z-index: 1000;
+    }
+
+    .btn-print {
+      background: #f59e0b;
+      color: #0f172a;
+      border: none;
+      padding: 10px 20px;
+      font-size: 13px;
+      font-weight: bold;
+      border-radius: 8px;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(245, 158, 11, 0.4);
+      transition: transform 0.1s;
+    }
+
+    .btn-print:hover {
+      background: #fbbf24;
+      transform: scale(1.03);
+    }
+
+    @media print {
+      .print-bar {
+        display: none !important;
+      }
+      body {
+        background-color: #090d16 !important;
+      }
+      .container {
+        padding: 0;
+        max-width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Botão Flutuante de Impressão -->
+  <div class="print-bar">
+    <button class="btn-print" onclick="window.print()">🖨️ Salvar como PDF / Imprimir</button>
+  </div>
+
+  <div class="container">
+
+    <!-- CAPA -->
+    <div class="cover-page">
+      <div class="cover-icon">⚔️</div>
+      <h1 class="cover-title">ArcanaSheet</h1>
+      <div class="cover-subtitle">Manual Oficial do Jogador & do Mestre</div>
+      <div class="cover-tagline">
+        Plataforma Completa de Ficha Digital D&D 5e, Tabuleiro Tático Virtual (VTT) e Campanhas Sincronizadas em Tempo Real.
+      </div>
+      <div class="cover-badge">
+        🌐 https://arcanasheet.sociedade.online/
+      </div>
+      <div class="cover-footer">
+        D&D 5ª Edição • Sistema de Regras SRD • Versão Oficial 1.0
+      </div>
+    </div>
+
+    <!-- PÁGINA 1: O GUIA DO JOGADOR -->
+    <div class="page-section">
+      <div class="section-header">
+        <h2 class="section-title">🧙‍♂️ Parte 1: O Guia do Jogador</h2>
+      </div>
+
+      <div class="card">
+        <h3 class="card-title">1. Criação do Herói & Ficha em Branco</h3>
+        <p>Ao se cadastrar e entrar pela primeira vez, sua conta inicia com uma <strong>ficha 100% em branco</strong>. O <em>Assistente Passo a Passo (Wizard)</em> guiará sua criação:</p>
+        <ul>
+          <li><strong>Raça e Classe</strong>: Escolha entre as 9 raças e 12 classes do D&D 5e (Guerreiro, Mago, Ladino, Clérigo, Bárbaro, etc.).</li>
+          <li><strong>Atributos</strong>: Defina Força, Destreza, Constituição, Inteligência, Sabedoria e Carisma (pelo método padrão 15, 14, 13, 12, 10, 8 ou rolagem de dados).</li>
+          <li><strong>Cálculos Automáticos</strong>: A ficha calcula imediatamente seus modificadores, bônus de proficiência, Pontos de Vida (PV), Defesa (CA) e Iniciativa.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3 class="card-title">2. Rolagens de Dados com 1 Clique</h3>
+        <p>Você nunca precisará fazer contas de cabeça durante o jogo:</p>
+        <ul>
+          <li><strong>Perícias e Atributos</strong>: Clique no nome de qualquer perícia (ex: <em>Furtividade</em>, <em>Atletismo</em>, <em>Percepção</em>) para rolar 1d20 + seu bônus.</li>
+          <li><strong>Testes de Ataque e Dano</strong>: Na aba <em>Visão Geral & Combate</em>, clique em <strong>Ataque</strong> para rolar o acerto contra a CA do alvo; depois clique em <strong>Dano</strong> para rolar os dados da arma.</li>
+          <li><strong>Vantagem & Desvantagem</strong>: Na barra inferior, selecione <span class="key-badge">Vantagem</span> (rola 2d20 e pega o maior) ou <span class="key-badge">Desvantagem</span> (pega o menor).</li>
+          <li><strong>Animação 3D</strong>: Acompanhe os dados poliédricos rolando pela mesa com física realista!</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3 class="card-title">3. Recursos de Classe & Descansos Automatizados</h3>
+        <ul>
+          <li><strong>Contadores de Cargas</strong>: Acompanhe habilidades especiais como <em>Fúria</em>, <em>Surto de Ação</em>, <em>Chi</em>, <em>Canalizar Divindade</em> e <em>Inspiração</em> em caixas interativas <span class="key-badge">[x] [x] [ ]</span>.</li>
+          <li><strong>Descanso Curto (1 hora)</strong>: Clique em <em>Descanso Curto</em> no menu superior para abrir o modal interativo. Gaste seus Dados de Vida um a um (rolando o dado + CON) para se curar. Ao finalizar, seus recursos de descanso curto recarregam automaticamente!</li>
+          <li><strong>Descanso Longo (8 horas)</strong>: Recupera 100% dos Pontos de Vida, metade dos Dados de Vida, restaura todos os Espaços de Magia gastos e zera as falhas contra a morte.</li>
+        </ul>
+      </div>
+
+      <div class="highlight-box">
+        <strong>💡 Dica do Aventureiro:</strong> No topo da ficha, use o botão <em>Condições</em> para marcar se estiver <em>Caído</em>, <em>Envenenado</em> ou <em>Invisível</em>. A ficha te lembrará das regras exatas enquanto a condição durar.
+      </div>
+    </div>
+
+    <!-- PÁGINA 2: O GUIA DO MESTRE -->
+    <div class="page-section">
+      <div class="section-header">
+        <h2 class="section-title">👑 Parte 2: O Guia do Mestre (DM)</h2>
+      </div>
+
+      <div class="card">
+        <h3 class="card-title">1. Sistema de Campanhas na Nuvem (Firebase)</h3>
+        <p>Conecte seus jogadores sem precisar instalar nenhum programa adicional:</p>
+        <ol>
+          <li>No menu superior, clique no botão <strong>Mesa 🧭</strong>.</li>
+          <li>Na aba <strong>Mestre da Mesa</strong>, digite o nome da campanha (ex: <em>A Mina de Phandelver</em>) e clique em Criar.</li>
+          <li>Um <strong>código exclusivo de 6 dígitos</strong> (ex: <span class="key-badge">ARC-8492</span>) será gerado. Envie esse código para os seus jogadores no WhatsApp ou Discord.</li>
+          <li>Os jogadores inserem o código na aba <em>Entrar como Jogador</em> e aparecem instantaneamente no seu painel com <strong>PV, CA e Percepção Passiva sincronizados em tempo real</strong>.</li>
+        </ol>
+      </div>
+
+      <div class="card">
+        <h3 class="card-title">2. Encontro Tático & Ataques com 1 Clique (Botão ⚡ Combo)</h3>
+        <p>Alterne para o modo <strong>Mestre</strong> na barra superior:</p>
+        <ul>
+          <li><strong>Importar Grupo</strong>: Clique em <em>Importar Grupo da Campanha</em> para transferir todos os heróis dos jogadores direto para a lista de iniciativa com 1 clique!</li>
+          <li><strong>Bestiário Oficial Integrado</strong>: Adicione Goblins, Dragões e Zumbis diretamente do compêndio de criaturas.</li>
+          <li><strong>Botão ⚡ Combo</strong>: No card de cada monstro, clique em <strong>Combo</strong> para disparar o ataque (d20) e o dano da criatura simultaneamente no chat.</li>
+          <li><strong>Passagem de Turnos</strong>: Ordene as iniciativas e avance os turnos mantendo o controle total da rodada.</li>
+        </ul>
+      </div>
+
+      <div class="secret-box">
+        <strong>🤫 Rolagens Secretas do Mestre (Atrás do Escudo):</strong><br>
+        Clique no ícone de <strong>Cadeado</strong> na barra de dados do rodapé para ativar o modo secreto. Ao rolar, os jogadores verão apenas: <em>"🎲 O Mestre fez uma rolagem secreta atrás do escudo..."</em> enquanto apenas você vê o resultado real.
+      </div>
+
+      <div class="card">
+        <h3 class="card-title">3. Pistas e Documentos Interativos (Handouts)</h3>
+        <p>Entregue cartas, contratos e pistas de investigação direto na tela dos jogadores:</p>
+        <ul>
+          <li>Clique em <strong>Transmitir Pista / Documento</strong>.</li>
+          <li>Digite a mensagem ou selecione modelos prontos (<em>Carta do Burgomestre</em>, <em>Diário Rasgado</em>, etc.) e anexe um link de imagem de mapa.</li>
+          <li>Ao transmitir, o documento salta na tela de todos os jogadores em formato de <strong>pergaminho medieval com selo de cera</strong>. O jogador pode clicar em <em>"Guardar no Diário"</em> para salvar a pista nas anotações da ficha.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- PÁGINA 3: O TABULEIRO TÁTICO (VTT) -->
+    <div class="page-section">
+      <div class="section-header">
+        <h2 class="section-title">🗺️ Parte 3: O Tabuleiro Tático (VTT)</h2>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <h3 class="card-title">Navegação e Câmera</h3>
+          <ul>
+            <li><strong>Arrastar Tela (Pan)</strong>: Segure a barra de <span class="key-badge">Espaço</span> e arraste com o mouse (ou use o botão do meio).</li>
+            <li><strong>Zoom</strong>: Gire a roda do mouse para aproximar ou afastar a visão do mapa.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h3 class="card-title">Régua Tática de Medição</h3>
+          <ul>
+            <li>Selecione a ferramenta <strong>Régua</strong> na barra lateral.</li>
+            <li>Clique e arraste entre dois pontos: Uma linha pontilhada luminosa exibe a distância em <strong>Metros</strong>, <strong>Quadrados</strong> e <strong>Pés (ft)</strong>.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 class="card-title">Tokens Dinâmicos & Tocha Noturna</h3>
+        <ul>
+          <li><strong>Movimentação</strong>: Arraste personagens e monstros livremente pelas células da grade.</li>
+          <li><strong>HP Numérico</strong>: Ao passar o mouse sobre o token, visualize instantaneamente sua vida no formato <span class="key-badge">24/30 PV</span>.</li>
+          <li><strong>Badges de Condições</strong>: Ícones como 💀 (Inconsciente), 👁️ (Cego) e 🤢 (Envenenado) orbitam o token automaticamente.</li>
+          <li><strong>Acender Tocha 🔥</strong>: No menu do token, clique no ícone de fogo para iluminar um raio de 6 metros no escuro durante iluminação noturna!</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3 class="card-title">Névoa de Guerra & Modelos de Magia (AoE)</h3>
+        <ul>
+          <li><strong>Névoa de Guerra</strong>: O Mestre pode cobrir masmorras com escuridão e revelá-las gradativamente conforme os heróis avançam.</li>
+          <li><strong>Modelos de Magia</strong>: Arraste Cones de Chamas, Esferas de Fogo e Linhas de Raio direto sobre o grid para conferir quem foi atingido.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3 class="card-title">Imersão Sonora</h3>
+        <p>Abra o <strong>Reprodutor de Áudio</strong> no topo da tela para disparar trilhas sonoras orquestradas (Combate Épico, Taverna Acolhedora, Masmorra Tensa e Floresta Mística) sincronizadas durante as cenas.</p>
+      </div>
+
+      <div class="footer-note">
+        ArcanaSheet • Sistema de RPG de Mesa Virtual • Hospedado com alta performance em https://arcanasheet.sociedade.online/
+      </div>
+    </div>
+
+  </div>
+
+</body>
+</html>

@@ -15,6 +15,7 @@ import {
   Check,
   LogOut,
   Compass,
+  Sparkles,
 } from 'lucide-react';
 
 export type AppMode = 'player' | 'dm' | 'vtt';
@@ -30,6 +31,7 @@ interface NavbarProps {
   onSelectTheme: (theme: ThemeId) => void;
   onOpenMultiplayer: () => void;
   onOpenCampaigns?: () => void;
+  onOpenAiDm?: () => void;
   onOpenPrint?: () => void;
   onToggleChat?: () => void;
   onOpenMusicPlayer?: () => void;
@@ -55,6 +57,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSelectTheme,
   onOpenMultiplayer,
   onOpenCampaigns,
+  onOpenAiDm,
   onOpenPrint,
   onToggleChat,
   onOpenMusicPlayer,
@@ -173,6 +176,19 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <Compass size={14} />
             <span className="hidden lg:inline text-xs font-bold">Mesa</span>
+          </button>
+        )}
+
+        {/* Botão do Mestre IA / Oráculo */}
+        {onOpenAiDm && (
+          <button
+            type="button"
+            onClick={onOpenAiDm}
+            className="p-2 rounded-xl bg-gradient-to-r from-amber-500/20 via-amber-600/20 to-indigo-600/20 hover:from-amber-500/30 hover:to-indigo-600/30 text-amber-300 border border-amber-500/50 transition shadow-sm flex items-center gap-1.5 active:scale-95"
+            title="Mestre IA (Dungeon Master & Oráculo com Gemini)"
+          >
+            <Sparkles size={14} className="text-amber-400 animate-pulse" />
+            <span className="hidden sm:inline text-xs font-black tracking-wide bg-gradient-to-r from-amber-200 to-amber-400 bg-clip-text text-transparent">Mestre IA</span>
           </button>
         )}
 

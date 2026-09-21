@@ -6,8 +6,10 @@
 
 export type AmbienceType = 'tavern' | 'rain' | 'campfire' | 'dungeon' | 'battle';
 
+export type AmbienceCleanup = AudioNode | number | ReturnType<typeof setInterval>;
+
 interface ActiveAmbience {
-  nodes: (AudioNode | number)[]; // nodes e timers para limpeza
+  nodes: AmbienceCleanup[]; // nodes e timers para limpeza
   gainNode: GainNode;
   isPlaying: boolean;
   volume: number;
@@ -38,8 +40,8 @@ function getAudioContext(): AudioContext | null {
 /**
  * 🌧️ CHUVA & TEMPESTADE: Ruído de chuva contínuo + trovões aleatórios
  */
-function createRainAmbience(ctx: AudioContext, masterGain: GainNode): (AudioNode | number)[] {
-  const cleanup: (AudioNode | number)[] = [];
+function createRainAmbience(ctx: AudioContext, masterGain: GainNode): AmbienceCleanup[] {
+  const cleanup: AmbienceCleanup[] = [];
 
   // Buffer de ruído rosa/marrom para chuva
   const bufferSize = ctx.sampleRate * 2;
@@ -100,8 +102,8 @@ function createRainAmbience(ctx: AudioContext, masterGain: GainNode): (AudioNode
 /**
  * 🔥 FOGUEIRA DE ACAMPAMENTO: Estalos de madeira e brisa suave
  */
-function createCampfireAmbience(ctx: AudioContext, masterGain: GainNode): (AudioNode | number)[] {
-  const cleanup: (AudioNode | number)[] = [];
+function createCampfireAmbience(ctx: AudioContext, masterGain: GainNode): AmbienceCleanup[] {
+  const cleanup: AmbienceCleanup[] = [];
 
   // Vento brando de fundo
   const osc = ctx.createOscillator();
@@ -146,8 +148,8 @@ function createCampfireAmbience(ctx: AudioContext, masterGain: GainNode): (Audio
 /**
  * 🍺 TAVERNA MEDIEVAL: Burburinho e notas de alaúde acústico
  */
-function createTavernAmbience(ctx: AudioContext, masterGain: GainNode): (AudioNode | number)[] {
-  const cleanup: (AudioNode | number)[] = [];
+function createTavernAmbience(ctx: AudioContext, masterGain: GainNode): AmbienceCleanup[] {
+  const cleanup: AmbienceCleanup[] = [];
 
   // Burburinho morno de vozes
   const noiseSize = ctx.sampleRate * 2;
@@ -201,8 +203,8 @@ function createTavernAmbience(ctx: AudioContext, masterGain: GainNode): (AudioNo
 /**
  * 🏰 MASMORRA SOMBRIA: Vento uivante e ecos profundos
  */
-function createDungeonAmbience(ctx: AudioContext, masterGain: GainNode): (AudioNode | number)[] {
-  const cleanup: (AudioNode | number)[] = [];
+function createDungeonAmbience(ctx: AudioContext, masterGain: GainNode): AmbienceCleanup[] {
+  const cleanup: AmbienceCleanup[] = [];
 
   const osc = ctx.createOscillator();
   const filter = ctx.createBiquadFilter();
@@ -247,8 +249,8 @@ function createDungeonAmbience(ctx: AudioContext, masterGain: GainNode): (AudioN
 /**
  * ⚔️ BATALHA ÉPICA: Tambores de guerra rítmicos tensos
  */
-function createBattleAmbience(ctx: AudioContext, masterGain: GainNode): (AudioNode | number)[] {
-  const cleanup: (AudioNode | number)[] = [];
+function createBattleAmbience(ctx: AudioContext, masterGain: GainNode): AmbienceCleanup[] {
+  const cleanup: AmbienceCleanup[] = [];
 
   let beat = 0;
   const drumInterval = setInterval(() => {
@@ -300,7 +302,7 @@ export function startAmbience(type: AmbienceType, volume = 0.5): void {
   masterGain.gain.setValueAtTime(volume, ctx.currentTime);
   masterGain.connect(ctx.destination);
 
-  let nodes: (AudioNode | number)[] = [];
+  let nodes: AmbienceCleanup[] = [];
   switch (type) {
     case 'rain':
       nodes = createRainAmbience(ctx, masterGain);

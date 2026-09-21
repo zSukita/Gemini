@@ -40,6 +40,7 @@
     }
   },
   "dependencies": {
+    "@google/genai": "^2.23.0",
     "canvas-confetti": "^1.9.4",
     "firebase": "^12.19.0",
     "lucide-react": "^1.47.0",

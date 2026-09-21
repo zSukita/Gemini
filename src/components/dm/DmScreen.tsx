@@ -8,7 +8,7 @@ import { SoundboardModal } from './SoundboardModal';
 import { LootGeneratorModal } from './LootGeneratorModal';
 import { NpcGeneratorModal } from './NpcGeneratorModal';
 import { MusicPlayerModal } from './MusicPlayerModal';
-import { Volume2, Coins, UserPlus, Music } from 'lucide-react';
+import { Volume2, Coins, UserPlus, Music, Sparkles } from 'lucide-react';
 import type { CampaignNpc } from '../../types/dnd5e';
 
 interface DmScreenProps {
@@ -33,6 +33,7 @@ interface DmScreenProps {
   onAddCoinsToCharacter?: (coins: { cp: number; sp: number; ep: number; gp: number; pp: number }) => void;
   onAddToSharedLoot?: (item: { name: string; quantity: number; valueGp: number }) => void;
   onSaveNpcToJournal?: (npc: CampaignNpc) => void;
+  onOpenAiDm?: () => void;
 }
 
 export const DmScreen: React.FC<DmScreenProps> = ({
@@ -57,6 +58,7 @@ export const DmScreen: React.FC<DmScreenProps> = ({
   onAddCoinsToCharacter,
   onAddToSharedLoot,
   onSaveNpcToJournal,
+  onOpenAiDm,
 }) => {
   const [isBestiaryOpen, setIsBestiaryOpen] = useState(false);
   const [isCustomOpen, setIsCustomOpen] = useState(false);
@@ -69,6 +71,18 @@ export const DmScreen: React.FC<DmScreenProps> = ({
     <div className="flex flex-col gap-6">
       {/* Barra de Ferramentas Avançadas do Mestre */}
       <div className="flex flex-wrap items-center justify-end gap-2.5 -mb-2">
+        {onOpenAiDm && (
+          <button
+            type="button"
+            onClick={onOpenAiDm}
+            className="rpg-button bg-gradient-to-r from-amber-500/20 via-amber-600/20 to-indigo-600/20 hover:from-amber-500/30 hover:to-indigo-600/30 border border-amber-500/50 text-amber-300 font-bold text-xs py-2 px-3.5 rounded-xl shadow-lg flex items-center gap-2 transition active:scale-95 hover:border-amber-400"
+            title="Abrir Oráculo IA & Mestre Supremo com Gemini"
+          >
+            <Sparkles size={15} className="text-amber-400 animate-pulse" />
+            <span className="bg-gradient-to-r from-amber-200 to-amber-400 bg-clip-text text-transparent font-black">🔮 Oráculo IA</span>
+          </button>
+        )}
+
         <button
           type="button"
           onClick={() => setIsLootOpen(true)}

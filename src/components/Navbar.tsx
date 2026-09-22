@@ -18,6 +18,8 @@ import {
   Sparkles,
 } from 'lucide-react';
 
+import type { PeerUser } from '../types/vtt';
+
 export type AppMode = 'player' | 'dm' | 'vtt';
 
 interface NavbarProps {
@@ -27,6 +29,10 @@ interface NavbarProps {
   isMultiplayerConnected: boolean;
   roomCode: string;
   peersCount: number;
+  connectedPeers?: PeerUser[];
+  isHost?: boolean;
+  isPinnedOnlineList?: boolean;
+  onTogglePinOnlineList?: () => void;
   currentTheme: ThemeId;
   onSelectTheme: (theme: ThemeId) => void;
   onOpenMultiplayer: () => void;
@@ -53,6 +59,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   isMultiplayerConnected,
   roomCode,
   peersCount,
+  connectedPeers = [],
+  isHost = false,
+  isPinnedOnlineList = false,
+  onTogglePinOnlineList,
   currentTheme,
   onSelectTheme,
   onOpenMultiplayer,
@@ -158,12 +168,18 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
         </div>
 
-        {/* Badge da Sala Online P2P */}
+        {/* Badge da Sala Online P2P com Lista Interativa */}
         <RoomBadge
           isConnected={isMultiplayerConnected}
           roomCode={roomCode}
           peersCount={peersCount}
+          connectedPeers={connectedPeers}
+          currentUserName={userName || undefined}
+          isHost={isHost}
+          isPinned={isPinnedOnlineList}
+          onTogglePin={onTogglePinOnlineList}
           onClick={onOpenMultiplayer}
+          onOpenTabletop={() => onSelectMode('vtt')}
         />
 
         {/* Botão de Campanhas & Mesas */}

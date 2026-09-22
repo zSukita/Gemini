@@ -27,6 +27,7 @@ import { RollHistoryModal } from './components/RollHistoryModal';
 import { CharacterManagerModal } from './components/CharacterManagerModal';
 import { CharacterWizardModal } from './components/CharacterWizardModal';
 import { MultiplayerModal } from './components/multiplayer/MultiplayerModal';
+import { FloatingOnlineList } from './components/multiplayer/FloatingOnlineList';
 import { DiceRollAnimation } from './components/DiceRollAnimation';
 import { PrintSheetModal } from './components/PrintSheetModal';
 import { SessionChatModal } from './components/SessionChatModal';
@@ -187,6 +188,13 @@ export function App() {
     }
   });
   const [notification, setNotification] = useState<string | null>(null);
+  const [isOnlineListPinned, setIsOnlineListPinned] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('arcanasheet_online_list_pinned') === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   const handleSetActiveCampaignId = (id: string | null) => {
     setActiveCampaignId(id);
@@ -239,6 +247,19 @@ export function App() {
       setNotification((curr) => (curr === msg ? null : curr));
     }, 4000);
   }, []);
+
+  const handleTogglePinOnlineList = useCallback(() => {
+    setIsOnlineListPinned((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('arcanasheet_online_list_pinned', String(next));
+      } catch {
+        // ignore
+      }
+      showNotification(`Lista de pessoas online: ${next ? 'Fixada na tela' : 'Desafixada'}`);
+      return next;
+    });
+  }, [showNotification]);
 
   const toggleDiceAnimation = useCallback(() => {
     setIsDiceAnimationEnabled((prev) => {
@@ -932,6 +953,10 @@ export function App() {
         isMultiplayerConnected={isConnected}
         roomCode={roomCode}
         peersCount={connectedPeers.length}
+        connectedPeers={connectedPeers}
+        isHost={isHost}
+        isPinnedOnlineList={isOnlineListPinned}
+        onTogglePinOnlineList={handleTogglePinOnlineList}
         currentTheme={currentTheme}
         onSelectTheme={handleThemeChange}
         onOpenMultiplayer={() => setIsMultiplayerOpen(true)}
@@ -940,7 +965,7 @@ export function App() {
         onOpenPrint={() => setIsPrintOpen(true)}
         onToggleChat={() => setIsChatOpen((prev) => !prev)}
         onOpenMusicPlayer={() => setIsMusicPlayerOpen(true)}
-        userName={user?.displayName || user?.email || null}
+        userName={character.name || user?.displayName || user?.email || null}
         onLogout={handleLogout}
       />
 
@@ -1330,6 +1355,17 @@ export function App() {
         onDisconnect={disconnect}
         onSendMessage={handleUserChatMessage}
         onOpenTabletop={() => setCurrentMode('vtt')}
+      />
+
+      {/* Lista Flutuante de Pessoas Online Fixada na Tela */}
+      <FloatingOnlineList
+        isVisible={isConnected && isOnlineListPinned}
+        roomCode={roomCode}
+        connectedPeers={connectedPeers}
+        currentUserName={character.name || user?.displayName || undefined}
+        isHost={isHost}
+        onUnpin={() => setIsOnlineListPinned(false)}
+        onOpenModal={() => setIsMultiplayerOpen(true)}
       />
 
       {/* Animação 3D de Rolagem de Dados Poliédricos */}

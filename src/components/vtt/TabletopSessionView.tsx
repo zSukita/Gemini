@@ -345,7 +345,11 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
                 ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-200'
                 : 'bg-slate-900/80 border-slate-700 text-slate-300 hover:border-amber-500/40'
             }`}
-            title="Conexão Online Multiplayer WebRTC"
+            title={
+              isConnected
+                ? `Online na Mesa: ${[character.name || 'Você', ...connectedPeers.map((p) => p.name)].join(', ')} (Clique para detalhes)`
+                : 'Conexão Online Multiplayer WebRTC'
+            }
           >
             {isHost ? (
               <Crown size={14} className="text-amber-400" />

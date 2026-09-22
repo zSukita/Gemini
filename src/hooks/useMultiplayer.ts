@@ -41,17 +41,23 @@ export function useMultiplayer(options?: {
       if (msg.type === 'CHAT_MESSAGE') {
         const payload = msg.payload as any;
         const isObj = typeof payload === 'object' && payload !== null;
+        const msgId = isObj && payload.id ? payload.id : `chat-${msg.timestamp || Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
         const chatMsg: ChatMessage = {
-          id: `chat-${Date.now()}-${Math.random()}`,
+          id: msgId,
           senderId: msg.senderId || 'unknown',
           senderName: msg.senderName,
           text: isObj ? (payload.text || '') : String(payload),
           type: isObj && payload.type ? payload.type : 'PUBLIC',
           recipientName: isObj ? payload.recipientName : undefined,
           diceRoll: isObj ? payload.diceRoll : undefined,
+          suggestedActions: isObj ? payload.suggestedActions : undefined,
+          requestedRoll: isObj ? payload.requestedRoll : undefined,
           timestamp: msg.timestamp || Date.now(),
         };
-        setChatLog((prev) => [...prev, chatMsg]);
+        setChatLog((prev) => {
+          if (prev.some((m) => m.id === chatMsg.id)) return prev;
+          return [...prev, chatMsg];
+        });
       }
     });
 
@@ -141,7 +147,22 @@ export function useMultiplayer(options?: {
 
   const sendChatMessage = useCallback(
     (
-      textOrPayload: string | { text: string; senderName?: string; type?: ChatMessageType; recipientName?: string; diceRoll?: DiceRollResult },
+      textOrPayload:
+        | string
+        | {
+            id?: string;
+            text: string;
+            senderName?: string;
+            type?: ChatMessageType;
+            recipientName?: string;
+            diceRoll?: DiceRollResult;
+            suggestedActions?: string[];
+            requestedRoll?: {
+              skillOrAbility: string;
+              dc?: number;
+              reason: string;
+            };
+          },
       playerNameFallback?: string
     ) => {
       const isObj = typeof textOrPayload === 'object' && textOrPayload !== null;
@@ -150,12 +171,19 @@ export function useMultiplayer(options?: {
       const type: ChatMessageType = isObj && textOrPayload.type ? textOrPayload.type : 'PUBLIC';
       const recipientName = isObj ? textOrPayload.recipientName : undefined;
       const diceRoll = isObj ? textOrPayload.diceRoll : undefined;
+      const suggestedActions = isObj ? textOrPayload.suggestedActions : undefined;
+      const requestedRoll = isObj ? textOrPayload.requestedRoll : undefined;
+      const msgId = isObj && textOrPayload.id ? textOrPayload.id : `chat-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+      const timestamp = Date.now();
 
       const payload = {
+        id: msgId,
         text,
         type,
         recipientName,
         diceRoll,
+        suggestedActions,
+        requestedRoll,
       };
 
       if (p2pManager.isConnected()) {
@@ -164,24 +192,43 @@ export function useMultiplayer(options?: {
           senderId: p2pManager.getRoomCode(),
           senderName: senderName,
           payload: payload,
-          timestamp: Date.now(),
+          timestamp,
         });
       }
 
-      // Adiciona localmente ao histórico do chat
+      // Adiciona localmente ao histórico do chat com verificação de duplicação
       const localMsg: ChatMessage = {
-        id: `chat-${Date.now()}-${Math.random()}`,
+        id: msgId,
         senderId: p2pManager.getRoomCode() || 'local',
         senderName: senderName,
         text,
         type,
         recipientName,
         diceRoll,
-        timestamp: Date.now(),
+        suggestedActions,
+        requestedRoll,
+        timestamp,
       };
-      setChatLog((prev) => [...prev, localMsg]);
+      setChatLog((prev) => (prev.some((m) => m.id === localMsg.id) ? prev : [...prev, localMsg]));
     },
     []
+  );
+
+  const broadcastAiDm = useCallback(
+    (narration: {
+      text: string;
+      suggestedActions?: string[];
+      requestedRoll?: { skillOrAbility: string; dc?: number; reason: string };
+    }) => {
+      sendChatMessage({
+        text: narration.text,
+        senderName: '✨ Mestre Supremo (IA)',
+        type: 'AI_DM',
+        suggestedActions: narration.suggestedActions,
+        requestedRoll: narration.requestedRoll,
+      });
+    },
+    [sendChatMessage]
   );
 
   return {
@@ -198,5 +245,6 @@ export function useMultiplayer(options?: {
     broadcastTokenMove,
     broadcastFogUpdate,
     sendChatMessage,
+    broadcastAiDm,
   };
 }

@@ -80,6 +80,7 @@ export interface BattleMapConfig {
 
 export type P2PMessageType =
   | 'ROOM_SYNC'
+  | 'PEER_LIST'
   | 'DICE_ROLL'
   | 'TOKEN_MOVE'
   | 'TOKEN_ADD'

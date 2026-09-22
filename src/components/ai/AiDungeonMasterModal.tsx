@@ -41,8 +41,10 @@ import {
   CheckCircle2,
   AlertTriangle,
   Wand2,
-  ChevronRight
+  ChevronRight,
+  Wifi
 } from 'lucide-react';
+import type { ChatMessageType } from '../../types/chat';
 
 interface AiDungeonMasterModalProps {
   isOpen: boolean;
@@ -50,6 +52,13 @@ interface AiDungeonMasterModalProps {
   activeCharacter: Character | null;
   onTransmitHandout?: (handout: Omit<CampaignHandout, 'id' | 'createdAt'>) => void;
   onSaveNpcToJournal?: (npc: CampaignNpc) => void;
+  onBroadcastToRoom?: (message: {
+    text: string;
+    senderName?: string;
+    type?: ChatMessageType;
+    suggestedActions?: string[];
+    requestedRoll?: { skillOrAbility: string; dc?: number; reason: string };
+  }) => void;
 }
 
 type TabType = 'adventure' | 'oracle' | 'settings';
@@ -60,8 +69,10 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
   activeCharacter,
   onTransmitHandout,
   onSaveNpcToJournal,
+  onBroadcastToRoom,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('adventure');
+  const [autoBroadcastToRoom, setAutoBroadcastToRoom] = useState(true);
   
   // Configurações
   const [apiKey, setApiKey] = useState('');
@@ -166,6 +177,15 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
     setHistory(initialHistory);
     saveStoredChatHistory(initialHistory);
     setIsAiLoading(false);
+
+    if (onBroadcastToRoom && autoBroadcastToRoom) {
+      onBroadcastToRoom({
+        text: introMessage.content,
+        senderName: '✨ Mestre Supremo (IA)',
+        type: 'AI_DM',
+        suggestedActions: introMessage.suggestedActions,
+      });
+    }
   };
 
   // Iniciar com premissa customizada
@@ -187,6 +207,15 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
     setHistory(initialHistory);
     saveStoredChatHistory(initialHistory);
     setCustomPremiseText('');
+
+    if (onBroadcastToRoom && autoBroadcastToRoom) {
+      onBroadcastToRoom({
+        text: introMessage.content,
+        senderName: '✨ Mestre Supremo (IA)',
+        type: 'AI_DM',
+        suggestedActions: introMessage.suggestedActions,
+      });
+    }
   };
 
   // Enviar ação do jogador para a IA
@@ -227,6 +256,16 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
       const finalHistory = [...updatedHistory, response];
       setHistory(finalHistory);
       saveStoredChatHistory(finalHistory);
+
+      if (onBroadcastToRoom && autoBroadcastToRoom) {
+        onBroadcastToRoom({
+          text: response.content,
+          senderName: '✨ Mestre Supremo (IA)',
+          type: 'AI_DM',
+          suggestedActions: response.suggestedActions,
+          requestedRoll: response.requestedRoll,
+        });
+      }
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       const systemError: AiMessage = {
@@ -501,6 +540,22 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
                     </div>
 
                     <div className="flex items-center gap-2">
+                      {onBroadcastToRoom && (
+                        <button
+                          type="button"
+                          onClick={() => setAutoBroadcastToRoom(!autoBroadcastToRoom)}
+                          className={`px-2.5 py-1 rounded-lg border transition flex items-center gap-1.5 text-[11px] font-bold ${
+                            autoBroadcastToRoom
+                              ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/50 shadow-sm shadow-emerald-500/20'
+                              : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                          }`}
+                          title="Transmite automaticamente as narrações do Mestre IA para a mesa online multiplayer"
+                        >
+                          <Wifi size={12} className={autoBroadcastToRoom ? 'text-emerald-400' : 'text-slate-400'} />
+                          <span>{autoBroadcastToRoom ? 'Mesa Online: Ativa' : 'Mesa Online: Pausada'}</span>
+                        </button>
+                      )}
+
                       <button
                         type="button"
                         onClick={handleCopyHistory}
@@ -550,6 +605,27 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
                                 <span className="text-amber-400 font-serif font-bold text-xs flex items-center gap-1">
                                   <Sparkles size={12} /> Mestre Supremo
                                 </span>
+                                {onBroadcastToRoom && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      onBroadcastToRoom({
+                                        text: msg.content,
+                                        senderName: '✨ Mestre Supremo (IA)',
+                                        type: 'AI_DM',
+                                        suggestedActions: msg.suggestedActions,
+                                        requestedRoll: msg.requestedRoll,
+                                      });
+                                      setCopiedNotification(true);
+                                      setTimeout(() => setCopiedNotification(false), 2000);
+                                    }}
+                                    className="ml-2 text-[10px] px-2 py-0.5 rounded bg-amber-950/60 hover:bg-amber-900/60 text-amber-300 border border-amber-500/30 flex items-center gap-1 transition"
+                                    title="Transmitir esta narração para a mesa multiplayer online"
+                                  >
+                                    <Wifi size={10} />
+                                    <span>Transmitir</span>
+                                  </button>
+                                )}
                               </>
                             ) : (
                               <>

@@ -1,6 +1,6 @@
 import type { DiceRollResult } from './dnd5e';
 
-export type ChatMessageType = 'PUBLIC' | 'WHISPER' | 'GM_ROLL' | 'SYSTEM';
+export type ChatMessageType = 'PUBLIC' | 'WHISPER' | 'GM_ROLL' | 'SYSTEM' | 'AI_DM';
 
 export interface ChatMessage {
   id: string;
@@ -10,5 +10,11 @@ export interface ChatMessage {
   type: ChatMessageType;
   recipientName?: string;
   diceRoll?: DiceRollResult;
+  suggestedActions?: string[];
+  requestedRoll?: {
+    skillOrAbility: string;
+    dc?: number;
+    reason: string;
+  };
   timestamp: number;
 }

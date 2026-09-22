@@ -1063,6 +1063,7 @@ export function App() {
           id: c.id,
           sender: c.senderName,
           text: c.text,
+          type: c.type,
           time: new Date(c.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
         }))}
         currentUserName={character.name}
@@ -1088,13 +1089,14 @@ export function App() {
         character={character}
       />
 
-      {/* Chat Tático e Registro de Sessão com Rolagens Secretas */}
+      {/* Chat Tático e Registro de Sessão com Rolagens Secretas e Mestre IA */}
       <SessionChatModal
         isOpen={isChatOpen}
         onClose={() => setIsChatOpen(false)}
         chatLog={chatLog}
         currentUserName={character.name}
         isHost={isHost}
+        character={character}
         onSendMessage={(msg) => {
           sendChatMessage(msg, character.name);
         }}
@@ -1179,6 +1181,10 @@ export function App() {
         }}
         onSaveNpcToJournal={(npc) => {
           handleSaveNpcToJournal(npc);
+        }}
+        onBroadcastToRoom={(msg) => {
+          sendChatMessage(msg, '✨ Mestre Supremo (IA)');
+          showNotification('Narração do Mestre IA transmitida para a mesa online!');
         }}
       />
     </div>

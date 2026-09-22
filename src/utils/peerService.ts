@@ -1,6 +1,19 @@
 import { Peer, type DataConnection } from 'peerjs';
 import type { P2PMessage, PeerUser } from '../types/vtt';
 
+const PEER_CONFIG = {
+  debug: 1,
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' },
+    ],
+  },
+};
+
 export class P2PNetworkManager {
   private peer: Peer | null = null;
   private connections: Map<string, DataConnection> = new Map();
@@ -44,9 +57,7 @@ export class P2PNetworkManager {
     this.roomCode = code;
 
     return new Promise((resolve, reject) => {
-      this.peer = new Peer(fullPeerId, {
-        debug: 1,
-      });
+      this.peer = new Peer(fullPeerId, PEER_CONFIG);
 
       this.peer.on('open', () => {
         this.activePeers = [
@@ -92,7 +103,7 @@ export class P2PNetworkManager {
     this.roomCode = cleanCode;
 
     return new Promise((resolve, reject) => {
-      this.peer = new Peer();
+      this.peer = new Peer(PEER_CONFIG);
 
       this.peer.on('open', () => {
         if (!this.peer) return;
@@ -101,8 +112,20 @@ export class P2PNetworkManager {
           reliable: true,
         });
 
+        // Configura ouvintes da conexão imediatamente antes de abrir
+        this.setupConnection(conn);
+
         conn.on('open', () => {
-          this.setupConnection(conn);
+          this.activePeers = [
+            {
+              peerId: this.peer?.id || 'player',
+              name: this.currentUserName,
+              role: 'player',
+              joinedAt: Date.now(),
+            },
+          ];
+          this.notifyPeerList();
+
           // Avisa o host sobre a entrada
           this.broadcast({
             type: 'CHAT_MESSAGE',
@@ -131,8 +154,60 @@ export class P2PNetworkManager {
   private setupConnection(conn: DataConnection) {
     this.connections.set(conn.peer, conn);
 
+    const registerPeer = () => {
+      const metadata = conn.metadata as { name?: string; role?: 'dm' | 'player' } | undefined;
+      const peerName = metadata?.name?.trim() || 'Aventureiro';
+      const peerRole = metadata?.role || 'player';
+
+      const peerUser: PeerUser = {
+        peerId: conn.peer,
+        name: peerName,
+        role: peerRole,
+        joinedAt: Date.now(),
+      };
+
+      if (this.isHost) {
+        if (!this.activePeers.some((p) => p.peerId === conn.peer)) {
+          this.activePeers.push(peerUser);
+          this.notifyPeerList();
+        }
+
+        const peerListMsg: P2PMessage = {
+          type: 'PEER_LIST',
+          senderId: this.peer?.id || 'host',
+          senderName: this.currentUserName,
+          payload: this.activePeers,
+          timestamp: Date.now(),
+        };
+
+        // Envia diretamente para quem acabou de conectar e transmite aos demais
+        if (conn.open) {
+          try {
+            conn.send(peerListMsg);
+          } catch {
+            // ignore
+          }
+        }
+        this.broadcast(peerListMsg);
+      }
+    };
+
+    if (conn.open) {
+      registerPeer();
+    } else {
+      conn.on('open', registerPeer);
+    }
+
     conn.on('data', (data) => {
       const msg = data as P2PMessage;
+
+      // Sincronização de lista de participantes
+      if (msg.type === 'PEER_LIST' && Array.isArray(msg.payload)) {
+        this.activePeers = msg.payload as PeerUser[];
+        this.notifyPeerList();
+        return;
+      }
+
       this.notifyMessage(msg);
 
       // Se for o Host, retransmite a mensagem para os outros participantes
@@ -149,16 +224,23 @@ export class P2PNetworkManager {
       this.connections.delete(conn.peer);
       this.activePeers = this.activePeers.filter((p) => p.peerId !== conn.peer);
       this.notifyPeerList();
+
+      if (this.isHost) {
+        this.broadcast({
+          type: 'PEER_LIST',
+          senderId: this.peer?.id || 'host',
+          senderName: this.currentUserName,
+          payload: this.activePeers,
+          timestamp: Date.now(),
+        });
+      }
     });
   }
 
   /**
-   * Envia uma mensagem para todos os peers conectados
+   * Envia uma mensagem para todos os peers conectados (sem duplicar localmente)
    */
   public broadcast(msg: P2PMessage) {
-    // Notifica ouvintes locais também
-    this.notifyMessage(msg);
-
     this.connections.forEach((conn) => {
       if (conn.open) {
         conn.send(msg);

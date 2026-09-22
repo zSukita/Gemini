@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { PeerUser } from '../../types/vtt';
 import { 
   Wifi, 
@@ -22,7 +22,7 @@ interface MultiplayerModalProps {
   isHost: boolean;
   roomCode: string;
   connectedPeers: PeerUser[];
-  chatLog: { id: string; sender: string; text: string; time: string }[];
+  chatLog: { id: string; sender: string; text: string; time: string; type?: string }[];
   currentUserName: string;
   onCreateRoom: (name: string, customCode?: string) => Promise<string>;
   onJoinRoom: (code: string, name: string) => Promise<boolean>;
@@ -50,6 +50,13 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
   const [chatInput, setChatInput] = useState('');
   const [copied, setCopied] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Sincroniza o nome do usuário/personagem se mudar ou se estiver no padrão
+  useEffect(() => {
+    if (currentUserName && (!nameInput || nameInput === 'Aventureiro')) {
+      setNameInput(currentUserName);
+    }
+  }, [currentUserName]);
 
   if (!isOpen) return null;
 
@@ -220,60 +227,97 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
               <div className="bg-slate-900/60 p-3 rounded-xl border border-slate-800">
                 <div className="flex items-center gap-1.5 text-xs font-serif font-bold text-slate-300 mb-2">
                   <Users size={14} className="text-amber-400" />
-                  <span>Participantes na Mesa ({connectedPeers.length || 1})</span>
+                  <span>Participantes na Mesa ({Math.max(connectedPeers.length, 1)})</span>
                 </div>
 
                 <div className="flex flex-wrap gap-1.5">
-                  {connectedPeers.map((peer, idx) => (
-                    <span
-                      key={idx}
-                      className="px-2 py-1 rounded-lg bg-slate-800 text-slate-200 border border-slate-700 text-xs flex items-center gap-1.5"
-                    >
-                      {peer.role === 'dm' ? <Crown size={12} className="text-amber-400" /> : <User size={12} className="text-cyan-400" />}
-                      <span className="font-semibold">{peer.name}</span>
+                  {connectedPeers.length > 0 ? (
+                    connectedPeers.map((peer, idx) => (
+                      <span
+                        key={idx}
+                        className={`px-2 py-1 rounded-lg border text-xs flex items-center gap-1.5 ${
+                          peer.role === 'dm'
+                            ? 'bg-amber-950/40 text-amber-200 border-amber-500/40'
+                            : 'bg-slate-800 text-slate-200 border-slate-700'
+                        }`}
+                      >
+                        {peer.role === 'dm' ? <Crown size={12} className="text-amber-400" /> : <User size={12} className="text-cyan-400" />}
+                        <span className="font-semibold">{peer.name}</span>
+                        {peer.role === 'dm' && <span className="text-[9px] text-amber-400 uppercase font-bold">(Mestre)</span>}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="px-2 py-1 rounded-lg bg-slate-800 text-slate-200 border border-slate-700 text-xs flex items-center gap-1.5">
+                      {isHost ? <Crown size={12} className="text-amber-400" /> : <User size={12} className="text-cyan-400" />}
+                      <span className="font-semibold">{nameInput || currentUserName || 'Você'}</span>
+                      <span className="text-[9px] text-slate-400 font-mono">(Você)</span>
                     </span>
-                  ))}
+                  )}
                 </div>
               </div>
 
               {/* Chat da Mesa em Tempo Real */}
               <div className="bg-slate-900/60 rounded-xl border border-slate-800 p-3 flex flex-col gap-2">
-                <div className="flex items-center gap-1.5 text-xs font-serif font-bold text-slate-300">
-                  <MessageSquare size={13} className="text-cyan-400" />
-                  <span>Chat da Mesa</span>
+                <div className="flex items-center justify-between text-xs font-serif font-bold text-slate-300">
+                  <div className="flex items-center gap-1.5">
+                    <MessageSquare size={13} className="text-cyan-400" />
+                    <span>Chat da Mesa</span>
+                  </div>
+                  <span className="text-[10px] text-amber-400 font-sans font-normal">Use @mestre para invocar a IA</span>
                 </div>
 
-                <div className="h-32 overflow-y-auto bg-slate-950/80 rounded-lg p-2 flex flex-col gap-1 text-xs font-mono">
+                <div className="h-36 overflow-y-auto bg-slate-950/80 rounded-lg p-2 flex flex-col gap-1 text-xs font-mono">
                   {chatLog.length === 0 ? (
                     <span className="text-slate-600 text-[11px] italic my-auto text-center">
-                      Nenhuma mensagem enviada ainda.
+                      Nenhuma mensagem enviada ainda. Digite @mestre para falar com o Mestre IA.
                     </span>
                   ) : (
-                    chatLog.map((c) => (
-                      <div key={c.id} className="text-[11px] text-slate-300 leading-tight">
-                        <span className="text-slate-500 text-[10px]">[{c.time}] </span>
-                        <strong className="text-amber-300">{c.sender}: </strong>
-                        <span>{c.text}</span>
-                      </div>
-                    ))
+                    chatLog.map((c) => {
+                      const isAi = c.sender.includes('IA') || c.type === 'AI_DM';
+                      return (
+                        <div
+                          key={c.id}
+                          className={`text-[11px] leading-tight p-1.5 rounded ${
+                            isAi
+                              ? 'bg-amber-950/40 text-amber-200 border border-amber-500/40 font-serif'
+                              : 'text-slate-300'
+                          }`}
+                        >
+                          <span className="text-slate-500 text-[10px] font-mono">[{c.time}] </span>
+                          <strong className={isAi ? 'text-amber-400 font-bold' : 'text-amber-300'}>{c.sender}: </strong>
+                          <span className={isAi ? 'text-amber-100' : ''}>{c.text}</span>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
 
                 {/* Input de Mensagem */}
-                <form onSubmit={handleSendChat} className="flex items-center gap-1.5 mt-1">
-                  <input
-                    type="text"
-                    placeholder="Digitar mensagem para a mesa..."
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    className="rpg-input flex-1 text-xs py-1"
-                  />
-                  <button
-                    type="submit"
-                    className="p-1.5 bg-amber-600 hover:bg-amber-500 text-slate-950 rounded-lg transition"
-                  >
-                    <Send size={13} />
-                  </button>
+                <form onSubmit={handleSendChat} className="flex flex-col gap-1 mt-1">
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      placeholder="Digitar mensagem ou @mestre [ação]..."
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      className="rpg-input flex-1 text-xs py-1"
+                    />
+                    <button
+                      type="submit"
+                      className="p-1.5 bg-amber-600 hover:bg-amber-500 text-slate-950 rounded-lg transition"
+                    >
+                      <Send size={13} />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setChatInput((prev) => prev.startsWith('@mestre ') ? prev : `@mestre ${prev}`)}
+                      className="text-[10px] px-2 py-0.5 rounded bg-amber-950/60 hover:bg-amber-900/60 text-amber-300 border border-amber-500/30 transition flex items-center gap-1"
+                    >
+                      <span>✨ @mestre (Consultar IA)</span>
+                    </button>
+                  </div>
                 </form>
               </div>
             </div>

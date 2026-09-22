@@ -24,8 +24,13 @@ import {
   Sparkles,
   Dices,
   ArrowRight,
-  Loader2
+  Loader2,
+  Play,
+  MapPin,
+  Scroll,
+  Shield
 } from 'lucide-react';
+import { AI_ADVENTURE_SCENARIOS, type AiAdventureScenario } from '../../data/aiAdventureScenarios';
 
 interface MultiplayerModalProps {
   isOpen: boolean;
@@ -40,9 +45,11 @@ interface MultiplayerModalProps {
   character?: Character | null;
   isAiResponding?: boolean;
   onCreateRoom: (name: string, customCode?: string) => Promise<string>;
+  onCreateAiRoom?: (scenario: AiAdventureScenario, customTitle?: string, customPrompt?: string) => Promise<string>;
   onJoinRoom: (code: string, name: string) => Promise<boolean>;
   onDisconnect: () => void;
   onSendMessage: (text: string, name: string) => void;
+  onOpenTabletop?: () => void;
 }
 
 export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
@@ -58,15 +65,21 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
   character,
   isAiResponding,
   onCreateRoom,
+  onCreateAiRoom,
   onJoinRoom,
   onDisconnect,
   onSendMessage,
+  onOpenTabletop,
 }) => {
   const [nameInput, setNameInput] = useState(currentUserName || 'Aventureiro');
   const [roomCodeInput, setRoomCodeInput] = useState('');
   const [chatInput, setChatInput] = useState('');
   const [copied, setCopied] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [creationTab, setCreationTab] = useState<'ai_dm' | 'human_dm' | 'join'>('ai_dm');
+  const [selectedScenarioId, setSelectedScenarioId] = useState<string>(AI_ADVENTURE_SCENARIOS[0].id);
+  const [customScenarioPrompt, setCustomScenarioPrompt] = useState<string>('');
+  const [isCreatingAi, setIsCreatingAi] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Sincroniza o nome do usuário/personagem se mudar ou se estiver no padrão
@@ -133,6 +146,56 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
     }
   };
 
+  const handleCreateAi = async () => {
+    setErrorMsg(null);
+    setIsCreatingAi(true);
+    try {
+      if (selectedScenarioId === 'custom') {
+        const customScenario: AiAdventureScenario = {
+          id: 'custom_adventure',
+          title: 'Aventura Personalizada',
+          subtitle: customScenarioPrompt.slice(0, 60) || 'Aventura criada pelo Mestre de IA.',
+          icon: '✨',
+          tone: 'heroic',
+          mapPresetId: 'map-dungeon',
+          ambientLight: 'night',
+          initialPrompt:
+            customScenarioPrompt ||
+            'Vocês se reúnem à beira de um caminho misterioso. O destino de vocês está prestes a se desenrolar.',
+          suggestedActions: [
+            'Examinar os arredores cautelosamente',
+            'Avançar com armas em punho',
+            'Procurar por rastros ou pistas mágicas',
+          ],
+          requestedRoll: {
+            skillOrAbility: 'Percepção (Sabedoria)',
+            dc: 12,
+            reason: 'Para avaliar os perigos ao redor',
+          },
+          monsters: [{ monsterId: 'srd-goblin', count: 2 }],
+        };
+        if (onCreateAiRoom) {
+          await onCreateAiRoom(customScenario, 'Aventura Personalizada', customScenarioPrompt);
+        } else {
+          await onCreateRoom(nameInput.trim() || 'Jogador');
+        }
+      } else {
+        const scenario =
+          AI_ADVENTURE_SCENARIOS.find((s) => s.id === selectedScenarioId) ||
+          AI_ADVENTURE_SCENARIOS[0];
+        if (onCreateAiRoom) {
+          await onCreateAiRoom(scenario);
+        } else {
+          await onCreateRoom(nameInput.trim() || 'Jogador');
+        }
+      }
+    } catch (e) {
+      setErrorMsg('Falha ao iniciar mesa com Mestre IA. Verifique sua conexão.');
+    } finally {
+      setIsCreatingAi(false);
+    }
+  };
+
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!roomCodeInput.trim()) return;
@@ -163,7 +226,7 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="rpg-card w-full max-w-lg rounded-2xl p-5 border border-amber-500/40 shadow-2xl flex flex-col max-h-[88vh] animate-in zoom-in-95">
+      <div className="rpg-card w-full max-w-xl rounded-2xl p-5 border border-amber-500/40 shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95">
         
         {/* Cabeçalho */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
@@ -184,7 +247,7 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
         <div className="flex-1 overflow-y-auto py-3 flex flex-col gap-4">
           {/* Se NÃO estiver conectado */}
           {!isConnected ? (
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-3.5">
               <div>
                 <label className="text-slate-400 text-xs block mb-1 font-medium">Seu Nome ou Apelido</label>
                 <input
@@ -192,56 +255,233 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
                   value={nameInput}
                   onChange={(e) => setNameInput(e.target.value)}
                   className="rpg-input w-full text-xs py-1.5"
-                  placeholder="Ex: Mestre Gandalf, Valeros, etc."
+                  placeholder="Ex: Gandalf, Valeros, etc."
                 />
               </div>
 
-              {/* Botão Criar Sala (como Mestre) */}
-              <div className="p-3.5 bg-slate-900/90 rounded-xl border border-amber-500/30 flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <Crown size={16} className="text-amber-400" />
-                  <span className="text-xs font-serif font-bold text-amber-200">Criar Nova Mesa (Mestre)</span>
-                </div>
-                <p className="text-[11px] text-slate-400">
-                  Inicie uma sala para sua sessão e receba um código de convite para enviar aos jogadores.
-                </p>
+              {/* Seletor de Modo de Criação (Abas) */}
+              <div className="flex rounded-xl bg-slate-950 p-1 border border-slate-800 gap-1">
                 <button
                   type="button"
-                  onClick={handleCreate}
-                  disabled={isConnecting}
-                  className="rpg-button bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs py-2 mt-1"
+                  onClick={() => setCreationTab('ai_dm')}
+                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                    creationTab === 'ai_dm'
+                      ? 'bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 shadow-md shadow-amber-500/20'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
                 >
-                  <Wifi size={14} />
-                  <span>{isConnecting ? 'Criando Sala...' : 'Criar Mesa como Mestre'}</span>
+                  <Sparkles size={13} className={creationTab === 'ai_dm' ? 'text-slate-950' : 'text-amber-400'} />
+                  <span>✨ Mestre IA (Coop)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCreationTab('human_dm')}
+                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                    creationTab === 'human_dm'
+                      ? 'bg-amber-600 text-slate-950 shadow-md'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Crown size={13} className={creationTab === 'human_dm' ? 'text-slate-950' : 'text-amber-400'} />
+                  <span>👑 Mestre Humano</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCreationTab('join')}
+                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                    creationTab === 'join'
+                      ? 'bg-cyan-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <LogIn size={13} />
+                  <span>➡️ Entrar em Sala</span>
                 </button>
               </div>
 
-              {/* Formulário Entrar em Sala Existente */}
-              <form onSubmit={handleJoin} className="p-3.5 bg-slate-900/90 rounded-xl border border-slate-800 flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <LogIn size={16} className="text-cyan-400" />
-                  <span className="text-xs font-serif font-bold text-slate-200">Entrar em uma Mesa Existente</span>
-                </div>
-                <p className="text-[11px] text-slate-400">
-                  Cole o código fornecido pelo Mestre (ex: MESA-9482) para entrar no jogo.
-                </p>
-                <div className="flex items-center gap-2 mt-1">
-                  <input
-                    type="text"
-                    placeholder="Código da Sala (ex: MESA-1234)"
-                    value={roomCodeInput}
-                    onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())}
-                    className="rpg-input flex-1 text-xs py-1.5 font-mono uppercase"
-                  />
+              {/* ABA 1: MESTRE IA COOPERATIVO (COM MAPA E HISTÓRIA) */}
+              {creationTab === 'ai_dm' && (
+                <div className="flex flex-col gap-3">
+                  <div className="p-3 bg-gradient-to-r from-amber-950/40 via-purple-950/30 to-amber-950/40 rounded-xl border border-amber-500/30 flex flex-col gap-1">
+                    <div className="flex items-center gap-1.5 text-amber-300 font-serif font-bold text-xs">
+                      <Sparkles size={14} className="text-amber-400" />
+                      <span>Modo Cooperativo com Mestre IA</span>
+                    </div>
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                      Você e seus amigos jogam juntos como aventureiros! A IA assume o papel de Mestre,
+                      carrega o mapa tático, posiciona as criaturas e conduz o prólogo com escolhas e testes.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="text-slate-300 text-xs block mb-1.5 font-bold flex items-center gap-1.5">
+                      <Scroll size={13} className="text-amber-400" />
+                      <span>Escolha o Cenário Inicial da Aventura</span>
+                    </label>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+                      {AI_ADVENTURE_SCENARIOS.map((scen) => {
+                        const isSelected = selectedScenarioId === scen.id;
+                        return (
+                          <button
+                            key={scen.id}
+                            type="button"
+                            onClick={() => setSelectedScenarioId(scen.id)}
+                            className={`text-left p-2.5 rounded-xl border transition flex flex-col justify-between gap-1.5 ${
+                              isSelected
+                                ? 'bg-amber-950/50 border-amber-500 shadow-md shadow-amber-500/10'
+                                : 'bg-slate-900/70 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
+                            }`}
+                          >
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-base">{scen.icon}</span>
+                                <span className={`text-xs font-serif font-bold line-clamp-1 ${
+                                  isSelected ? 'text-amber-300' : 'text-slate-200'
+                                }`}>
+                                  {scen.title}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-slate-400 line-clamp-2 mt-1">
+                                {scen.subtitle}
+                              </p>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-1 pt-1 border-t border-slate-800/80">
+                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-950/80 text-amber-300/90 border border-slate-800 flex items-center gap-1">
+                                <MapPin size={9} />
+                                <span>{scen.mapPresetId.replace('map-', '')}</span>
+                              </span>
+                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-950/80 text-rose-300/90 border border-slate-800 flex items-center gap-1">
+                                <Shield size={9} />
+                                <span>{scen.monsters.map((m) => `${m.count}x`).join(', ')} monstros</span>
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+
+                      {/* Opção Personalizada */}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedScenarioId('custom')}
+                        className={`text-left p-2.5 rounded-xl border transition flex flex-col justify-between gap-1.5 ${
+                          selectedScenarioId === 'custom'
+                            ? 'bg-purple-950/50 border-purple-500 shadow-md shadow-purple-500/10'
+                            : 'bg-slate-900/70 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">✨</span>
+                            <span className={`text-xs font-serif font-bold ${
+                              selectedScenarioId === 'custom' ? 'text-purple-300' : 'text-slate-200'
+                            }`}>
+                              História Personalizada
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 mt-1">
+                            Defina seu tema livre e deixe a IA improvisar a história e o mapa.
+                          </p>
+                        </div>
+                        <div className="pt-1 border-t border-slate-800/80">
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-950/80 text-purple-300 border border-slate-800">
+                            Tema Livre
+                          </span>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Campo de Texto se Customizado */}
+                  {selectedScenarioId === 'custom' && (
+                    <div className="flex flex-col gap-1 animate-in fade-in">
+                      <label className="text-slate-400 text-xs font-medium">
+                        Premissa ou Gancho da Aventura:
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={customScenarioPrompt}
+                        onChange={(e) => setCustomScenarioPrompt(e.target.value)}
+                        placeholder="Ex: Uma caravana no deserto atacada por bandidos nômades..."
+                        className="rpg-input w-full text-xs p-2 resize-none"
+                      />
+                    </div>
+                  )}
+
+                  {/* Botão de Iniciar com IA */}
                   <button
-                    type="submit"
-                    disabled={isConnecting || !roomCodeInput.trim()}
-                    className="rpg-button bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs py-2 disabled:opacity-40"
+                    type="button"
+                    onClick={handleCreateAi}
+                    disabled={isConnecting || isCreatingAi}
+                    className="rpg-button bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-bold text-xs py-2.5 shadow-lg shadow-amber-500/25 flex items-center justify-center gap-2 mt-1 disabled:opacity-50"
                   >
-                    Conectar
+                    {isConnecting || isCreatingAi ? (
+                      <>
+                        <Loader2 size={15} className="animate-spin text-slate-950" />
+                        <span>Invocando o Mestre IA & Carregando Mapa...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={15} className="text-slate-950" />
+                        <span>Iniciar Mesa Cooperativa com Mestre IA</span>
+                      </>
+                    )}
                   </button>
                 </div>
-              </form>
+              )}
+
+              {/* ABA 2: MESTRE HUMANO */}
+              {creationTab === 'human_dm' && (
+                <div className="p-3.5 bg-slate-900/90 rounded-xl border border-amber-500/30 flex flex-col gap-2.5">
+                  <div className="flex items-center gap-2">
+                    <Crown size={16} className="text-amber-400" />
+                    <span className="text-xs font-serif font-bold text-amber-200">Criar Nova Mesa (Mestre Humano)</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Inicie uma sala para mestrar tradicionalmente. Você terá controle total sobre tokens,
+                    névoa de guerra, monstros e combates manuais, e receberá um código de convite para seus jogadores.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleCreate}
+                    disabled={isConnecting}
+                    className="rpg-button bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs py-2.5 mt-1"
+                  >
+                    <Wifi size={14} />
+                    <span>{isConnecting ? 'Criando Sala...' : 'Criar Mesa como Mestre Humano'}</span>
+                  </button>
+                </div>
+              )}
+
+              {/* ABA 3: ENTRAR EM SALA */}
+              {creationTab === 'join' && (
+                <form onSubmit={handleJoin} className="p-3.5 bg-slate-900/90 rounded-xl border border-slate-800 flex flex-col gap-2.5">
+                  <div className="flex items-center gap-2">
+                    <LogIn size={16} className="text-cyan-400" />
+                    <span className="text-xs font-serif font-bold text-slate-200">Entrar em uma Mesa Existente</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Cole o código fornecido pelo Mestre (ex: MESA-9482) ou acesse o link compartilhado para entrar diretamente.
+                  </p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <input
+                      type="text"
+                      placeholder="Código da Sala (ex: MESA-1234)"
+                      value={roomCodeInput}
+                      onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())}
+                      className="rpg-input flex-1 text-xs py-2 font-mono uppercase"
+                    />
+                    <button
+                      type="submit"
+                      disabled={isConnecting || !roomCodeInput.trim()}
+                      className="rpg-button bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs py-2 px-4 disabled:opacity-40"
+                    >
+                      Conectar
+                    </button>
+                  </div>
+                </form>
+              )}
 
               {errorMsg && (
                 <div className="p-2.5 bg-rose-950/80 border border-rose-600 rounded-lg text-rose-200 text-xs">
@@ -285,6 +525,20 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
                     <span>{copied ? 'Copiado!' : 'Copiar Convite'}</span>
                   </button>
                 </div>
+
+                {onOpenTabletop && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenTabletop();
+                      onClose();
+                    }}
+                    className="rpg-button bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-bold text-xs py-2 shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 mt-1"
+                  >
+                    <Play size={14} className="fill-slate-950" />
+                    <span>Entrar no Tabuleiro Tático (Jogar Agora)</span>
+                  </button>
+                )}
               </div>
 
               {/* Lista de Usuários Conectados */}
@@ -449,7 +703,22 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
         </div>
 
         {/* Rodapé */}
-        <div className="pt-3 border-t border-slate-800 flex justify-end">
+        <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
+          {isConnected && onOpenTabletop ? (
+            <button
+              type="button"
+              onClick={() => {
+                onOpenTabletop();
+                onClose();
+              }}
+              className="rpg-button bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs px-3 py-1.5 flex items-center gap-1.5"
+            >
+              <Play size={13} className="fill-slate-950" />
+              <span>Abrir Tabuleiro Tático</span>
+            </button>
+          ) : (
+            <div />
+          )}
           <button
             onClick={onClose}
             className="rpg-button bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-4"

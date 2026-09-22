@@ -53,6 +53,9 @@ import {
   subscribeToCampaign,
 } from './firebase/campaignSync';
 import type { Monster } from './types/combat';
+import { DEFAULT_MAP_PRESETS } from './data/defaultMaps';
+import { SRD_MONSTERS } from './data/srdMonsters';
+import { type AiAdventureScenario } from './data/aiAdventureScenarios';
 
 import { 
   Shield, 
@@ -452,6 +455,83 @@ export function App() {
       }
     },
     [sendChatMessage, character.name, triggerAiDm]
+  );
+
+  // Criar Mesa Cooperativa com Mestre IA (Mapa Tático + Monstros + História)
+  const handleCreateAiRoom = useCallback(
+    async (scenario: AiAdventureScenario, customTitle?: string, customPrompt?: string) => {
+      // 1. Cria a sala P2P com o nome do herói/usuário
+      const hostName = character.name || 'Herói';
+      const code = await createRoom(hostName);
+
+      // 2. Carrega o mapa predefinido correspondente ao cenário
+      const targetPreset =
+        DEFAULT_MAP_PRESETS.find((p) => p.id === scenario.mapPresetId) ||
+        DEFAULT_MAP_PRESETS[0];
+      if (targetPreset) {
+        selectMapPreset(targetPreset);
+      }
+
+      // 3. Atualiza iluminação ambiente e névoa
+      updateMapConfig({
+        ambientLight: scenario.ambientLight,
+        fogOfWarEnabled: false,
+      });
+
+      // 4. Limpa e reinicia o combate, inserindo o personagem do jogador
+      resetEncounter();
+      importPlayerCharacters([character]);
+
+      // 5. Adiciona os monstros do cenário ao encontro (e portanto aos tokens do mapa)
+      scenario.monsters.forEach((m) => {
+        const mon = SRD_MONSTERS.find((s) => s.id === m.monsterId);
+        if (mon) {
+          addMonsterCombatant(mon, m.count);
+        }
+      });
+
+      // 6. Envia o prólogo/história da IA para o chat da sala
+      const prologueText = customPrompt?.trim()
+        ? `📜 **Prólogo da Nova Campanha: ${customTitle || 'Aventura Inexplorada'}**\n\n${customPrompt}\n\nO Mestre Supremo (IA) aguarda as escolhas do grupo!`
+        : `📜 **Prólogo da Campanha: ${scenario.title}**\n\n${scenario.initialPrompt}`;
+
+      sendChatMessage(
+        {
+          text: prologueText,
+          senderName: '✨ Mestre Supremo (IA)',
+          type: 'AI_DM',
+          suggestedActions: scenario.suggestedActions,
+          requestedRoll: scenario.requestedRoll,
+        },
+        '✨ Mestre Supremo (IA)'
+      );
+
+      // 7. Muda automaticamente a visualização do app para a Mesa Tática (VTT)
+      setCurrentMode('vtt');
+      setIsMultiplayerOpen(false);
+
+      // 8. Tenta copiar o link de convite e avisa o jogador
+      try {
+        const inviteUrl = `${window.location.origin}?room=${code}`;
+        await navigator.clipboard.writeText(inviteUrl);
+        showNotification(`🎉 Mesa com Mestre IA iniciada! Código: ${code} (Link copiado para a área de transferência)`);
+      } catch {
+        showNotification(`🎉 Mesa com Mestre IA iniciada! Código da sala: ${code}`);
+      }
+
+      return code;
+    },
+    [
+      character,
+      createRoom,
+      selectMapPreset,
+      updateMapConfig,
+      resetEncounter,
+      importPlayerCharacters,
+      addMonsterCombatant,
+      sendChatMessage,
+      showNotification,
+    ]
   );
 
   // Mover Token local e transmitir para a rede P2P
@@ -1245,9 +1325,11 @@ export function App() {
         character={character}
         isAiResponding={isAiResponding}
         onCreateRoom={createRoom}
+        onCreateAiRoom={handleCreateAiRoom}
         onJoinRoom={joinRoom}
         onDisconnect={disconnect}
         onSendMessage={handleUserChatMessage}
+        onOpenTabletop={() => setCurrentMode('vtt')}
       />
 
       {/* Animação 3D de Rolagem de Dados Poliédricos */}

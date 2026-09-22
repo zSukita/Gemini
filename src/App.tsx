@@ -48,6 +48,7 @@ import { CampaignModal } from './components/CampaignModal';
 import { HandoutModal } from './components/dm/HandoutModal';
 import { HandoutViewerModal } from './components/HandoutViewerModal';
 import { AiDungeonMasterModal } from './components/ai/AiDungeonMasterModal';
+import { EndSessionModal } from './components/vtt/EndSessionModal';
 import { getStoredApiKey, sendToAiDungeonMaster } from './services/geminiService';
 import type { AiMessage } from './types/aiDm';
 import type { ChatMessageType } from './types/chat';
@@ -165,6 +166,7 @@ export function App() {
   const [isManagerOpen, setIsManagerOpen] = useState(false);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [isMultiplayerOpen, setIsMultiplayerOpen] = useState(false);
+  const [isEndSessionOpen, setIsEndSessionOpen] = useState(false);
   const [isCampaignModalOpen, setIsCampaignModalOpen] = useState(false);
   const [isHandoutModalOpen, setIsHandoutModalOpen] = useState(false);
   const [activeHandout, setActiveHandout] = useState<CampaignHandout | null>(null);
@@ -579,6 +581,31 @@ export function App() {
       showNotification,
     ]
   );
+
+  // Handlers para Finalizar Mesa / Iniciar Nova Aventura
+  const handleStartNewAdventure = useCallback(() => {
+    resetEncounter();
+    setTokens((prev) => prev.filter((t) => t.type === 'player'));
+    setIsEndSessionOpen(false);
+    setIsMultiplayerOpen(true);
+  }, [resetEncounter, setTokens]);
+
+  const handleClearMonstersAndCombat = useCallback(() => {
+    resetEncounter();
+    setTokens((prev) => prev.filter((t) => t.type === 'player'));
+    setIsEndSessionOpen(false);
+    showNotification('🧹 Monstros e combate limpos! O mapa atual foi mantido.');
+  }, [resetEncounter, setTokens, showNotification]);
+
+  const handleDisconnectAndExit = useCallback(() => {
+    if (isConnected) {
+      disconnect();
+    }
+    resetEncounter();
+    setTokens((prev) => prev.filter((t) => t.type === 'player'));
+    setIsEndSessionOpen(false);
+    showNotification('🚪 Sessão finalizada.');
+  }, [isConnected, disconnect, resetEncounter, setTokens, showNotification]);
 
   // Hook de Presença Social, Quem Está Online e Lista de Amigos
   const {
@@ -1332,6 +1359,7 @@ export function App() {
             onOpenBestiary={() => setIsBestiaryOpen(true)}
             onOpenCharacterSheet={() => setCurrentMode('player')}
             onOpenMusicPlayer={() => setIsMusicPlayerOpen(true)}
+            onOpenEndSessionModal={() => setIsEndSessionOpen(true)}
           />
         </div>
       )}
@@ -1435,6 +1463,17 @@ export function App() {
         onDisconnect={disconnect}
         onSendMessage={handleUserChatMessage}
         onOpenTabletop={() => setCurrentMode('vtt')}
+      />
+
+      {/* Modal de Finalizar Mesa / Nova Sessão */}
+      <EndSessionModal
+        isOpen={isEndSessionOpen}
+        onClose={() => setIsEndSessionOpen(false)}
+        isConnected={isConnected}
+        roomCode={roomCode}
+        onStartNewAdventure={handleStartNewAdventure}
+        onClearMonstersAndCombat={handleClearMonstersAndCombat}
+        onDisconnectAndExit={handleDisconnectAndExit}
       />
 
       {/* Lista Flutuante de Pessoas Online Fixada na Tela */}

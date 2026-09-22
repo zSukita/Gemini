@@ -11,7 +11,8 @@ import {
   Lock, 
   ScrollText, 
   Loader2,
-  ShieldAlert
+  ShieldAlert,
+  RotateCcw
 } from 'lucide-react';
 
 interface TabletopParchmentChatProps {
@@ -19,6 +20,7 @@ interface TabletopParchmentChatProps {
   currentUserName: string;
   character?: Character | null;
   isAiResponding?: boolean;
+  onOpenEndSessionModal?: () => void;
   onSendMessage: (
     textOrPayload:
       | string
@@ -42,6 +44,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
   currentUserName,
   character,
   isAiResponding,
+  onOpenEndSessionModal,
   onSendMessage,
 }) => {
   const [inputText, setInputText] = useState('');
@@ -136,9 +139,22 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
             Crônica da Aventura
           </h2>
         </div>
-        <span className="text-[10px] font-serif font-bold text-amber-900/80 bg-amber-900/10 px-2 py-0.5 rounded border border-amber-900/20">
-          Mestre IA Ativo
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-serif font-bold text-amber-900/80 bg-amber-900/10 px-2 py-0.5 rounded border border-amber-900/20">
+            Mestre IA Ativo
+          </span>
+          {onOpenEndSessionModal && (
+            <button
+              type="button"
+              onClick={onOpenEndSessionModal}
+              className="text-[10px] font-serif font-bold text-red-950 hover:text-red-900 bg-red-900/10 hover:bg-red-900/20 px-2 py-0.5 rounded border border-red-900/30 flex items-center gap-1 transition shadow-xs"
+              title="Finalizar esta mesa ou iniciar outra aventura"
+            >
+              <RotateCcw size={10} />
+              <span>Nova Mesa</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Corpo do Log de Chat */}

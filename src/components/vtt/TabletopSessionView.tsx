@@ -22,7 +22,8 @@ import {
   Sword,
   Crown,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Flag
 } from 'lucide-react';
 
 interface TabletopSessionViewProps {
@@ -102,6 +103,7 @@ interface TabletopSessionViewProps {
   onOpenBestiary?: () => void;
   onOpenCharacterSheet?: () => void;
   onOpenMusicPlayer?: () => void;
+  onOpenEndSessionModal?: () => void;
 }
 
 export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
@@ -156,6 +158,7 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
   onOpenBestiary,
   onOpenCharacterSheet,
   onOpenMusicPlayer,
+  onOpenEndSessionModal,
 }) => {
   // Alternância entre Visão Completa da Mesa e Modo Foco no Mapa
   const [isMapFocusOnly, setIsMapFocusOnly] = useState(false);
@@ -372,6 +375,19 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
             <span>Mestre IA</span>
           </button>
 
+          {/* Finalizar / Nova Mesa */}
+          {onOpenEndSessionModal && (
+            <button
+              type="button"
+              onClick={onOpenEndSessionModal}
+              className="px-3 py-1.5 rounded-xl bg-red-950/40 hover:bg-red-900/60 border border-red-500/40 hover:border-red-400 text-red-200 text-xs font-serif font-bold flex items-center gap-1.5 transition shadow"
+              title="Finalizar esta mesa ou iniciar uma nova aventura"
+            >
+              <Flag size={14} className="text-red-400" />
+              <span>Finalizar Mesa</span>
+            </button>
+          )}
+
           {/* Trilha Sonora */}
           {onOpenMusicPlayer && (
             <button
@@ -426,6 +442,7 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
               currentUserName={currentUserName}
               character={character}
               isAiResponding={isAiResponding}
+              onOpenEndSessionModal={onOpenEndSessionModal}
               onSendMessage={onSendMessage}
             />
           </div>

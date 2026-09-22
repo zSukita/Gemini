@@ -814,16 +814,21 @@ export const BattleMap: React.FC<BattleMapProps> = ({
           {selectedTokenId && (() => {
             const token = tokens.find((t) => t.id === selectedTokenId);
             if (!token) return null;
+            const curHp = typeof token.currentHp === 'number' ? token.currentHp : 10;
+            const maxHp = typeof token.maxHp === 'number' ? token.maxHp : 10;
             return (
               <div
                 style={{
                   position: 'absolute',
                   left: `${token.x + (token.size * mapConfig.gridSize) / 2}px`,
-                  top: `${token.y - 38}px`,
+                  top: `${token.y - 42}px`,
                   transform: 'translateX(-50%)',
                   zIndex: 40,
                 }}
-                className="bg-slate-900/95 border border-amber-400 text-slate-200 px-2 py-1 rounded-xl shadow-2xl flex items-center gap-1.5 text-xs animate-in zoom-in-95 pointer-events-auto"
+                onPointerDown={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-slate-900/95 border-2 border-amber-400 text-slate-200 px-2.5 py-1 rounded-xl shadow-2xl flex items-center gap-1.5 text-xs animate-in zoom-in-95 pointer-events-auto select-none"
               >
                 <span className="font-bold text-[10px] text-amber-300 mr-1 truncate max-w-[80px]">
                   {token.name}
@@ -832,8 +837,12 @@ export const BattleMap: React.FC<BattleMapProps> = ({
                 {/* Alternar Tocha */}
                 <button
                   type="button"
-                  onClick={() => onUpdateToken?.(token.id, { hasTorch: !token.hasTorch })}
-                  className={`p-1 rounded text-xs transition ${
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onUpdateToken?.(token.id, { hasTorch: !token.hasTorch });
+                  }}
+                  className={`p-1 rounded text-xs transition active:scale-90 ${
                     token.hasTorch
                       ? 'bg-amber-500 text-slate-950 font-bold'
                       : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
@@ -843,22 +852,31 @@ export const BattleMap: React.FC<BattleMapProps> = ({
                   🔥
                 </button>
 
-                {/* Ajustar HP */}
+                {/* Ajustar HP: -1 */}
                 <button
                   type="button"
-                  onClick={() => onUpdateToken?.(token.id, { currentHp: Math.max(0, token.currentHp - 1) })}
-                  className="px-1.5 py-0.5 rounded bg-rose-950/80 hover:bg-rose-900 text-rose-300 font-mono font-bold text-[10px]"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onUpdateToken?.(token.id, { currentHp: Math.max(0, curHp - 1) });
+                  }}
+                  className="px-1.5 py-0.5 rounded bg-rose-950/80 hover:bg-rose-900 text-rose-300 font-mono font-bold text-[10px] active:scale-90 transition"
                   title="Subtrair 1 PV"
                 >
                   -1
                 </button>
-                <span className="font-mono text-[10px] font-bold text-slate-300">
-                  {token.currentHp}/{token.maxHp}
+                <span className="font-mono text-[10px] font-bold text-slate-300 px-0.5">
+                  {curHp}/{maxHp}
                 </span>
+                {/* Ajustar HP: +1 */}
                 <button
                   type="button"
-                  onClick={() => onUpdateToken?.(token.id, { currentHp: Math.min(token.maxHp, token.currentHp + 1) })}
-                  className="px-1.5 py-0.5 rounded bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 font-mono font-bold text-[10px]"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onUpdateToken?.(token.id, { currentHp: Math.min(maxHp, curHp + 1) });
+                  }}
+                  className="px-1.5 py-0.5 rounded bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 font-mono font-bold text-[10px] active:scale-90 transition"
                   title="Adicionar 1 PV"
                 >
                   +1
@@ -868,8 +886,13 @@ export const BattleMap: React.FC<BattleMapProps> = ({
                 {onRemoveToken && (
                   <button
                     type="button"
-                    onClick={() => onRemoveToken(token.id)}
-                    className="p-1 rounded text-rose-400 hover:bg-rose-950/80 transition ml-0.5"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRemoveToken(token.id);
+                      onSelectToken(null);
+                    }}
+                    className="p-1 rounded text-rose-400 hover:bg-rose-950/80 transition ml-0.5 active:scale-90"
                     title="Remover Token do Mapa"
                   >
                     <Trash2 size={12} />

@@ -5,11 +5,24 @@ import {
   getDoc,
   query,
   where,
+  or,
   deleteDoc,
   onSnapshot,
   updateDoc,
 } from 'firebase/firestore';
 import { db } from './config';
+
+export interface DirectMessage {
+  id: string;
+  fromUserId: string;
+  fromUserName: string;
+  fromAvatarUrl?: string;
+  toUserId: string;
+  toUserName: string;
+  content: string;
+  timestamp: number;
+  read: boolean;
+}
 
 export interface OnlineUserPresence {
   userId: string;
@@ -48,6 +61,39 @@ export interface GameInvite {
 const LOCAL_PRESENCE_KEY = 'arcanasheet_local_presence_users';
 const LOCAL_FRIENDS_PREFIX = 'arcanasheet_local_friends_';
 const LOCAL_INVITES_KEY = 'arcanasheet_local_game_invites';
+const LOCAL_MESSAGES_KEY = 'arcanasheet_local_direct_messages';
+
+const directMessageListeners = new Set<() => void>();
+
+export function getLocalDirectMessages(): DirectMessage[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_MESSAGES_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveLocalDirectMessages(messages: DirectMessage[]): void {
+  try {
+    localStorage.setItem(LOCAL_MESSAGES_KEY, JSON.stringify(messages));
+  } catch {
+    // ignore
+  }
+
+  // Notifica subscribers locais em memória
+  directMessageListeners.forEach((fn) => {
+    try {
+      fn();
+    } catch {
+      // ignore
+    }
+  });
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('arcanasheet_direct_message'));
+  }
+}
 
 function getLocalPresenceUsers(): OnlineUserPresence[] {
   try {
@@ -381,4 +427,134 @@ export async function respondToGameInvite(inviteId: string, accept: boolean): Pr
 
   const current = getLocalInvites().map((i) => (i.id === inviteId ? { ...i, status: newStatus } : i));
   saveLocalInvites(current);
+}
+
+/**
+ * Envia uma mensagem direta (sussurro) para outro usuário ou amigo
+ */
+export async function sendDirectMessage(
+  msg: Omit<DirectMessage, 'id' | 'timestamp' | 'read'>
+): Promise<DirectMessage> {
+  const id = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const fullMessage: DirectMessage = {
+    ...msg,
+    id,
+    timestamp: Date.now(),
+    read: false,
+  };
+
+  if (db) {
+    try {
+      const ref = doc(db, 'direct_messages', id);
+      await setDoc(ref, fullMessage);
+    } catch (e) {
+      console.warn('Erro ao salvar mensagem direta no Firestore:', e);
+    }
+  }
+
+  // Atualiza cache local
+  const current = getLocalDirectMessages();
+  saveLocalDirectMessages([...current, fullMessage]);
+
+  return fullMessage;
+}
+
+/**
+ * Escuta em tempo real todas as mensagens diretas recebidas ou enviadas pelo usuário
+ */
+export function subscribeToDirectMessages(
+  userId: string,
+  callback: (messages: DirectMessage[]) => void
+): () => void {
+  const filterForUser = (all: DirectMessage[]) => {
+    return all.filter((m) => m.toUserId === userId || m.fromUserId === userId);
+  };
+
+  if (db) {
+    try {
+      const colRef = collection(db, 'direct_messages');
+      const q = query(
+        colRef,
+        or(where('toUserId', '==', userId), where('fromUserId', '==', userId))
+      );
+      const unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          const list: DirectMessage[] = [];
+          snapshot.forEach((d) => {
+            const m = d.data() as DirectMessage;
+            if (m) list.push(m);
+          });
+          list.sort((a, b) => a.timestamp - b.timestamp);
+
+          // Mescla com locais para consistência
+          const locals = getLocalDirectMessages();
+          const mergedMap = new Map<string, DirectMessage>();
+          locals.forEach((m) => mergedMap.set(m.id, m));
+          list.forEach((m) => mergedMap.set(m.id, m));
+          const merged = Array.from(mergedMap.values()).sort((a, b) => a.timestamp - b.timestamp);
+          saveLocalDirectMessages(merged);
+          callback(filterForUser(merged));
+        },
+        (err) => {
+          console.warn('Erro na assinatura de mensagens diretas no Firestore:', err);
+          callback(filterForUser(getLocalDirectMessages()));
+        }
+      );
+      return unsubscribe;
+    } catch (e) {
+      console.warn('Falha ao inicializar onSnapshot de mensagens diretas:', e);
+    }
+  }
+
+  const handler = () => {
+    callback(filterForUser(getLocalDirectMessages()));
+  };
+
+  directMessageListeners.add(handler);
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('storage', handler);
+    window.addEventListener('arcanasheet_direct_message', handler);
+  }
+  callback(filterForUser(getLocalDirectMessages()));
+
+  return () => {
+    directMessageListeners.delete(handler);
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('storage', handler);
+      window.removeEventListener('arcanasheet_direct_message', handler);
+    }
+  };
+}
+
+/**
+ * Marca como lidas todas as mensagens diretas de uma conversa
+ */
+export async function markDirectMessagesAsRead(
+  currentUserId: string,
+  partnerUserId: string
+): Promise<void> {
+  const all = getLocalDirectMessages();
+  const toUpdate: string[] = [];
+  const updated = all.map((m) => {
+    if (m.toUserId === currentUserId && m.fromUserId === partnerUserId && !m.read) {
+      toUpdate.push(m.id);
+      return { ...m, read: true };
+    }
+    return m;
+  });
+
+  saveLocalDirectMessages(updated);
+
+  const firestore = db;
+  if (firestore && toUpdate.length > 0) {
+    try {
+      await Promise.all(
+        toUpdate.map((id) => updateDoc(doc(firestore, 'direct_messages', id), { read: true }))
+      );
+    } catch (e) {
+      console.warn('Erro ao marcar mensagens como lidas no Firestore:', e);
+    }
+  }
 }

@@ -31,7 +31,13 @@ import { FloatingOnlineList } from './components/multiplayer/FloatingOnlineList'
 import { SocialSidebar } from './components/social/SocialSidebar';
 import { GameInviteModal } from './components/social/GameInviteModal';
 import { useSocialPresence } from './hooks/useSocialPresence';
-import type { GameInvite } from './firebase/presenceAndFriends';
+import {
+  type GameInvite,
+  type DirectMessage,
+  subscribeToDirectMessages,
+  sendDirectMessage,
+  markDirectMessagesAsRead,
+} from './firebase/presenceAndFriends';
 import { DiceRollAnimation } from './components/DiceRollAnimation';
 import { PrintSheetModal } from './components/PrintSheetModal';
 import { SessionChatModal } from './components/SessionChatModal';
@@ -62,6 +68,7 @@ import type { Monster } from './types/combat';
 import { DEFAULT_MAP_PRESETS } from './data/defaultMaps';
 import { SRD_MONSTERS } from './data/srdMonsters';
 import { type AiAdventureScenario } from './data/aiAdventureScenarios';
+import type { MapToken } from './types/vtt';
 
 import { 
   Shield, 
@@ -287,6 +294,53 @@ export function App() {
       return next;
     });
   }, []);
+
+  // Sistema de Mensagens Diretas em Tempo Real (Sussurros entre usuários online e amigos)
+  const [directMessages, setDirectMessages] = useState<DirectMessage[]>([]);
+
+  useEffect(() => {
+    const myId = user?.uid || 'local_user';
+    const unsub = subscribeToDirectMessages(myId, (msgs) => {
+      setDirectMessages((prev) => {
+        const prevIds = new Set(prev.map((m) => m.id));
+        const newIncoming = msgs.filter((m) => m.toUserId === myId && !m.read && !prevIds.has(m.id));
+        if (newIncoming.length > 0) {
+          const latest = newIncoming[newIncoming.length - 1];
+          showNotification(
+            `💬 Mensagem de ${latest.fromUserName}: "${latest.content.substring(0, 35)}${
+              latest.content.length > 35 ? '...' : ''
+            }"`
+          );
+        }
+        return msgs;
+      });
+    });
+    return unsub;
+  }, [user?.uid, showNotification]);
+
+  const handleSendDirectMessage = useCallback(
+    async (toUserId: string, toUserName: string, content: string) => {
+      const myId = user?.uid || 'local_user';
+      const myName = character.name || user?.displayName || 'Você';
+      await sendDirectMessage({
+        fromUserId: myId,
+        fromUserName: myName,
+        fromAvatarUrl: character.avatarUrl,
+        toUserId,
+        toUserName,
+        content,
+      });
+    },
+    [user?.uid, user?.displayName, character.name, character.avatarUrl]
+  );
+
+  const handleMarkDirectMessagesAsRead = useCallback(
+    async (partnerUserId: string) => {
+      const myId = user?.uid || 'local_user';
+      await markDirectMessagesAsRead(myId, partnerUserId);
+    },
+    [user?.uid]
+  );
 
   const toggleDiceAnimation = useCallback(() => {
     setIsDiceAnimationEnabled((prev) => {
@@ -669,6 +723,33 @@ export function App() {
       }
     },
     [moveToken, isConnected, tokens, broadcastTokenMove, character.name]
+  );
+
+  // Atualizar Token local (PV, tocha, etc.), sincronizar ficha e transmitir para a rede P2P
+  const handleUpdateToken = useCallback(
+    (id: string, updates: Partial<MapToken>) => {
+      updateToken(id, updates);
+
+      // Se o token pertencer ao personagem atual, sincroniza PV com a ficha
+      const targetToken = tokens.find((t) => t.id === id);
+      if (targetToken && updates.currentHp !== undefined) {
+        if (targetToken.name.toLowerCase() === (character.name || '').toLowerCase()) {
+          updateCharacter((prev) => ({
+            ...prev,
+            currentHp: updates.currentHp!,
+          }));
+        }
+        if (targetToken.combatantId) {
+          applyCombatantHpDelta(targetToken.combatantId, updates.currentHp - targetToken.currentHp);
+        }
+      }
+
+      if (isConnected) {
+        const updated = tokens.map((t) => (t.id === id ? { ...t, ...updates } : t));
+        broadcastTokenMove(updated, character.name);
+      }
+    },
+    [updateToken, tokens, character.name, updateCharacter, applyCombatantHpDelta, isConnected, broadcastTokenMove]
   );
 
   // Revelar Névoa e transmitir para a rede
@@ -1330,7 +1411,7 @@ export function App() {
             onAddFogShape={handleAddFogShape}
             onResetFog={resetFog}
             onRevealAllFog={revealAllFog}
-            onUpdateToken={updateToken}
+            onUpdateToken={handleUpdateToken}
             onRemoveToken={removeToken}
             onAddToken={addToken}
             onApplyCharacterAvatar={(dataUrl) => updateCharacter({ avatarUrl: dataUrl } as any)}
@@ -1496,6 +1577,9 @@ export function App() {
         currentUserId={user?.uid || 'local_user'}
         currentUserName={character.name || user?.displayName || 'Você'}
         currentRoomCode={isConnected ? roomCode : undefined}
+        directMessages={directMessages}
+        onSendDirectMessage={handleSendDirectMessage}
+        onMarkMessagesAsRead={handleMarkDirectMessagesAsRead}
         onAddFriend={handleAddFriend}
         onRemoveFriend={handleRemoveFriend}
         onSendGameInvite={async (friendId, fName, rCode) => {

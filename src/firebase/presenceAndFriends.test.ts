@@ -22,8 +22,12 @@ import {
   getFriendsList,
   sendGameInvite,
   respondToGameInvite,
+  sendDirectMessage,
+  subscribeToDirectMessages,
+  markDirectMessagesAsRead,
   type OnlineUserPresence,
   type FriendUser,
+  type DirectMessage,
 } from './presenceAndFriends';
 
 describe('presenceAndFriends service', () => {
@@ -108,5 +112,34 @@ describe('presenceAndFriends service', () => {
     const rawAfter = localStorage.getItem('arcanasheet_local_game_invites');
     const invitesAfter = JSON.parse(rawAfter!);
     expect(invitesAfter[0].status).toBe('accepted');
+  });
+
+  it('sends direct messages and marks them as read', async () => {
+    let received: DirectMessage[] = [];
+    const unsub = subscribeToDirectMessages('user-b', (msgs) => {
+      received = msgs;
+    });
+
+    const msg = await sendDirectMessage({
+      fromUserId: 'user-a',
+      fromUserName: 'Aragorn',
+      toUserId: 'user-b',
+      toUserName: 'Legolas',
+      content: 'Eles estão levando os hobbits para Isengard!',
+    });
+
+    expect(msg.id).toBeTruthy();
+    expect(msg.content).toBe('Eles estão levando os hobbits para Isengard!');
+    expect(msg.read).toBe(false);
+
+    expect(received.length).toBe(1);
+    expect(received[0].content).toBe('Eles estão levando os hobbits para Isengard!');
+    expect(received[0].read).toBe(false);
+
+    // Mark as read
+    await markDirectMessagesAsRead('user-b', 'user-a');
+    expect(received[0].read).toBe(true);
+
+    unsub();
   });
 });

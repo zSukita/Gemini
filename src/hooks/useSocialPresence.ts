@@ -35,7 +35,6 @@ export function useSocialPresence({
 
   const userId = user?.uid || 'local_user';
   const userName = character?.name || user?.displayName || user?.email?.split('@')[0] || 'Aventureiro';
-  const userEmail = user?.email || undefined;
   const avatarUrl = character?.avatarUrl || user?.photoURL || undefined;
 
   const currentRoomRef = useRef(currentRoomCode);
@@ -52,7 +51,6 @@ export function useSocialPresence({
       updateUserPresence({
         userId,
         name: userName,
-        email: userEmail,
         avatarUrl,
         characterName: character?.name,
         characterClass: character?.characterClass,
@@ -79,7 +77,7 @@ export function useSocialPresence({
       clearInterval(interval);
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [userId, userName, userEmail, avatarUrl, character?.name, character?.characterClass, character?.level]);
+  }, [userId, userName, avatarUrl, character?.name, character?.characterClass, character?.level]);
 
   // 2. Escuta lista de usuários online em tempo real
   useEffect(() => {
@@ -122,8 +120,7 @@ export function useSocialPresence({
       const matched = onlineUsers.find(
         (u) =>
           u.userId !== userId &&
-          (u.email?.toLowerCase() === clean.toLowerCase() ||
-            u.name.toLowerCase() === clean.toLowerCase() ||
+          (u.name.toLowerCase() === clean.toLowerCase() ||
             u.characterName?.toLowerCase() === clean.toLowerCase())
       );
 
@@ -132,8 +129,7 @@ export function useSocialPresence({
       if (matched) {
         targetFriend = {
           userId: matched.userId,
-          name: matched.name,
-          email: matched.email,
+          name: matched.characterName || matched.name,
           avatarUrl: matched.avatarUrl,
           characterName: matched.characterName,
           characterClass: matched.characterClass,

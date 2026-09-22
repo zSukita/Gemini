@@ -1,20 +1,62 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Cada usuário só pode ler/escrever seus próprios dados
+
+    // 1. Dados Pessoais do Usuário (Fichas salvas, preferências)
+    // Apenas o próprio usuário autenticado pode ler e escrever seus documentos
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Campanhas na Nuvem e Pistas/Handouts
+    // 2. Campanhas na Nuvem
+    // - Leitura: Permitida para qualquer usuário autenticado (para entrar via código)
+    // - Criação: Apenas se o usuário for o Mestre (dmId == request.auth.uid)
+    // - Edição: Mestre tem controle total; Jogadores podem atualizar sua presença em 'members'
+    // - Exclusão: Apenas o Mestre criador da campanha
     match /campaigns/{campaignId} {
-      allow read, write: if request.auth != null;
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.dmId == request.auth.uid;
+      allow update: if request.auth != null && (
+        resource.data.dmId == request.auth.uid ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'updatedAt'])
+      );
+      allow delete: if request.auth != null && resource.data.dmId == request.auth.uid;
+
+      // Pistas e Handouts da Campanha (gerenciados pelo Mestre da campanha)
       match /handouts/{handoutId} {
-        allow read, write: if request.auth != null;
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && (
+          get(/databases/$(database)/documents/campaigns/$(campaignId)).data.dmId == request.auth.uid
+        );
       }
     }
 
-    // Bloquear tudo que não estiver explicitamente permitido
+    // 3. Usuários Online (Presença em Tempo Real)
+    // - Leitura: Permitida para usuários autenticados para ver quem está online no site
+    // - Escrita: O usuário só pode registrar ou remover a SUA PRÓPRIA presença
+    match /online_users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // 4. Lista de Amigos
+    // - Totalmente Privada: Apenas o dono da lista de amigos pode ler e editar
+    match /user_friends/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // 5. Convites para Jogar (Game Invites)
+    // - Criação: Apenas o remetente pode emitir um convite com seu próprio ID
+    // - Leitura/Resposta/Exclusão: Apenas o remetente ou o destinatário do convite
+    match /game_invites/{inviteId} {
+      allow create: if request.auth != null && request.resource.data.fromUserId == request.auth.uid;
+      allow read, update, delete: if request.auth != null && (
+        resource.data.fromUserId == request.auth.uid ||
+        resource.data.toUserId == request.auth.uid
+      );
+    }
+
+    // 6. Bloquear qualquer outra coleção não autorizada expressamente
     match /{document=**} {
       allow read, write: if false;
     }

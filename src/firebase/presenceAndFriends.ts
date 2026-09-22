@@ -14,7 +14,6 @@ import { db } from './config';
 export interface OnlineUserPresence {
   userId: string;
   name: string;
-  email?: string;
   avatarUrl?: string;
   characterName?: string;
   characterClass?: string;

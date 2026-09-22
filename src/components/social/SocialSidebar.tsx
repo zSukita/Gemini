@@ -56,10 +56,10 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
   // Mapeia quem dos amigos está online no momento
   const friendsWithStatus = friends.map((f) => {
     const isOnline = onlineUsers.some(
-      (u) => u.userId === f.userId || (f.email && u.email && u.email.toLowerCase() === f.email.toLowerCase())
+      (u) => u.userId === f.userId || (f.name && u.name && u.name.toLowerCase() === f.name.toLowerCase())
     );
     const onlineData = onlineUsers.find(
-      (u) => u.userId === f.userId || (f.email && u.email && u.email.toLowerCase() === f.email.toLowerCase())
+      (u) => u.userId === f.userId || (f.name && u.name && u.name.toLowerCase() === f.name.toLowerCase())
     );
     return {
       ...f,
@@ -212,7 +212,7 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
               <div className="flex flex-col gap-1.5">
                 {otherOnlineUsers.map((u) => {
                   const isFriend = friends.some(
-                    (f) => f.userId === u.userId || (f.email && u.email && f.email.toLowerCase() === u.email.toLowerCase())
+                    (f) => f.userId === u.userId || (f.name && u.name && f.name.toLowerCase() === u.name.toLowerCase())
                   );
                   const isInvited = invitedFriends[u.userId];
                   const isInGame = u.status === 'in_game';
@@ -288,7 +288,7 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
                           {!isFriend && (
                             <button
                               type="button"
-                              onClick={() => onAddFriend(u.email || u.name)}
+                              onClick={() => onAddFriend(u.characterName || u.name)}
                               className="text-[10px] p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-300 transition"
                               title="Adicionar aos Amigos"
                             >

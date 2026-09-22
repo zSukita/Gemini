@@ -13,7 +13,7 @@ const API_KEY_STORAGE_KEY = 'arcanasheet_gemini_api_key';
 const CONFIG_STORAGE_KEY = 'arcanasheet_ai_dm_config';
 const CHAT_HISTORY_STORAGE_KEY = 'arcanasheet_ai_dm_history';
 
-export const DEFAULT_MODEL = 'gemini-3.6-flash';
+export const DEFAULT_MODEL = 'gemini-2.5-flash';
 
 export const DEFAULT_AI_CONFIG: AiDmConfig = {
   apiKey: '',
@@ -44,12 +44,12 @@ export function getStoredAiConfig(): AiDmConfig {
       const raw = localStorage.getItem(CONFIG_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        // Migra automaticamente modelos descontinuados pelo Google (ex: 2.5, 2.0, 1.5)
+        // Migra automaticamente modelos descontinuados pelo Google (ex: 2.0, 1.5, 1.0)
         const isDeprecated =
           !parsed.model ||
-          parsed.model.includes('2.5') ||
           parsed.model.includes('2.0') ||
-          parsed.model.includes('1.5');
+          parsed.model.includes('1.5') ||
+          parsed.model.includes('1.0');
         const model = isDeprecated ? DEFAULT_MODEL : parsed.model;
 
         return {
@@ -296,42 +296,68 @@ export async function sendToAiDungeonMaster(
     parts: [{ text: userAction }],
   });
 
-  try {
-    const client = new GoogleGenAI({ apiKey });
-    
-    // Chamada usando o SDK oficial do Google GenAI
-    const response = await client.models.generateContent({
-      model: fullConfig.model || DEFAULT_MODEL,
-      contents: conversationTurns,
-      config: {
-        systemInstruction,
-        temperature: 0.85,
-        topP: 0.95,
-      },
-    });
+  // Lista de modelos resilientes em cascata para garantir alta disponibilidade mesmo em contas gratuitas
+  const candidateModels = Array.from(
+    new Set([
+      fullConfig.model || DEFAULT_MODEL,
+      'gemini-2.5-flash',
+      'gemini-2.5-flash-lite',
+      'gemini-3.6-flash',
+    ])
+  );
 
-    const rawReply = response.text || 'O Mestre contempla a situação em silêncio... (Nenhuma resposta gerada)';
-    const parsed = parseAiResponse(rawReply);
+  let lastError: unknown = null;
 
-    return {
-      id: `ai_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      role: 'narrator',
-      content: parsed.cleanText,
-      timestamp: Date.now(),
-      suggestedActions: parsed.suggestedActions,
-      requestedRoll: parsed.requestedRoll,
-      handoutProposal: parsed.handoutProposal,
-    };
-  } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error('Erro na chamada ao Gemini SDK:', errorMsg);
-
-    // Tentativa de fallback direto via REST caso o SDK encontre bloqueios de ambiente
+  // Tenta cada modelo em ordem se houver sobrecarga temporária do Google (503 / 429)
+  for (const modelToTry of candidateModels) {
     try {
-      return await callGeminiRestFallback(apiKey, fullConfig.model || DEFAULT_MODEL, systemInstruction, conversationTurns);
-    } catch (fallbackErr) {
-      throw new Error(`Falha ao conectar com o Mestre IA: ${errorMsg}`);
+      const client = new GoogleGenAI({ apiKey });
+      
+      const response = await client.models.generateContent({
+        model: modelToTry,
+        contents: conversationTurns,
+        config: {
+          systemInstruction,
+          temperature: 0.85,
+          topP: 0.95,
+        },
+      });
+
+      const rawReply = response.text || 'O Mestre contempla a situação em silêncio... (Nenhuma resposta gerada)';
+      const parsed = parseAiResponse(rawReply);
+
+      return {
+        id: `ai_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        role: 'narrator',
+        content: parsed.cleanText,
+        timestamp: Date.now(),
+        suggestedActions: parsed.suggestedActions,
+        requestedRoll: parsed.requestedRoll,
+        handoutProposal: parsed.handoutProposal,
+      };
+    } catch (err: unknown) {
+      lastError = err;
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.warn(`[Gemini] Falha temporária com modelo ${modelToTry}: ${errorMsg}. Tentando modelo reserva...`);
     }
+  }
+
+  // Se todos os modelos pelo SDK falharem, tenta fallback REST com gemini-2.5-flash-lite
+  try {
+    return await callGeminiRestFallback(apiKey, 'gemini-2.5-flash-lite', systemInstruction, conversationTurns);
+  } catch {
+    // Tratamento amigável e legível para o usuário em caso de erro nos servidores do Google
+    const rawMsg = lastError instanceof Error ? lastError.message : String(lastError);
+    if (rawMsg.includes('503') || rawMsg.includes('overload') || rawMsg.includes('UNAVAILABLE') || rawMsg.includes('demand')) {
+      throw new Error('Os servidores de IA do Google estão com alta demanda temporária (Erro 503). Por favor, aguarde alguns segundos e envie novamente sua ação.');
+    }
+    if (rawMsg.includes('429') || rawMsg.includes('RESOURCE_EXHAUSTED') || rawMsg.includes('quota')) {
+      throw new Error('Limite de mensagens por minuto da chave gratuita atingido (Erro 429). Por favor, aguarde 30 segundos.');
+    }
+    if (rawMsg.includes('403') || rawMsg.includes('API_KEY_INVALID') || rawMsg.includes('API key not valid')) {
+      throw new Error('Chave de API do Gemini inválida ou não autorizada. Verifique sua chave nas configurações do Mestre IA.');
+    }
+    throw new Error(`Falha ao conectar com o Mestre IA: ${rawMsg}`);
   }
 }
 
@@ -391,40 +417,31 @@ export async function testGeminiApiKey(apiKey: string, model: string = DEFAULT_M
     return { success: false, message: 'A chave da API está vazia.' };
   }
 
-  const effectiveModel =
-    !model || model.includes('2.5') || model.includes('2.0') || model.includes('1.5')
-      ? DEFAULT_MODEL
-      : model;
+  const testModels = Array.from(new Set([model || DEFAULT_MODEL, 'gemini-2.5-flash', 'gemini-2.5-flash-lite']));
+  let lastErrMsg = '';
 
-  try {
-    const client = new GoogleGenAI({ apiKey: apiKey.trim() });
-    const res = await client.models.generateContent({
-      model: effectiveModel,
-      contents: 'Diga apenas: "ArcanaSheet conectado!".',
-    });
+  for (const modelToTest of testModels) {
+    try {
+      const client = new GoogleGenAI({ apiKey: apiKey.trim() });
+      const res = await client.models.generateContent({
+        model: modelToTest,
+        contents: 'Diga apenas: "ArcanaSheet conectado!".',
+      });
 
-    if (res.text) {
-      return { success: true, message: `Conexão estabelecida com sucesso! (${effectiveModel})` };
-    }
-    return { success: false, message: 'Nenhuma resposta recebida do modelo.' };
-  } catch (err: unknown) {
-    if (effectiveModel !== DEFAULT_MODEL) {
-      try {
-        const client = new GoogleGenAI({ apiKey: apiKey.trim() });
-        const res = await client.models.generateContent({
-          model: DEFAULT_MODEL,
-          contents: 'Diga apenas: "ArcanaSheet conectado!".',
-        });
-        if (res.text) {
-          return { success: true, message: `Conexão estabelecida com sucesso! (${DEFAULT_MODEL})` };
-        }
-      } catch {
-        // fallback
+      if (res.text) {
+        return { success: true, message: `Conexão estabelecida com sucesso! (${modelToTest})` };
       }
+    } catch (err: unknown) {
+      lastErrMsg = err instanceof Error ? err.message : String(err);
+      // Se for 503 (sobrecarga), continua testando o próximo modelo
+      continue;
     }
-    const msg = err instanceof Error ? err.message : String(err);
-    return { success: false, message: `Erro ao testar chave: ${msg}` };
   }
+
+  if (lastErrMsg.includes('503') || lastErrMsg.includes('overload') || lastErrMsg.includes('UNAVAILABLE')) {
+    return { success: false, message: 'Chave aceita, porém os servidores do Google estão temporariamente com alta demanda (Erro 503). Tente novamente em instantes.' };
+  }
+  return { success: false, message: `Erro ao testar chave: ${lastErrMsg}` };
 }
 
 /**
@@ -473,11 +490,22 @@ ${contextNote ? `\nCONTEXTO ESPECÍFICO DO MESTRE:\n${contextNote}` : ''}
 Responda diretamente em português do Brasil com excelente diagramação em markdown.
   `.trim();
 
-  const client = new GoogleGenAI({ apiKey });
-  const response = await client.models.generateContent({
-    model: DEFAULT_MODEL,
-    contents: finalPrompt,
-  });
+  const oracleModels = [DEFAULT_MODEL, 'gemini-2.5-flash-lite', 'gemini-3.6-flash'];
+  let lastErr: unknown = null;
 
-  return response.text || 'O oráculo silenciou sem resposta.';
+  for (const m of oracleModels) {
+    try {
+      const client = new GoogleGenAI({ apiKey });
+      const response = await client.models.generateContent({
+        model: m,
+        contents: finalPrompt,
+      });
+      if (response.text) return response.text;
+    } catch (err) {
+      lastErr = err;
+      continue;
+    }
+  }
+
+  throw new Error(`Erro ao consultar o Oráculo: ${lastErr instanceof Error ? lastErr.message : 'Serviço temporariamente indisponível'}`);
 }

@@ -365,7 +365,7 @@ export const BattleMap: React.FC<BattleMapProps> = ({
     encounter?.combatants[encounter.activeCombatantIndex]?.id;
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="w-full h-full flex flex-col gap-2 min-h-0 relative">
       {/* Barra de Ferramentas Superior */}
       <MapControls
         activeTool={activeTool}
@@ -443,7 +443,7 @@ export const BattleMap: React.FC<BattleMapProps> = ({
           const coords = getMapCoordinates(e.clientX, e.clientY);
           emitPing(coords.x, coords.y);
         }}
-        className={`relative w-full h-[620px] sm:h-[720px] bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-2xl ${
+        className={`relative w-full flex-1 min-h-[300px] h-full bg-slate-950 rounded-xl border border-slate-800 overflow-hidden shadow-2xl ${
           isPanning
             ? 'cursor-grab active:cursor-grabbing'
             : activeTool === 'draw'

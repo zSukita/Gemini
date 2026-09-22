@@ -160,17 +160,17 @@ A porta à sua frente permanece entreaberta, pingando água barrenta.
       expect(loaded.model).toBe(DEFAULT_MODEL);
     });
 
-    it('deve migrar modelos depreciados como gemini-2.5-flash automaticamente para gemini-3.6-flash', () => {
+    it('deve migrar modelos depreciados como gemini-1.5-flash automaticamente para gemini-2.5-flash', () => {
       localStorageMock.setItem(
         'arcanasheet_ai_dm_config',
         JSON.stringify({
-          model: 'gemini-2.5-flash',
+          model: 'gemini-1.5-flash',
           tone: 'heroic',
         })
       );
 
       const config = getStoredAiConfig();
-      expect(config.model).toBe('gemini-3.6-flash');
+      expect(config.model).toBe('gemini-2.5-flash');
     });
   });
 });

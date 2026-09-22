@@ -20,7 +20,9 @@ import {
   Music, 
   Heart,
   Sword,
-  Crown
+  Crown,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 interface TabletopSessionViewProps {
@@ -158,6 +160,7 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
   // Alternância entre Visão Completa da Mesa e Modo Foco no Mapa
   const [isMapFocusOnly, setIsMapFocusOnly] = useState(false);
   const [selectedCombatantId, setSelectedCombatantId] = useState<string | null>(null);
+  const [isBottomDockOpen, setIsBottomDockOpen] = useState(false);
 
   // Determina o combatente/alvo ativo para inspeção
   const activeTarget: Combatant | null = useMemo(() => {
@@ -387,6 +390,24 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
             {isMapFocusOnly ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
             <span>{isMapFocusOnly ? 'Mesa Completa' : 'Foco no Mapa'}</span>
           </button>
+
+          {/* Atalho Rápido para Painel de Combate */}
+          <button
+            type="button"
+            onClick={() => setIsBottomDockOpen(!isBottomDockOpen)}
+            className={`px-3 py-1.5 rounded-xl border text-xs font-serif font-bold flex items-center gap-1.5 transition shadow ${
+              encounter.isRunning
+                ? 'bg-rose-950/80 border-rose-500 text-rose-200 animate-pulse'
+                : isBottomDockOpen
+                ? 'bg-amber-900/60 border-amber-500 text-amber-100'
+                : 'bg-[#2a170d] border-[#8a633b] text-amber-200 hover:text-white'
+            }`}
+            title="Abrir / Recolher Painel de Combate e Alvo"
+          >
+            <Sword size={14} className={encounter.isRunning ? 'text-rose-400' : 'text-amber-400'} />
+            <span>{encounter.isRunning ? `Em Combate (R${encounter.round})` : 'Combate & Alvo'}</span>
+            {isBottomDockOpen ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
+          </button>
         </div>
       </div>
 
@@ -407,10 +428,10 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
         )}
 
         {/* COLUNA CENTRAL / DIREITA: MAPA TÁTICO + INSPEÇÃO + COMBAT TRACKER */}
-        <div className="flex-1 flex flex-col h-full gap-3 overflow-hidden">
+        <div className="flex-1 flex flex-col h-full gap-2 overflow-hidden">
           
-          {/* TOPO: TABULEIRO TÁTICO (BATTLEMAP) */}
-          <div className={`w-full rounded-xl overflow-hidden border-2 border-[#5c3a1d] shadow-2xl relative ${isMapFocusOnly ? 'flex-1' : 'h-[60%]'}`}>
+          {/* TOPO: TABULEIRO TÁTICO (BATTLEMAP) - OCUPA O MÁXIMO DE ESPAÇO */}
+          <div className="flex-1 w-full rounded-xl overflow-hidden border-2 border-[#5c3a1d] shadow-2xl relative min-h-0 bg-slate-950">
             <BattleMap
               mapConfig={mapConfig}
               tokens={tokens}
@@ -443,42 +464,73 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
             />
           </div>
 
-          {/* INFERIOR: PAINÉIS DE FICHA DO ALVO & COMBAT TRACKER (estilo Fantasy Grounds) */}
+          {/* INFERIOR: PAINÉIS DE FICHA DO ALVO & COMBAT TRACKER (estilo Fantasy Grounds - Colapsável) */}
           {!isMapFocusOnly && (
-            <div className="w-full h-[40%] flex gap-3 overflow-hidden animate-in slide-in-from-bottom-2 duration-150">
-              
-              {/* Painel Inferior Esquerdo: Ficha de Atributos do Alvo / Monstro */}
-              <div className="flex-1 h-full overflow-hidden">
-                <TabletopTargetCard
-                  target={activeTarget}
-                  onClose={() => {
-                    setSelectedCombatantId(null);
-                    onSelectToken(null);
-                  }}
-                  onRollAttack={onRollMonsterAttack}
-                  onRollDamage={onRollMonsterDamage}
-                />
+            <div
+              className={`transition-all duration-300 ease-in-out shrink-0 flex flex-col bg-[#1a0e07] border border-[#5c3a1d] rounded-xl shadow-2xl overflow-hidden ${
+                isBottomDockOpen ? 'h-[250px]' : 'h-8'
+              }`}
+            >
+              {/* Barra de Título / Alternador do Dock */}
+              <div
+                onClick={() => setIsBottomDockOpen(!isBottomDockOpen)}
+                className="h-8 px-3 flex items-center justify-between bg-[#2a170d] hover:bg-[#3d2214] cursor-pointer border-b border-[#4a2e18] transition select-none text-xs text-amber-200"
+              >
+                <div className="flex items-center gap-2 font-serif font-bold">
+                  <Sword size={13} className="text-amber-400" />
+                  <span>
+                    Combate & Alvo ({encounter.combatants.length} combatentes
+                    {encounter.isRunning ? ` · Rodada ${encounter.round}` : ''})
+                  </span>
+                  {activeTarget && (
+                    <span className="text-[11px] font-sans font-normal text-amber-300/90 bg-black/40 px-2 py-0.5 rounded-full border border-amber-900/50">
+                      Alvo: <strong>{activeTarget.name}</strong> ({activeTarget.currentHp}/{activeTarget.maxHp} PV)
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 text-[11px] text-amber-400 font-sans font-semibold">
+                  <span>{isBottomDockOpen ? 'Recolher Painel' : 'Expandir Painel'}</span>
+                  {isBottomDockOpen ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                </div>
               </div>
 
-              {/* Painel Inferior Direito: Rastreador de Combate & Iniciativa */}
-              <div className="flex-1 h-full overflow-hidden">
-                <TabletopCombatTracker
-                  encounter={encounter}
-                  charactersList={charactersList}
-                  selectedCombatantId={selectedCombatantId}
-                  onSelectCombatant={(c) => setSelectedCombatantId(c.id)}
-                  onStartEncounter={onStartEncounter}
-                  onNextTurn={onNextTurn}
-                  onPreviousTurn={onPreviousTurn}
-                  onSortInitiative={onSortInitiative}
-                  onResetEncounter={onResetEncounter}
-                  onHpDelta={onHpDelta}
-                  onToggleCondition={onToggleCondition}
-                  onUpdateInitiative={onUpdateInitiative}
-                  onRemoveCombatant={onRemoveCombatant}
-                  onOpenBestiary={onOpenBestiary}
-                />
-              </div>
+              {/* Conteúdo Expansível: TargetCard e CombatTracker */}
+              {isBottomDockOpen && (
+                <div className="flex-1 flex gap-2 p-2 overflow-hidden animate-in fade-in duration-200">
+                  {/* Painel Inferior Esquerdo: Ficha de Atributos do Alvo / Monstro */}
+                  <div className="flex-1 h-full overflow-hidden">
+                    <TabletopTargetCard
+                      target={activeTarget}
+                      onClose={() => {
+                        setSelectedCombatantId(null);
+                        onSelectToken(null);
+                      }}
+                      onRollAttack={onRollMonsterAttack}
+                      onRollDamage={onRollMonsterDamage}
+                    />
+                  </div>
+
+                  {/* Painel Inferior Direito: Rastreador de Combate & Iniciativa */}
+                  <div className="flex-1 h-full overflow-hidden">
+                    <TabletopCombatTracker
+                      encounter={encounter}
+                      charactersList={charactersList}
+                      selectedCombatantId={selectedCombatantId}
+                      onSelectCombatant={(c) => setSelectedCombatantId(c.id)}
+                      onStartEncounter={onStartEncounter}
+                      onNextTurn={onNextTurn}
+                      onPreviousTurn={onPreviousTurn}
+                      onSortInitiative={onSortInitiative}
+                      onResetEncounter={onResetEncounter}
+                      onHpDelta={onHpDelta}
+                      onToggleCondition={onToggleCondition}
+                      onUpdateInitiative={onUpdateInitiative}
+                      onRemoveCombatant={onRemoveCombatant}
+                      onOpenBestiary={onOpenBestiary}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

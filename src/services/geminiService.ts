@@ -6,7 +6,8 @@ import type {
   AiOracleAction, 
   AdventureTone,
   RequestedRoll,
-  HandoutProposal
+  HandoutProposal,
+  MonsterAttackAction
 } from '../types/aiDm';
 
 const API_KEY_STORAGE_KEY = 'arcanasheet_gemini_api_key';
@@ -198,6 +199,10 @@ REGRAS DE FORMATAÇÃO ESPECIAL (MUITO IMPORTANTE):
   [PERGAMINHO: Título do Documento | Autor ou Origem]
   Texto exato do bilhete ou carta aqui...
   [/PERGAMINHO]
+- Se monstros atacarem em combate, inclua uma tag de ataque mecânico no formato:
+  [ATAQUE_MONSTRO: Nome do Monstro | Nome do Ataque | +BônusAtaque | FórmulaDano | Nome do Herói Alvo]
+  Exemplo: [ATAQUE_MONSTRO: Goblin 1 | Cimitarra | +4 | 1d6+2 | Thorin]
+  Exemplo: [ATAQUE_MONSTRO: Lobo Alfa | Mordida | +5 | 2d4+2 | Lyra]
 `.trim();
 }
 
@@ -209,11 +214,13 @@ export function parseAiResponse(rawText: string): {
   suggestedActions?: string[];
   requestedRoll?: RequestedRoll;
   handoutProposal?: HandoutProposal;
+  monsterAttack?: MonsterAttackAction;
 } {
   let cleanText = rawText;
   let suggestedActions: string[] | undefined;
   let requestedRoll: RequestedRoll | undefined;
   let handoutProposal: HandoutProposal | undefined;
+  let monsterAttack: MonsterAttackAction | undefined;
 
   // 1. Extrair [AÇÕES] ... [/AÇÕES]
   const actionsRegex = /\[AÇÕES\]([\s\S]*?)\[\/AÇÕES\]/i;
@@ -260,11 +267,33 @@ export function parseAiResponse(rawText: string): {
     cleanText = cleanText.replace(handoutRegex, '').trim();
   }
 
+  // 4. Extrair [ATAQUE_MONSTRO: Monstro | Ação | Bônus | Dano | Alvo]
+  const monsterAttackRegex = /\[ATAQUE_MONSTRO:\s*([^\]]+)\]/i;
+  const monsterAttackMatch = rawText.match(monsterAttackRegex);
+  if (monsterAttackMatch) {
+    const parts = monsterAttackMatch[1].split('|').map(p => p.trim());
+    const monsterName = parts[0] || 'Monstro';
+    const attackName = parts[1] || 'Ataque';
+    const bonusPart = parts[2] || '+0';
+    const attackBonus = parseInt(bonusPart.replace('+', ''), 10) || 0;
+    const damageFormula = parts[3] || '1d6';
+    const target = parts[4] || undefined;
+    monsterAttack = {
+      monsterName,
+      attackName,
+      attackBonus,
+      damageFormula,
+      target,
+    };
+    cleanText = cleanText.replace(monsterAttackRegex, '').trim();
+  }
+
   return {
     cleanText: cleanText.replace(/\n{3,}/g, '\n\n').trim(),
     suggestedActions,
     requestedRoll,
     handoutProposal,
+    monsterAttack,
   };
 }
 
@@ -349,6 +378,7 @@ export async function sendToAiDungeonMaster(
         suggestedActions: parsed.suggestedActions,
         requestedRoll: parsed.requestedRoll,
         handoutProposal: parsed.handoutProposal,
+        monsterAttack: parsed.monsterAttack,
       };
     } catch (err: unknown) {
       lastError = err;
@@ -421,6 +451,7 @@ async function callGeminiRestFallback(
     suggestedActions: parsed.suggestedActions,
     requestedRoll: parsed.requestedRoll,
     handoutProposal: parsed.handoutProposal,
+    monsterAttack: parsed.monsterAttack,
   };
 }
 

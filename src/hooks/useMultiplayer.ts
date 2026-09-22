@@ -56,6 +56,7 @@ export function useMultiplayer(options?: {
           diceRoll: isObj ? payload.diceRoll : undefined,
           suggestedActions: isObj ? payload.suggestedActions : undefined,
           requestedRoll: isObj ? payload.requestedRoll : undefined,
+          monsterAttack: isObj ? payload.monsterAttack : undefined,
           timestamp: msg.timestamp || Date.now(),
         };
         setChatLog((prev) => {
@@ -176,6 +177,14 @@ export function useMultiplayer(options?: {
               dc?: number;
               reason: string;
             };
+            monsterAttack?: {
+              monsterName: string;
+              attackName: string;
+              attackBonus: number;
+              damageFormula: string;
+              target?: string;
+              description?: string;
+            };
             aiHandledBySender?: boolean;
           },
       playerNameFallback?: string
@@ -188,6 +197,7 @@ export function useMultiplayer(options?: {
       const diceRoll = isObj ? textOrPayload.diceRoll : undefined;
       const suggestedActions = isObj ? textOrPayload.suggestedActions : undefined;
       const requestedRoll = isObj ? textOrPayload.requestedRoll : undefined;
+      const monsterAttack = isObj ? textOrPayload.monsterAttack : undefined;
       const aiHandledBySender = isObj ? textOrPayload.aiHandledBySender : undefined;
       const msgId = isObj && textOrPayload.id ? textOrPayload.id : `chat-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
       const timestamp = Date.now();
@@ -200,6 +210,7 @@ export function useMultiplayer(options?: {
         diceRoll,
         suggestedActions,
         requestedRoll,
+        monsterAttack,
         aiHandledBySender,
       };
 
@@ -224,6 +235,7 @@ export function useMultiplayer(options?: {
         diceRoll,
         suggestedActions,
         requestedRoll,
+        monsterAttack,
         timestamp,
       };
       setChatLog((prev) => {

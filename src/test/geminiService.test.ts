@@ -127,6 +127,22 @@ A porta à sua frente permanece entreaberta, pingando água barrenta.
       expect(parsed.suggestedActions?.[2]).toBe('Acender uma tocha para iluminar o corredor');
     });
 
+    it('deve extrair tag de [ATAQUE_MONSTRO] com sucesso', () => {
+      const rawText = `
+O Goblin Líder surge das sombras com um sibilo cruel!
+[ATAQUE_MONSTRO: Goblin Líder | Cimitarra Farpada | +4 | 1d6+2 | Thorin]
+      `.trim();
+
+      const parsed = parseAiResponse(rawText);
+      expect(parsed.cleanText).toBe('O Goblin Líder surge das sombras com um sibilo cruel!');
+      expect(parsed.monsterAttack).toBeDefined();
+      expect(parsed.monsterAttack?.monsterName).toBe('Goblin Líder');
+      expect(parsed.monsterAttack?.attackName).toBe('Cimitarra Farpada');
+      expect(parsed.monsterAttack?.attackBonus).toBe(4);
+      expect(parsed.monsterAttack?.damageFormula).toBe('1d6+2');
+      expect(parsed.monsterAttack?.target).toBe('Thorin');
+    });
+
     it('deve lidar graciosamente com textos simples sem tags', () => {
       const rawText = 'O guarda sorri e permite sua passagem pela ponte levadiça.';
       const parsed = parseAiResponse(rawText);
@@ -134,6 +150,7 @@ A porta à sua frente permanece entreaberta, pingando água barrenta.
       expect(parsed.suggestedActions).toBeUndefined();
       expect(parsed.requestedRoll).toBeUndefined();
       expect(parsed.handoutProposal).toBeUndefined();
+      expect(parsed.monsterAttack).toBeUndefined();
     });
   });
 

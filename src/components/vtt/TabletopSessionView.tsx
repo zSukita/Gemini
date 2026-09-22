@@ -95,6 +95,7 @@ interface TabletopSessionViewProps {
   onRemoveCombatant?: (id: string) => void;
   onRollMonsterAttack: (monsterName: string, actionName: string, attackBonus: number) => void;
   onRollMonsterDamage: (monsterName: string, actionName: string, formula: string) => void;
+  onAiMonsterAttack?: (combatant?: Combatant) => void;
 
   // Abertura de Modais Rápidos
   onOpenMultiplayerModal?: () => void;
@@ -152,6 +153,7 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
   onRemoveCombatant,
   onRollMonsterAttack,
   onRollMonsterDamage,
+  onAiMonsterAttack,
   onOpenMultiplayerModal,
   onOpenAiDmModal,
   onOpenCompendium,
@@ -548,6 +550,7 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
                       onUpdateInitiative={onUpdateInitiative}
                       onRemoveCombatant={onRemoveCombatant}
                       onOpenBestiary={onOpenBestiary}
+                      onAiMonsterAttack={onAiMonsterAttack}
                     />
                   </div>
                 </div>

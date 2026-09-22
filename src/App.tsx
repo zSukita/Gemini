@@ -56,7 +56,8 @@ import { HandoutViewerModal } from './components/HandoutViewerModal';
 import { AiDungeonMasterModal } from './components/ai/AiDungeonMasterModal';
 import { EndSessionModal } from './components/vtt/EndSessionModal';
 import { getStoredApiKey, sendToAiDungeonMaster } from './services/geminiService';
-import type { AiMessage } from './types/aiDm';
+import type { AiMessage, MonsterAttackAction } from './types/aiDm';
+import type { Combatant } from './types/combat';
 import type { ChatMessageType } from './types/chat';
 import {
   type CampaignHandout,
@@ -394,6 +395,8 @@ export function App() {
 
   const [isAiResponding, setIsAiResponding] = useState(false);
   const triggerAiDmRef = useRef<((promptText: string) => Promise<void>) | undefined>(undefined);
+  const executeAiMonsterAttackRef = useRef<((attack: MonsterAttackAction) => void) | undefined>(undefined);
+  const handleTriggerAiMonsterTurnRef = useRef<((combatant?: Combatant) => void) | undefined>(undefined);
 
   // Hook Multiplayer P2P WebRTC
   const {
@@ -479,7 +482,12 @@ export function App() {
           type: 'AI_DM',
           suggestedActions: aiReply.suggestedActions,
           requestedRoll: aiReply.requestedRoll,
+          monsterAttack: aiReply.monsterAttack,
         });
+
+        if (aiReply.monsterAttack) {
+          executeAiMonsterAttackRef.current?.(aiReply.monsterAttack);
+        }
       } catch (err: unknown) {
         const errText = err instanceof Error ? err.message : String(err);
         sendChatMessage({
@@ -518,6 +526,19 @@ export function App() {
       const senderName = isObj && textOrPayload.senderName ? textOrPayload.senderName : (senderFallback || character.name || 'Aventureiro');
       const trimmed = text.trim();
       if (!trimmed) return;
+
+      const isMonsterAttackCmd =
+        trimmed === '/ia atacar' ||
+        trimmed === '@mestre atacar' ||
+        trimmed === '/mestre atacar' ||
+        trimmed === '/monstro atacar' ||
+        trimmed.startsWith('/ia atacar') ||
+        trimmed.startsWith('@mestre atacar');
+
+      if (isMonsterAttackCmd) {
+        handleTriggerAiMonsterTurnRef.current?.();
+        return;
+      }
 
       const isAiCommand =
         trimmed.startsWith('@mestre') ||
@@ -913,6 +934,81 @@ export function App() {
       handleRollFormula(activeRollAnimation.dieType, activeRollAnimation.label);
     }
   }, [activeRollAnimation, handleRollD20, handleRollDie, handleRollFormula]);
+
+  // Executa o ataque autônomo do monstro pela IA com dados 3D na tela e transmissão P2P
+  const executeAiMonsterAttack = useCallback(
+    (attack: MonsterAttackAction) => {
+      // 1. Notificação de início do ataque
+      showNotification(`🐉 ${attack.monsterName} ataca com ${attack.attackName}!`);
+
+      // 2. Rolagem de Ataque com d20 (aciona animação 3D e broadcast P2P)
+      const attackLabel = `${attack.monsterName}: ${attack.attackName}${attack.target ? ` (vs ${attack.target})` : ''}`;
+      handleRollD20(attackLabel, attack.attackBonus);
+
+      // 3. Intervalo de suspense (1.6s) para os jogadores conferirem se acertou a CA antes do dano
+      setTimeout(() => {
+        const damageLabel = `${attack.monsterName}: Dano ${attack.attackName}`;
+        handleRollFormula(attack.damageFormula, damageLabel);
+
+        // 4. Notificação e aviso para passar o turno (conforme solicitado pelo usuário!)
+        showNotification(`⚔️ ${attack.monsterName} finalizou o ataque! Você já pode passar o turno no combate.`);
+      }, 1600);
+    },
+    [handleRollD20, handleRollFormula, showNotification]
+  );
+  executeAiMonsterAttackRef.current = executeAiMonsterAttack;
+
+  // Dispara a jogada do monstro ativo (ou selecionado) controlada pelo Mestre IA
+  const handleTriggerAiMonsterTurn = useCallback(
+    (targetCombatant?: Combatant) => {
+      // 1. Identifica o combatente alvo: o passado por argumento, ou o da iniciativa atual, ou o primeiro monstro vivo
+      const activeCombatant = encounter.combatants[encounter.activeCombatantIndex];
+      const mon =
+        targetCombatant ||
+        (activeCombatant?.type === 'monster'
+          ? activeCombatant
+          : encounter.combatants.find((c) => c.type === 'monster' && c.currentHp > 0));
+
+      if (!mon) {
+        showNotification('Nenhum monstro ativo ou vivo no combate para a IA controlar!');
+        return;
+      }
+
+      // 2. Localiza as ações do monstro no compêndio/ficha do monstro
+      const actions = mon.monsterData?.actions || [];
+      const chosenAction =
+        actions.find((a) => a.attackBonus !== undefined && a.damageFormula) ||
+        actions[0] || {
+          name: 'Investida Feroz',
+          attackBonus: 3,
+          damageFormula: '1d6+1',
+          description: 'Um golpe brutal com garras, presas ou armas rústicas.',
+        };
+
+      const attackAction: MonsterAttackAction = {
+        monsterName: mon.name,
+        attackName: chosenAction.name,
+        attackBonus: chosenAction.attackBonus ?? 3,
+        damageFormula: chosenAction.damageFormula ?? '1d6+1',
+      };
+
+      // 3. Registra a narração da IA no chat compartilhado
+      sendChatMessage(
+        {
+          text: `⚔️ **Turno do Monstro:** O Mestre IA comanda **${mon.name}**, que avança ferozmente e desfere **${chosenAction.name}** contra os heróis!`,
+          senderName: '✨ Mestre Supremo (IA)',
+          type: 'AI_DM',
+          monsterAttack: attackAction,
+        },
+        '✨ Mestre Supremo (IA)'
+      );
+
+      // 4. Dispara a sequência de dados 3D na tela de todos
+      executeAiMonsterAttack(attackAction);
+    },
+    [encounter.combatants, encounter.activeCombatantIndex, executeAiMonsterAttack, sendChatMessage, showNotification]
+  );
+  handleTriggerAiMonsterTurnRef.current = handleTriggerAiMonsterTurn;
 
   // Descanso Curto (Abre modal interativo para gastar dados de vida e recarregar recursos)
   const handleShortRest = () => {
@@ -1434,6 +1530,7 @@ export function App() {
             onRollMonsterDamage={(monName, actName, formula) =>
               handleRollFormula(formula, `${monName}: ${actName}`)
             }
+            onAiMonsterAttack={handleTriggerAiMonsterTurn}
             onOpenMultiplayerModal={() => setIsMultiplayerOpen(true)}
             onOpenAiDmModal={() => setIsAiDmOpen(true)}
             onOpenCompendium={() => setIsSpellCompendiumOpen(true)}

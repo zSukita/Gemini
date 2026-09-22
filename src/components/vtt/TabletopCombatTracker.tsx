@@ -29,6 +29,7 @@ interface TabletopCombatTrackerProps {
   onUpdateInitiative?: (id: string, init: number) => void;
   onRemoveCombatant?: (id: string) => void;
   onOpenBestiary?: () => void;
+  onAiMonsterAttack?: (combatant?: Combatant) => void;
 }
 
 export const TabletopCombatTracker: React.FC<TabletopCombatTrackerProps> = ({
@@ -43,6 +44,7 @@ export const TabletopCombatTracker: React.FC<TabletopCombatTrackerProps> = ({
   onResetEncounter,
   onHpDelta,
   onOpenBestiary,
+  onAiMonsterAttack,
 }) => {
   const activeCombatant = encounter.combatants[encounter.activeCombatantIndex];
 
@@ -56,9 +58,22 @@ export const TabletopCombatTracker: React.FC<TabletopCombatTrackerProps> = ({
             Rastreador de Combate
           </h3>
           {encounter.isRunning && activeCombatant && (
-            <span className="text-[10px] text-amber-950 font-bold bg-amber-800/20 px-1.5 py-0.5 rounded border border-amber-800/30">
-              Vez: {activeCombatant.name}
-            </span>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-amber-950 font-bold bg-amber-800/20 px-1.5 py-0.5 rounded border border-amber-800/30">
+                Vez: {activeCombatant.name}
+              </span>
+              {activeCombatant.type === 'monster' && onAiMonsterAttack && (
+                <button
+                  type="button"
+                  onClick={() => onAiMonsterAttack(activeCombatant)}
+                  className="rpg-button bg-rose-900 hover:bg-rose-800 text-rose-100 text-[10px] py-0.5 px-2 rounded shadow-xs flex items-center gap-1 font-bold animate-pulse border border-rose-700"
+                  title={`Fazer o Mestre IA rolar o ataque de ${activeCombatant.name}`}
+                >
+                  <Swords size={11} />
+                  <span>Ação IA</span>
+                </button>
+              )}
+            </div>
           )}
         </div>
 
@@ -183,6 +198,19 @@ export const TabletopCombatTracker: React.FC<TabletopCombatTrackerProps> = ({
                       ) : (
                         <Heart size={12} className="text-emerald-800 shrink-0" />
                       )}
+                      {c.type === 'monster' && !isDown && onAiMonsterAttack && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onAiMonsterAttack(c);
+                          }}
+                          className="w-5 h-5 rounded bg-amber-900/50 hover:bg-amber-800 text-amber-100 flex items-center justify-center text-[10px] shadow-xs border border-amber-700/60 ml-0.5 transition"
+                          title={`Comandar ataque de ${c.name} pela IA com dados 3D`}
+                        >
+                          <Swords size={10} />
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -213,6 +241,18 @@ export const TabletopCombatTracker: React.FC<TabletopCombatTrackerProps> = ({
               title="Resetar Encontro"
             >
               <RotateCcw size={11} />
+            </button>
+          )}
+
+          {encounter.isRunning && activeCombatant?.type === 'monster' && onAiMonsterAttack && (
+            <button
+              type="button"
+              onClick={() => onAiMonsterAttack(activeCombatant)}
+              className="rpg-button bg-rose-900 hover:bg-rose-800 text-rose-100 font-bold text-[10px] py-1 px-2 rounded shadow flex items-center gap-1 border border-rose-700 animate-pulse ml-1"
+              title={`Mestre IA rola o ataque de ${activeCombatant.name} com dados 3D`}
+            >
+              <Swords size={11} />
+              <span>IA Atacar</span>
             </button>
           )}
         </div>

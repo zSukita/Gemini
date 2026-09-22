@@ -16,5 +16,13 @@ export interface ChatMessage {
     dc?: number;
     reason: string;
   };
+  monsterAttack?: {
+    monsterName: string;
+    attackName: string;
+    attackBonus: number;
+    damageFormula: string;
+    target?: string;
+    description?: string;
+  };
   timestamp: number;
 }

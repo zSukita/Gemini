@@ -101,6 +101,15 @@ export interface HandoutProposal {
   authorOrOrigin?: string;
 }
 
+export interface MonsterAttackAction {
+  monsterName: string;
+  attackName: string;
+  attackBonus: number;
+  damageFormula: string;
+  target?: string;
+  description?: string;
+}
+
 export interface AiMessage {
   id: string;
   role: 'narrator' | 'player' | 'system';
@@ -109,6 +118,7 @@ export interface AiMessage {
   suggestedActions?: string[];
   requestedRoll?: RequestedRoll;
   handoutProposal?: HandoutProposal;
+  monsterAttack?: MonsterAttackAction;
 }
 
 export interface AiDmConfig {

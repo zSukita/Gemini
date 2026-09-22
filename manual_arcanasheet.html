@@ -9,7 +9,7 @@
   <style>
     @page {
       size: A4;
-      margin: 15mm;
+      margin: 14mm;
     }
 
     * {
@@ -80,8 +80,8 @@
     .cover-tagline {
       font-size: 14px;
       color: #94a3b8;
-      max-width: 500px;
-      margin-bottom: 40px;
+      max-width: 520px;
+      margin-bottom: 35px;
     }
 
     .cover-badge {
@@ -97,7 +97,7 @@
     }
 
     .cover-footer {
-      margin-top: 60px;
+      margin-top: 50px;
       font-size: 11px;
       color: #64748b;
       letter-spacing: 1px;
@@ -107,7 +107,7 @@
     /* PÁGINAS DE CONTEÚDO */
     .page-section {
       page-break-after: always;
-      padding: 20px 0;
+      padding: 18px 0;
     }
 
     .page-section:last-child {
@@ -117,7 +117,7 @@
     .section-header {
       border-bottom: 2px solid #b45309;
       padding-bottom: 8px;
-      margin-bottom: 24px;
+      margin-bottom: 20px;
       display: flex;
       align-items: center;
       gap: 12px;
@@ -125,7 +125,7 @@
 
     .section-title {
       font-family: 'Cinzel', serif;
-      font-size: 22px;
+      font-size: 21px;
       font-weight: 800;
       color: #fde68a;
       margin: 0;
@@ -137,8 +137,8 @@
       border: 1px solid #374151;
       border-left: 4px solid #f59e0b;
       border-radius: 12px;
-      padding: 16px 20px;
-      margin-bottom: 18px;
+      padding: 15px 18px;
+      margin-bottom: 16px;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
     }
 
@@ -155,9 +155,9 @@
     }
 
     p, li {
-      font-size: 13px;
+      font-size: 12.5px;
       color: #cbd5e1;
-      margin-bottom: 6px;
+      margin-bottom: 5px;
     }
 
     ul, ol {
@@ -193,6 +193,16 @@
       color: #ddd6fe;
     }
 
+    .ai-box {
+      background: rgba(190, 24, 93, 0.12);
+      border: 1px solid #be185d;
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin: 12px 0;
+      font-size: 12px;
+      color: #fbcfe8;
+    }
+
     .grid-2 {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -215,9 +225,9 @@
       text-align: center;
       font-size: 11px;
       color: #64748b;
-      margin-top: 30px;
+      margin-top: 25px;
       border-top: 1px solid #1f2937;
-      padding-top: 12px;
+      padding-top: 10px;
     }
 
     /* BOTÃO DE IMPRESSÃO (Oculto no PDF) */
@@ -275,13 +285,13 @@
       <h1 class="cover-title">ArcanaSheet</h1>
       <div class="cover-subtitle">Manual Oficial do Jogador & do Mestre</div>
       <div class="cover-tagline">
-        Plataforma Completa de Ficha Digital D&D 5e, Tabuleiro Tático Virtual (VTT) e Campanhas Sincronizadas em Tempo Real.
+        Ficha Digital D&D 5e, Tabuleiro Tático Virtual (VTT), Mestre com IA Autônoma e Comunidade Multijogador Sincronizada em Tempo Real.
       </div>
       <div class="cover-badge">
         🌐 https://arcanasheet.sociedade.online/
       </div>
       <div class="cover-footer">
-        D&D 5ª Edição • Sistema de Regras SRD • Versão Oficial 1.0
+        D&D 5ª Edição • Regras Oficiais SRD • Versão 2.5 (Edição Mestre Supremo & VTT Dinâmico)
       </div>
     </div>
 
@@ -292,80 +302,93 @@
       </div>
 
       <div class="card">
-        <h3 class="card-title">1. Criação do Herói & Ficha em Branco</h3>
-        <p>Ao se cadastrar e entrar pela primeira vez, sua conta inicia com uma <strong>ficha 100% em branco</strong>. O <em>Assistente Passo a Passo (Wizard)</em> guiará sua criação:</p>
+        <h3 class="card-title">1. Acesso & Autenticação Dark Fantasy</h3>
+        <p>Ao acessar a plataforma, você é recepcionado por um portal medieval temático com abas intuitivas:</p>
         <ul>
-          <li><strong>Raça e Classe</strong>: Escolha entre as 9 raças e 12 classes do D&D 5e (Guerreiro, Mago, Ladino, Clérigo, Bárbaro, etc.).</li>
-          <li><strong>Atributos</strong>: Defina Força, Destreza, Constituição, Inteligência, Sabedoria e Carisma (pelo método padrão 15, 14, 13, 12, 10, 8 ou rolagem de dados).</li>
-          <li><strong>Cálculos Automáticos</strong>: A ficha calcula imediatamente seus modificadores, bônus de proficiência, Pontos de Vida (PV), Defesa (CA) e Iniciativa.</li>
+          <li><strong>Aba "Entrar"</strong>: Faça login com seu e-mail e senha cadastrados ou acesse com 1 clique via Google.</li>
+          <li><strong>Aba "Criar Conta"</strong>: Cadastre seu aventureiro em segundos, definindo seu e-mail e senha.</li>
+          <li><strong>Persistência Dupla (Nuvem + Offline)</strong>: Suas fichas são salvas continuamente no <em>Firebase Firestore</em> e no navegador (<em>LocalStorage</em>). Você nunca perde seu progresso mesmo em caso de oscilações de rede!</li>
         </ul>
       </div>
 
       <div class="card">
-        <h3 class="card-title">2. Rolagens de Dados com 1 Clique</h3>
-        <p>Você nunca precisará fazer contas de cabeça durante o jogo:</p>
+        <h3 class="card-title">2. Criação do Herói & Ficha em Branco</h3>
+        <p>Ao se cadastrar, sua conta inicia com uma <strong>ficha 100% em branco</strong>. O <em>Assistente Passo a Passo (Wizard)</em> guia sua jornada:</p>
         <ul>
-          <li><strong>Perícias e Atributos</strong>: Clique no nome de qualquer perícia (ex: <em>Furtividade</em>, <em>Atletismo</em>, <em>Percepção</em>) para rolar 1d20 + seu bônus.</li>
-          <li><strong>Testes de Ataque e Dano</strong>: Na aba <em>Visão Geral & Combate</em>, clique em <strong>Ataque</strong> para rolar o acerto contra a CA do alvo; depois clique em <strong>Dano</strong> para rolar os dados da arma.</li>
-          <li><strong>Vantagem & Desvantagem</strong>: Na barra inferior, selecione <span class="key-badge">Vantagem</span> (rola 2d20 e pega o maior) ou <span class="key-badge">Desvantagem</span> (pega o menor).</li>
-          <li><strong>Animação 3D</strong>: Acompanhe os dados poliédricos rolando pela mesa com física realista!</li>
+          <li><strong>Raça e Classe</strong>: Escolha entre as 9 raças e 12 classes do D&D 5e com ilustrações exclusivas em alta resolução.</li>
+          <li><strong>Atributos</strong>: Defina seus 6 atributos pelo método padrão (15, 14, 13, 12, 10, 8) ou por rolagem direta de dados.</li>
+          <li><strong>Cálculos Instantâneos</strong>: Modificadores, proficiência, Pontos de Vida (PV), Defesa (CA) e Iniciativa são calculados automaticamente.</li>
         </ul>
       </div>
 
       <div class="card">
-        <h3 class="card-title">3. Recursos de Classe & Descansos Automatizados</h3>
+        <h3 class="card-title">3. Rolagens de Dados com 1 Clique & Física 3D</h3>
         <ul>
-          <li><strong>Contadores de Cargas</strong>: Acompanhe habilidades especiais como <em>Fúria</em>, <em>Surto de Ação</em>, <em>Chi</em>, <em>Canalizar Divindade</em> e <em>Inspiração</em> em caixas interativas <span class="key-badge">[x] [x] [ ]</span>.</li>
-          <li><strong>Descanso Curto (1 hora)</strong>: Clique em <em>Descanso Curto</em> no menu superior para abrir o modal interativo. Gaste seus Dados de Vida um a um (rolando o dado + CON) para se curar. Ao finalizar, seus recursos de descanso curto recarregam automaticamente!</li>
-          <li><strong>Descanso Longo (8 horas)</strong>: Recupera 100% dos Pontos de Vida, metade dos Dados de Vida, restaura todos os Espaços de Magia gastos e zera as falhas contra a morte.</li>
+          <li><strong>Perícias e Atributos</strong>: Clique no nome de qualquer perícia para rolar 1d20 + bônus. O dado poliédrico 3D rola com física realista na tela!</li>
+          <li><strong>Testes de Ataque e Dano</strong>: Na aba <em>Visão Geral</em>, clique em <strong>Ataque</strong> para rolar o acerto e em <strong>Dano</strong> para rolar as armas ou magias.</li>
+          <li><strong>Vantagem & Desvantagem</strong>: Alterne rapidamente no rodapé entre modo normal, vantagem (pega o maior) e desvantagem (pega o menor).</li>
+          <li><strong>Sincronização P2P</strong>: Todas as suas rolagens são transmitidas em tempo real para a tela dos demais jogadores na mesa online.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3 class="card-title">4. Recursos de Classe & Descansos Automatizados</h3>
+        <ul>
+          <li><strong>Contadores de Cargas</strong>: Acompanhe <em>Fúria</em>, <em>Surto de Ação</em>, <em>Chi</em>, <em>Canalizar Divindade</em> e <em>Inspiração</em> em caixas interativas <span class="key-badge">[x] [x] [ ]</span>.</li>
+          <li><strong>Descanso Curto</strong>: Gaste seus Dados de Vida um a um (rolando o dado + CON) para se curar. Os recursos de descanso curto recarregam na hora!</li>
+          <li><strong>Descanso Longo</strong>: Recupera 100% dos PVs, metade dos Dados de Vida, todos os Espaços de Magia e zera as falhas contra a morte.</li>
         </ul>
       </div>
 
       <div class="highlight-box">
-        <strong>💡 Dica do Aventureiro:</strong> No topo da ficha, use o botão <em>Condições</em> para marcar se estiver <em>Caído</em>, <em>Envenenado</em> ou <em>Invisível</em>. A ficha te lembrará das regras exatas enquanto a condição durar.
+        <strong>💡 Dica do Aventureiro:</strong> A alteração de Pontos de Vida (PV) possui <strong>sincronização bidirecional</strong>: se o Mestre alterar seu PV no Tabuleiro Tático (VTT) ou no Rastreador, sua ficha atualizará instantaneamente na sua tela!
       </div>
     </div>
 
-    <!-- PÁGINA 2: O GUIA DO MESTRE -->
+    <!-- PÁGINA 2: O GUIA DO MESTRE & O MESTRE SUPREMO IA -->
     <div class="page-section">
       <div class="section-header">
-        <h2 class="section-title">👑 Parte 2: O Guia do Mestre (DM)</h2>
+        <h2 class="section-title">👑 Parte 2: O Guia do Mestre (DM) & Mestre IA</h2>
       </div>
 
       <div class="card">
-        <h3 class="card-title">1. Sistema de Campanhas na Nuvem (Firebase)</h3>
-        <p>Conecte seus jogadores sem precisar instalar nenhum programa adicional:</p>
+        <h3 class="card-title">1. Campanhas na Nuvem & Mesas P2P</h3>
+        <p>Conecte seus jogadores sem precisar de configurações complexas:</p>
         <ol>
-          <li>No menu superior, clique no botão <strong>Mesa 🧭</strong>.</li>
-          <li>Na aba <strong>Mestre da Mesa</strong>, digite o nome da campanha (ex: <em>A Mina de Phandelver</em>) e clique em Criar.</li>
-          <li>Um <strong>código exclusivo de 6 dígitos</strong> (ex: <span class="key-badge">ARC-8492</span>) será gerado. Envie esse código para os seus jogadores no WhatsApp ou Discord.</li>
-          <li>Os jogadores inserem o código na aba <em>Entrar como Jogador</em> e aparecem instantaneamente no seu painel com <strong>PV, CA e Percepção Passiva sincronizados em tempo real</strong>.</li>
+          <li>Clique no botão <strong>Mesa 🧭</strong> na barra superior.</li>
+          <li>Crie uma nova sala e compartilhe o <strong>Código de Conexão</strong> (ou link direto) no WhatsApp ou Discord do seu grupo.</li>
+          <li>Os jogadores conectam-se em segundos com <strong>PV, CA e Percepção Passiva sincronizados ao vivo</strong>.</li>
         </ol>
       </div>
 
       <div class="card">
-        <h3 class="card-title">2. Encontro Tático & Ataques com 1 Clique (Botão ⚡ Combo)</h3>
-        <p>Alterne para o modo <strong>Mestre</strong> na barra superior:</p>
+        <h3 class="card-title">2. Mestre Supremo IA (Gemini 2.5 Flash)</h3>
+        <p>O ArcanaSheet integra inteligência artificial de última geração especializada em D&D 5e:</p>
         <ul>
-          <li><strong>Importar Grupo</strong>: Clique em <em>Importar Grupo da Campanha</em> para transferir todos os heróis dos jogadores direto para a lista de iniciativa com 1 clique!</li>
-          <li><strong>Bestiário Oficial Integrado</strong>: Adicione Goblins, Dragões e Zumbis diretamente do compêndio de criaturas.</li>
-          <li><strong>Botão ⚡ Combo</strong>: No card de cada monstro, clique em <strong>Combo</strong> para disparar o ataque (d20) e o dano da criatura simultaneamente no chat.</li>
-          <li><strong>Passagem de Turnos</strong>: Ordene as iniciativas e avance os turnos mantendo o controle total da rodada.</li>
+          <li><strong>Chave Gratuita da API</strong>: Obtenha sua chave gratuita no Google AI Studio e salve no menu do Mestre IA.</li>
+          <li><strong>Prólogos & Cenários Automáticos</strong>: Inicie campanhas prontas (Cripta dos Mortos-Vivos, Templo do Culto, Covil dos Dragões) em 1 clique, com mapas táticos, iluminação e monstros já posicionados!</li>
+          <li><strong>Interação no Chat</strong>: Digite <span class="key-badge">@mestre</span>, <span class="key-badge">/mestre</span> ou <span class="key-badge">/ia</span> no chat da sessão para solicitar narrações de cenas, decisões de NPCs e ambientações sensoriais ricas.</li>
+          <li><strong>Testes Interativos</strong>: Quando a IA exige um desafio (ex: <em>[TESTE: Percepção | CD 14]</em>), um cartão interativo surge no chat com botão para o jogador rolar na hora!</li>
         </ul>
       </div>
 
-      <div class="secret-box">
-        <strong>🤫 Rolagens Secretas do Mestre (Atrás do Escudo):</strong><br>
-        Clique no ícone de <strong>Cadeado</strong> na barra de dados do rodapé para ativar o modo secreto. Ao rolar, os jogadores verão apenas: <em>"🎲 O Mestre fez uma rolagem secreta atrás do escudo..."</em> enquanto apenas você vê o resultado real.
+      <div class="ai-box">
+        <strong>🤖 Novo: Rolagem Autônoma de Monstros pela IA!</strong><br>
+        O Mestre IA agora comanda e executa os ataques e danos das criaturas em combate!
+        <ul>
+          <li>No Rastreador de Combate, quando for a vez de um monstro, clique em <span class="key-badge">🤖 Ação IA</span> ou <span class="key-badge">IA Atacar</span>.</li>
+          <li>Você também pode digitar no chat: <span class="key-badge">/ia atacar</span> ou <span class="key-badge">@mestre atacar</span>.</li>
+          <li>A IA escolhe a ação da criatura, narra o ataque, <strong>rola o d20 de acerto na tela de todos com animação 3D</strong>, e após um suspense de 1.6s <strong>rola o dado de dano</strong>, avisando quando o turno foi finalizado!</li>
+        </ul>
       </div>
 
       <div class="card">
-        <h3 class="card-title">3. Pistas e Documentos Interativos (Handouts)</h3>
-        <p>Entregue cartas, contratos e pistas de investigação direto na tela dos jogadores:</p>
+        <h3 class="card-title">3. Bestiário & Botão ⚡ Combo do Mestre</h3>
         <ul>
-          <li>Clique em <strong>Transmitir Pista / Documento</strong>.</li>
-          <li>Digite a mensagem ou selecione modelos prontos (<em>Carta do Burgomestre</em>, <em>Diário Rasgado</em>, etc.) e anexe um link de imagem de mapa.</li>
-          <li>Ao transmitir, o documento salta na tela de todos os jogadores em formato de <strong>pergaminho medieval com selo de cera</strong>. O jogador pode clicar em <em>"Guardar no Diário"</em> para salvar a pista nas anotações da ficha.</li>
+          <li><strong>Bestiário Oficial Integrado</strong>: Importe monstros lendários ou crie suas próprias criaturas.</li>
+          <li><strong>Botão ⚡ Combo</strong>: No card de qualquer monstro, clique em <strong>Combo</strong> para disparar ataque e dano simultaneamente.</li>
+          <li><strong>Rolagens Secretas</strong>: Ative o <strong>Cadeado</strong> para rolar atrás do escudo. Os jogadores verão apenas: <em>"🎲 O Mestre fez uma rolagem secreta atrás do escudo..."</em>.</li>
+          <li><strong>Handouts & Pergaminhos</strong>: Transmita cartas, mapas e pistas que saltam na tela dos jogadores como pergaminhos medievais com selo de cera.</li>
         </ul>
       </div>
     </div>
@@ -380,45 +403,82 @@
         <div class="card">
           <h3 class="card-title">Navegação e Câmera</h3>
           <ul>
-            <li><strong>Arrastar Tela (Pan)</strong>: Segure a barra de <span class="key-badge">Espaço</span> e arraste com o mouse (ou use o botão do meio).</li>
-            <li><strong>Zoom</strong>: Gire a roda do mouse para aproximar ou afastar a visão do mapa.</li>
+            <li><strong>Arrastar Tela (Pan)</strong>: Segure <span class="key-badge">Espaço</span> e arraste o mouse (ou use o botão do meio).</li>
+            <li><strong>Zoom Fluido</strong>: Gire a roda do mouse para aproximar detalhes das salas ou afastar para a visão geral.</li>
           </ul>
         </div>
 
         <div class="card">
           <h3 class="card-title">Régua Tática de Medição</h3>
           <ul>
-            <li>Selecione a ferramenta <strong>Régua</strong> na barra lateral.</li>
-            <li>Clique e arraste entre dois pontos: Uma linha pontilhada luminosa exibe a distância em <strong>Metros</strong>, <strong>Quadrados</strong> e <strong>Pés (ft)</strong>.</li>
+            <li>Ative a <strong>Régua</strong> na barra lateral do mapa.</li>
+            <li>Arraste entre dois pontos: Uma linha pontilhada luminosa exibe a distância em <strong>Metros</strong>, <strong>Quadrados</strong> e <strong>Pés (ft)</strong>.</li>
           </ul>
         </div>
       </div>
 
       <div class="card">
-        <h3 class="card-title">Tokens Dinâmicos & Tocha Noturna</h3>
+        <h3 class="card-title">Barra de Ação Rápida no Token & Tochas</h3>
         <ul>
-          <li><strong>Movimentação</strong>: Arraste personagens e monstros livremente pelas células da grade.</li>
-          <li><strong>HP Numérico</strong>: Ao passar o mouse sobre o token, visualize instantaneamente sua vida no formato <span class="key-badge">24/30 PV</span>.</li>
-          <li><strong>Badges de Condições</strong>: Ícones como 💀 (Inconsciente), 👁️ (Cego) e 🤢 (Envenenado) orbitam o token automaticamente.</li>
-          <li><strong>Acender Tocha 🔥</strong>: No menu do token, clique no ícone de fogo para iluminar um raio de 6 metros no escuro durante iluminação noturna!</li>
+          <li><strong>Mini Barra Flutuante</strong>: Ao selecionar qualquer token no mapa, uma barra de ações rápidas surge logo acima dele sem deselecionar:
+            <ul>
+              <li><span class="key-badge">-1 PV</span> e <span class="key-badge">+1 PV</span>: Ajuste instantâneo de vida durante o combate com sincronização imediata.</li>
+              <li><span class="key-badge">🔥 Tocha</span>: Acende ou apaga a tocha do aventureiro, gerando iluminação dinâmica de 6m no escuro.</li>
+              <li><span class="key-badge">🗑️ Excluir</span>: Remove o token do mapa tático com 1 clique.</li>
+            </ul>
+          </li>
+          <li><strong>HP Numérico & Badges de Condição</strong>: Visualize a vida <span class="key-badge">24/30 PV</span> e condições orbitando o token (💀 Inconsciente, 👁️ Cego, 🤢 Envenenado).</li>
         </ul>
       </div>
 
       <div class="card">
         <h3 class="card-title">Névoa de Guerra & Modelos de Magia (AoE)</h3>
         <ul>
-          <li><strong>Névoa de Guerra</strong>: O Mestre pode cobrir masmorras com escuridão e revelá-las gradativamente conforme os heróis avançam.</li>
-          <li><strong>Modelos de Magia</strong>: Arraste Cones de Chamas, Esferas de Fogo e Linhas de Raio direto sobre o grid para conferir quem foi atingido.</li>
+          <li><strong>Névoa de Guerra</strong>: Cubra masmorras com escuridão total e revele áreas conforme os heróis avançam pelas salas.</li>
+          <li><strong>Modelos de Magia de Área</strong>: Arraste Cones de Chamas, Esferas de Fogo e Linhas de Relâmpago direto sobre o grid para conferir com precisão cirúrgica quem foi atingido.</li>
         </ul>
       </div>
 
       <div class="card">
-        <h3 class="card-title">Imersão Sonora</h3>
-        <p>Abra o <strong>Reprodutor de Áudio</strong> no topo da tela para disparar trilhas sonoras orquestradas (Combate Épico, Taverna Acolhedora, Masmorra Tensa e Floresta Mística) sincronizadas durante as cenas.</p>
+        <h3 class="card-title">Trilhas Sonoras & Imersão</h3>
+        <p>Dispare trilhas sonoras orquestradas e efeitos de dados diretamente pelo menu superior: temas de <em>Combate Épico</em>, <em>Taverna Acolhedora</em>, <em>Masmorra Tensa</em> e <em>Floresta Mística</em>.</p>
+      </div>
+    </div>
+
+    <!-- PÁGINA 4: SISTEMA SOCIAL & CHAT PRIVADO (SUSSURROS) -->
+    <div class="page-section">
+      <div class="section-header">
+        <h2 class="section-title">💬 Parte 4: Comunidade, Presença & Sussurros</h2>
+      </div>
+
+      <div class="card">
+        <h3 class="card-title">1. Barra Lateral Social & Status de Presença</h3>
+        <p>No canto superior direito da tela, clique no ícone de <strong>Comunidade 👥</strong> para abrir a barra lateral social integrada:</p>
+        <ul>
+          <li><strong>Aventureiros Online</strong>: Veja quem está ativo na plataforma em tempo real com indicador luminoso verde.</li>
+          <li><strong>Lista de Amigos</strong>: Adicione companheiros de guilda enviando pedidos de amizade com 1 clique.</li>
+          <li><strong>Convites Rápidos de Mesa</strong>: Convide amigos diretamente para a sua sessão online sem precisar digitar links.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3 class="card-title">2. Chat Privado em Tempo Real (Sussurros)</h3>
+        <p>Comunique-se discretamente com outros jogadores ou com o Mestre através da aba <strong>💬 Chat</strong>:</p>
+        <ul>
+          <li><strong>Botão "Mensagem"</strong>: Clique em <em>Mensagem</em> no card de qualquer aventureiro online ou amigo para abrir a conversa privativa.</li>
+          <li><strong>Visual Dark Fantasy</strong>: Balões de conversa refinados (dourado para suas falas, ardósia para as mensagens recebidas).</li>
+          <li><strong>Notificações & Badges</strong>: Alertas em toast e contadores de mensagens não lidas garantem que você nunca perca um sussurro misterioso na mesa!</li>
+          <li><strong>Envio Rápido</strong>: Digite sua mensagem e pressione <span class="key-badge">Enter</span> para enviar instantaneamente.</li>
+        </ul>
+      </div>
+
+      <div class="secret-box">
+        <strong>🤫 Dica para Mestres e Ladinos:</strong><br>
+        Utilize o chat privado para transmitir informações que apenas um jogador específico pode saber (como uma intuição de Ladino, um aviso mental de patrono de Bruxo ou uma visão profética de Clérigo) sem que os demais heróis descubram!
       </div>
 
       <div class="footer-note">
-        ArcanaSheet • Sistema de RPG de Mesa Virtual • Hospedado com alta performance em https://arcanasheet.sociedade.online/
+        ArcanaSheet • Sistema de RPG de Mesa Virtual & Ficha Digital D&D 5e • https://arcanasheet.sociedade.online/
       </div>
     </div>
 

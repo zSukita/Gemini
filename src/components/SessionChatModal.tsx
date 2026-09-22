@@ -44,6 +44,14 @@ interface SessionChatModalProps {
       dc?: number;
       reason: string;
     };
+    monsterAttack?: {
+      monsterName: string;
+      attackName: string;
+      attackBonus: number;
+      damageFormula: string;
+      target?: string;
+      description?: string;
+    };
     aiHandledBySender?: boolean;
   }) => void;
 }
@@ -324,6 +332,29 @@ export const SessionChatModal: React.FC<SessionChatModalProps> = ({
                   <div className="font-serif text-amber-100 leading-relaxed text-xs whitespace-pre-wrap">
                     {msg.text}
                   </div>
+
+                  {/* Ataque do Monstro Executado pela IA */}
+                  {msg.monsterAttack && (
+                    <div className="mt-2.5 p-2 bg-red-950/80 rounded-lg border border-red-500/50 flex items-center justify-between gap-2 shadow-sm">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full bg-red-900/80 border border-red-500/60 flex items-center justify-center text-red-200 text-xs shrink-0">
+                          ⚔️
+                        </div>
+                        <div>
+                          <span className="text-[11px] font-bold text-red-200 block font-serif">
+                            {msg.monsterAttack.monsterName}: {msg.monsterAttack.attackName}
+                            {msg.monsterAttack.target ? ` (Alvo: ${msg.monsterAttack.target})` : ''}
+                          </span>
+                          <span className="text-[10px] text-red-300/80 font-mono block">
+                            Ataque: +{msg.monsterAttack.attackBonus} | Dano: {msg.monsterAttack.damageFormula}
+                          </span>
+                        </div>
+                      </div>
+                      <span className="text-[9px] font-mono font-bold bg-red-900/60 text-red-200 px-2 py-0.5 rounded border border-red-700/50 shrink-0">
+                        ⚡ Rolagem IA
+                      </span>
+                    </div>
+                  )}
 
                   {/* Solicitação de Rolagem */}
                   {msg.requestedRoll && (

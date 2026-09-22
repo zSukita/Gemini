@@ -41,6 +41,9 @@ import { CampaignModal } from './components/CampaignModal';
 import { HandoutModal } from './components/dm/HandoutModal';
 import { HandoutViewerModal } from './components/HandoutViewerModal';
 import { AiDungeonMasterModal } from './components/ai/AiDungeonMasterModal';
+import { getStoredApiKey, sendToAiDungeonMaster } from './services/geminiService';
+import type { AiMessage } from './types/aiDm';
+import type { ChatMessageType } from './types/chat';
 import {
   type CampaignHandout,
   type CampaignPartyMember,
@@ -280,6 +283,9 @@ export function App() {
     revealAllFog,
   } = useBattleMap(encounter);
 
+  const [isAiResponding, setIsAiResponding] = useState(false);
+  const triggerAiDmRef = useRef<((promptText: string) => Promise<void>) | undefined>(undefined);
+
   // Hook Multiplayer P2P WebRTC
   const {
     isConnected,
@@ -306,7 +312,143 @@ export function App() {
     onRemoteFogUpdate: (shapes) => {
       setMapConfig((prev) => ({ ...prev, revealedShapes: shapes }));
     },
+    onRemoteChatMessage: (remoteMsg, rawPayload) => {
+      // Se for o Host da sala e o remetente não tiver processado a IA localmente
+      if (isHost && remoteMsg.type === 'PUBLIC' && rawPayload?.aiHandledBySender !== true) {
+        const trimmed = remoteMsg.text.trim();
+        const isAiCommand =
+          trimmed.startsWith('@mestre') ||
+          trimmed.startsWith('/mestre') ||
+          trimmed.startsWith('/ia') ||
+          trimmed.startsWith('@ia') ||
+          trimmed.startsWith('@dm');
+        if (isAiCommand) {
+          const cleanPrompt =
+            trimmed.replace(/^(@mestre|\/mestre|\/ia|@ia|@dm)\s*/i, '').trim() ||
+            'Os aventureiros olham ao redor aguardando suas palavras. O que acontece agora? Descreva o ambiente e sugira opções de ação.';
+          triggerAiDmRef.current?.(cleanPrompt);
+        }
+      }
+    },
   });
+
+  const triggerAiDm = useCallback(
+    async (promptText: string) => {
+      const apiKey = getStoredApiKey();
+      if (!apiKey) {
+        sendChatMessage({
+          text: '⚠️ Chave de API do Google Gemini não configurada! Por favor, abra o menu do Mestre IA e adicione sua chave.',
+          senderName: '✨ Mestre Supremo (IA)',
+          type: 'AI_DM',
+        });
+        return;
+      }
+
+      setIsAiResponding(true);
+      try {
+        const recentTurns: AiMessage[] = chatLog.slice(-8).map((msg) => ({
+          id: msg.id,
+          role: msg.type === 'AI_DM' ? 'narrator' : 'player',
+          content: `${msg.senderName}: ${msg.text}`,
+          timestamp: msg.timestamp,
+        }));
+
+        const aiReply = await sendToAiDungeonMaster(
+          promptText,
+          recentTurns,
+          character,
+          {
+            customInstructions:
+              'Você é o Mestre Supremo em uma mesa multiplayer online ao vivo de D&D 5e. Narre em português do Brasil com grande riqueza sensorial e desafie o grupo.',
+          }
+        );
+
+        sendChatMessage({
+          id: aiReply.id,
+          text: aiReply.content,
+          senderName: '✨ Mestre Supremo (IA)',
+          type: 'AI_DM',
+          suggestedActions: aiReply.suggestedActions,
+          requestedRoll: aiReply.requestedRoll,
+        });
+      } catch (err: unknown) {
+        const errText = err instanceof Error ? err.message : String(err);
+        sendChatMessage({
+          text: `🔮 O Mestre hesitou em meio ao véu arcano: ${errText}`,
+          senderName: '✨ Mestre Supremo (IA)',
+          type: 'AI_DM',
+        });
+      } finally {
+        setIsAiResponding(false);
+      }
+    },
+    [chatLog, character, sendChatMessage]
+  );
+
+  triggerAiDmRef.current = triggerAiDm;
+
+  const handleUserChatMessage = useCallback(
+    (
+      textOrPayload:
+        | string
+        | {
+            id?: string;
+            text: string;
+            senderName?: string;
+            type?: ChatMessageType;
+            recipientName?: string;
+            diceRoll?: DiceRollResult;
+            suggestedActions?: string[];
+            requestedRoll?: { skillOrAbility: string; dc?: number; reason: string };
+            aiHandledBySender?: boolean;
+          },
+      senderFallback?: string
+    ) => {
+      const isObj = typeof textOrPayload === 'object' && textOrPayload !== null;
+      const text = isObj ? textOrPayload.text : textOrPayload;
+      const senderName = isObj && textOrPayload.senderName ? textOrPayload.senderName : (senderFallback || character.name || 'Aventureiro');
+      const trimmed = text.trim();
+      if (!trimmed) return;
+
+      const isAiCommand =
+        trimmed.startsWith('@mestre') ||
+        trimmed.startsWith('/mestre') ||
+        trimmed.startsWith('/ia') ||
+        trimmed.startsWith('@ia') ||
+        trimmed.startsWith('@dm');
+
+      const apiKey = getStoredApiKey();
+      const willHandleAi = isAiCommand && Boolean(apiKey);
+
+      if (isObj) {
+        sendChatMessage(
+          {
+            ...textOrPayload,
+            aiHandledBySender: textOrPayload.aiHandledBySender ?? willHandleAi,
+          },
+          senderName
+        );
+      } else {
+        sendChatMessage(
+          {
+            text: trimmed,
+            senderName,
+            type: 'PUBLIC',
+            aiHandledBySender: willHandleAi,
+          },
+          senderName
+        );
+      }
+
+      if (isAiCommand) {
+        const cleanPrompt =
+          trimmed.replace(/^(@mestre|\/mestre|\/ia|@ia|@dm)\s*/i, '').trim() ||
+          'Os aventureiros olham ao redor aguardando suas palavras. O que acontece agora? Descreva o ambiente e sugira opções de ação.';
+        triggerAiDm(cleanPrompt);
+      }
+    },
+    [sendChatMessage, character.name, triggerAiDm]
+  );
 
   // Mover Token local e transmitir para a rede P2P
   const handleMoveToken = useCallback(
@@ -1059,18 +1201,14 @@ export function App() {
         isHost={isHost}
         roomCode={roomCode}
         connectedPeers={connectedPeers}
-        chatLog={chatLog.map((c) => ({
-          id: c.id,
-          sender: c.senderName,
-          text: c.text,
-          type: c.type,
-          time: new Date(c.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-        }))}
+        chatLog={chatLog}
         currentUserName={character.name}
+        character={character}
+        isAiResponding={isAiResponding}
         onCreateRoom={createRoom}
         onJoinRoom={joinRoom}
         onDisconnect={disconnect}
-        onSendMessage={sendChatMessage}
+        onSendMessage={handleUserChatMessage}
       />
 
       {/* Animação 3D de Rolagem de Dados Poliédricos */}

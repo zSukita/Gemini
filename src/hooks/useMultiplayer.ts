@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { p2pManager } from '../utils/peerService';
 import type { P2PMessage, PeerUser, MapToken, FogShape, BattleMapConfig } from '../types/vtt';
 import type { DiceRollResult } from '../types/dnd5e';
@@ -9,6 +9,7 @@ export function useMultiplayer(options?: {
   onRemoteTokenMove?: (tokens: MapToken[]) => void;
   onRemoteFogUpdate?: (shapes: FogShape[]) => void;
   onRemoteMapConfig?: (config: Partial<BattleMapConfig>) => void;
+  onRemoteChatMessage?: (msg: ChatMessage, rawPayload?: any) => void;
 }) {
   const [isConnected, setIsConnected] = useState(p2pManager.isConnected());
   const [isHost, setIsHost] = useState(p2pManager.getIsHost());
@@ -16,6 +17,9 @@ export function useMultiplayer(options?: {
   const [connectedPeers, setConnectedPeers] = useState<PeerUser[]>(p2pManager.getConnectedPeers());
   const [isConnecting, setIsConnecting] = useState(false);
   const [chatLog, setChatLog] = useState<ChatMessage[]>([]);
+
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
 
   useEffect(() => {
     const unsubPeers = p2pManager.onPeerListChange((peers) => {
@@ -26,17 +30,17 @@ export function useMultiplayer(options?: {
     });
 
     const unsubMessages = p2pManager.onMessage((msg: P2PMessage) => {
-      if (msg.type === 'DICE_ROLL' && options?.onRemoteDiceRoll) {
-        options.onRemoteDiceRoll(msg.payload as DiceRollResult);
+      if (msg.type === 'DICE_ROLL' && optionsRef.current?.onRemoteDiceRoll) {
+        optionsRef.current.onRemoteDiceRoll(msg.payload as DiceRollResult);
       }
-      if (msg.type === 'TOKEN_MOVE' && options?.onRemoteTokenMove) {
-        options.onRemoteTokenMove(msg.payload as MapToken[]);
+      if (msg.type === 'TOKEN_MOVE' && optionsRef.current?.onRemoteTokenMove) {
+        optionsRef.current.onRemoteTokenMove(msg.payload as MapToken[]);
       }
-      if (msg.type === 'FOG_UPDATE' && options?.onRemoteFogUpdate) {
-        options.onRemoteFogUpdate(msg.payload as FogShape[]);
+      if (msg.type === 'FOG_UPDATE' && optionsRef.current?.onRemoteFogUpdate) {
+        optionsRef.current.onRemoteFogUpdate(msg.payload as FogShape[]);
       }
-      if (msg.type === 'MAP_CONFIG' && options?.onRemoteMapConfig) {
-        options.onRemoteMapConfig(msg.payload as Partial<BattleMapConfig>);
+      if (msg.type === 'MAP_CONFIG' && optionsRef.current?.onRemoteMapConfig) {
+        optionsRef.current.onRemoteMapConfig(msg.payload as Partial<BattleMapConfig>);
       }
       if (msg.type === 'CHAT_MESSAGE') {
         const payload = msg.payload as any;
@@ -56,8 +60,18 @@ export function useMultiplayer(options?: {
         };
         setChatLog((prev) => {
           if (prev.some((m) => m.id === chatMsg.id)) return prev;
+          const isDuplicateRecent = prev.some(
+            (m) =>
+              m.senderName === chatMsg.senderName &&
+              m.text.trim() === chatMsg.text.trim() &&
+              Math.abs(m.timestamp - chatMsg.timestamp) < 4000
+          );
+          if (isDuplicateRecent) return prev;
           return [...prev, chatMsg];
         });
+        if (optionsRef.current?.onRemoteChatMessage) {
+          optionsRef.current.onRemoteChatMessage(chatMsg, payload);
+        }
       }
     });
 
@@ -65,7 +79,7 @@ export function useMultiplayer(options?: {
       unsubPeers();
       unsubMessages();
     };
-  }, [options]);
+  }, []);
 
   const createRoom = useCallback(async (userName: string, customCode?: string) => {
     setIsConnecting(true);
@@ -162,6 +176,7 @@ export function useMultiplayer(options?: {
               dc?: number;
               reason: string;
             };
+            aiHandledBySender?: boolean;
           },
       playerNameFallback?: string
     ) => {
@@ -173,6 +188,7 @@ export function useMultiplayer(options?: {
       const diceRoll = isObj ? textOrPayload.diceRoll : undefined;
       const suggestedActions = isObj ? textOrPayload.suggestedActions : undefined;
       const requestedRoll = isObj ? textOrPayload.requestedRoll : undefined;
+      const aiHandledBySender = isObj ? textOrPayload.aiHandledBySender : undefined;
       const msgId = isObj && textOrPayload.id ? textOrPayload.id : `chat-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
       const timestamp = Date.now();
 
@@ -184,6 +200,7 @@ export function useMultiplayer(options?: {
         diceRoll,
         suggestedActions,
         requestedRoll,
+        aiHandledBySender,
       };
 
       if (p2pManager.isConnected()) {
@@ -209,7 +226,17 @@ export function useMultiplayer(options?: {
         requestedRoll,
         timestamp,
       };
-      setChatLog((prev) => (prev.some((m) => m.id === localMsg.id) ? prev : [...prev, localMsg]));
+      setChatLog((prev) => {
+        if (prev.some((m) => m.id === localMsg.id)) return prev;
+        const isDuplicateRecent = prev.some(
+          (m) =>
+            m.senderName === localMsg.senderName &&
+            m.text.trim() === localMsg.text.trim() &&
+            Math.abs(m.timestamp - localMsg.timestamp) < 4000
+        );
+        if (isDuplicateRecent) return prev;
+        return [...prev, localMsg];
+      });
     },
     []
   );

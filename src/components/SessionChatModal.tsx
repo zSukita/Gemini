@@ -32,6 +32,7 @@ interface SessionChatModalProps {
   isHost: boolean;
   character?: Character | null;
   onSendMessage: (msg: {
+    id?: string;
     text: string;
     senderName: string;
     type: ChatMessageType;
@@ -43,6 +44,7 @@ interface SessionChatModalProps {
       dc?: number;
       reason: string;
     };
+    aiHandledBySender?: boolean;
   }) => void;
 }
 
@@ -100,6 +102,7 @@ export const SessionChatModal: React.FC<SessionChatModalProps> = ({
       );
 
       onSendMessage({
+        id: aiReply.id,
         text: aiReply.content,
         senderName: '✨ Mestre Supremo (IA)',
         type: 'AI_DM',
@@ -138,6 +141,7 @@ export const SessionChatModal: React.FC<SessionChatModalProps> = ({
         text: raw,
         senderName: currentUserName,
         type: 'PUBLIC',
+        aiHandledBySender: true,
       });
       setInputText('');
 

@@ -53,6 +53,7 @@ interface AiDungeonMasterModalProps {
   onTransmitHandout?: (handout: Omit<CampaignHandout, 'id' | 'createdAt'>) => void;
   onSaveNpcToJournal?: (npc: CampaignNpc) => void;
   onBroadcastToRoom?: (message: {
+    id?: string;
     text: string;
     senderName?: string;
     type?: ChatMessageType;
@@ -72,7 +73,7 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
   onBroadcastToRoom,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('adventure');
-  const [autoBroadcastToRoom, setAutoBroadcastToRoom] = useState(true);
+  const [autoBroadcastToRoom, setAutoBroadcastToRoom] = useState(false);
   
   // Configurações
   const [apiKey, setApiKey] = useState('');
@@ -180,6 +181,7 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
 
     if (onBroadcastToRoom && autoBroadcastToRoom) {
       onBroadcastToRoom({
+        id: introMessage.id,
         text: introMessage.content,
         senderName: '✨ Mestre Supremo (IA)',
         type: 'AI_DM',
@@ -210,6 +212,7 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
 
     if (onBroadcastToRoom && autoBroadcastToRoom) {
       onBroadcastToRoom({
+        id: introMessage.id,
         text: introMessage.content,
         senderName: '✨ Mestre Supremo (IA)',
         type: 'AI_DM',
@@ -259,6 +262,7 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
 
       if (onBroadcastToRoom && autoBroadcastToRoom) {
         onBroadcastToRoom({
+          id: response.id,
           text: response.content,
           senderName: '✨ Mestre Supremo (IA)',
           type: 'AI_DM',
@@ -610,6 +614,7 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
                                     type="button"
                                     onClick={() => {
                                       onBroadcastToRoom({
+                                        id: msg.id,
                                         text: msg.content,
                                         senderName: '✨ Mestre Supremo (IA)',
                                         type: 'AI_DM',

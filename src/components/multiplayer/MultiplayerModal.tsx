@@ -1,5 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { PeerUser } from '../../types/vtt';
+import type { ChatMessage } from '../../types/chat';
+import { 
+  type Character, 
+  type AbilityKey, 
+  type SkillKey, 
+  SKILLS, 
+  ABILITIES 
+} from '../../types/dnd5e';
+import { rollFormula } from '../../utils/diceRoller';
 import { 
   Wifi, 
   WifiOff, 
@@ -11,7 +20,11 @@ import {
   Send, 
   Crown, 
   User, 
-  LogIn 
+  LogIn,
+  Sparkles,
+  Dices,
+  ArrowRight,
+  Loader2
 } from 'lucide-react';
 
 interface MultiplayerModalProps {
@@ -22,8 +35,10 @@ interface MultiplayerModalProps {
   isHost: boolean;
   roomCode: string;
   connectedPeers: PeerUser[];
-  chatLog: { id: string; sender: string; text: string; time: string; type?: string }[];
+  chatLog: ChatMessage[];
   currentUserName: string;
+  character?: Character | null;
+  isAiResponding?: boolean;
   onCreateRoom: (name: string, customCode?: string) => Promise<string>;
   onJoinRoom: (code: string, name: string) => Promise<boolean>;
   onDisconnect: () => void;
@@ -40,6 +55,8 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
   connectedPeers,
   chatLog,
   currentUserName,
+  character,
+  isAiResponding,
   onCreateRoom,
   onJoinRoom,
   onDisconnect,
@@ -50,6 +67,7 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
   const [chatInput, setChatInput] = useState('');
   const [copied, setCopied] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Sincroniza o nome do usuário/personagem se mudar ou se estiver no padrão
   useEffect(() => {
@@ -57,6 +75,52 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
       setNameInput(currentUserName);
     }
   }, [currentUserName]);
+
+  // Scroll automático do chat
+  useEffect(() => {
+    if (isOpen) {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatLog, isAiResponding, isOpen]);
+
+  const handleRollRequested = (req: { skillOrAbility: string; dc?: number; reason: string }) => {
+    let mod = 0;
+    if (character) {
+      const target = req.skillOrAbility.toLowerCase();
+      const profBonus = Math.floor(((character.level || 1) - 1) / 4) + 2;
+
+      const skillEntry = Object.entries(SKILLS).find(
+        ([k, def]) => target.includes(k) || target.includes(def.name.toLowerCase())
+      ) as [SkillKey, { ability: AbilityKey; name: string }] | undefined;
+
+      if (skillEntry) {
+        const [skillKey, def] = skillEntry;
+        const abilityScore = character.abilities[def.ability]?.score ?? 10;
+        const abilityMod = Math.floor((abilityScore - 10) / 2);
+        const skillProf = character.skills?.[skillKey]?.proficiency ?? 'none';
+        mod = abilityMod + (skillProf === 'expertise' ? profBonus * 2 : skillProf === 'proficient' ? profBonus : 0);
+      } else {
+        const abilityEntry = Object.entries(ABILITIES).find(
+          ([k, def]) =>
+            target.includes(k) ||
+            target.includes(def.name.toLowerCase()) ||
+            target.includes(def.abbr.toLowerCase())
+        );
+        if (abilityEntry) {
+          const abilityKey = abilityEntry[0] as AbilityKey;
+          const abilityScore = character.abilities[abilityKey]?.score ?? 10;
+          mod = Math.floor((abilityScore - 10) / 2);
+        }
+      }
+    }
+
+    const formula = mod === 0 ? '1d20' : mod > 0 ? `1d20+${mod}` : `1d20${mod}`;
+    const rollRes = rollFormula(formula, `Teste de ${req.skillOrAbility}`);
+    onSendMessage(
+      `@mestre Realizei o teste de ${req.skillOrAbility}: ${rollRes.breakdown} = ${rollRes.total}. Como o destino responde?`,
+      nameInput
+    );
+  };
 
   if (!isOpen) return null;
 
@@ -266,30 +330,90 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
                   <span className="text-[10px] text-amber-400 font-sans font-normal">Use @mestre para invocar a IA</span>
                 </div>
 
-                <div className="h-36 overflow-y-auto bg-slate-950/80 rounded-lg p-2 flex flex-col gap-1 text-xs font-mono">
+                <div className="h-44 overflow-y-auto bg-slate-950/80 rounded-lg p-2.5 flex flex-col gap-2 text-xs font-mono">
                   {chatLog.length === 0 ? (
-                    <span className="text-slate-600 text-[11px] italic my-auto text-center">
+                    <span className="text-slate-600 text-[11px] italic my-auto text-center font-sans">
                       Nenhuma mensagem enviada ainda. Digite @mestre para falar com o Mestre IA.
                     </span>
                   ) : (
                     chatLog.map((c) => {
-                      const isAi = c.sender.includes('IA') || c.type === 'AI_DM';
+                      const isAi = c.type === 'AI_DM' || c.senderName.includes('IA');
+                      const timeStr = new Date(c.timestamp).toLocaleTimeString('pt-BR', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      });
                       return (
                         <div
                           key={c.id}
-                          className={`text-[11px] leading-tight p-1.5 rounded ${
+                          className={`text-[11px] leading-tight p-2 rounded-lg transition ${
                             isAi
                               ? 'bg-amber-950/40 text-amber-200 border border-amber-500/40 font-serif'
-                              : 'text-slate-300'
+                              : 'bg-slate-950/60 text-slate-300 border border-slate-800'
                           }`}
                         >
-                          <span className="text-slate-500 text-[10px] font-mono">[{c.time}] </span>
-                          <strong className={isAi ? 'text-amber-400 font-bold' : 'text-amber-300'}>{c.sender}: </strong>
-                          <span className={isAi ? 'text-amber-100' : ''}>{c.text}</span>
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-1.5">
+                              {isAi && <Sparkles size={11} className="text-amber-400" />}
+                              <strong className={isAi ? 'text-amber-400 font-bold' : 'text-amber-300'}>
+                                {c.senderName}:
+                              </strong>
+                            </div>
+                            <span className="text-slate-500 text-[9px] font-mono">[{timeStr}]</span>
+                          </div>
+
+                          <div className={isAi ? 'text-amber-100 whitespace-pre-wrap leading-relaxed' : 'text-slate-200'}>
+                            {c.text}
+                          </div>
+
+                          {/* Teste de Dado Solicitado pelo Mestre IA */}
+                          {c.requestedRoll && (
+                            <div className="mt-2 p-1.5 bg-slate-950/90 rounded border border-amber-500/40 flex items-center justify-between gap-2 font-sans">
+                              <span className="text-[10px] text-amber-300 font-bold">
+                                🎲 Teste: {c.requestedRoll.skillOrAbility} {c.requestedRoll.dc ? `(CD ${c.requestedRoll.dc})` : ''}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleRollRequested(c.requestedRoll!)}
+                                className="text-[10px] px-2 py-0.5 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold flex items-center gap-1 shrink-0"
+                              >
+                                <Dices size={10} /> Rolar
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Ações Sugeridas */}
+                          {c.suggestedActions && c.suggestedActions.length > 0 && (
+                            <div className="mt-2 flex flex-col gap-1 font-sans">
+                              <span className="text-[9px] text-amber-400/80 font-bold uppercase">Escolha sua ação:</span>
+                              <div className="flex flex-col gap-1">
+                                {c.suggestedActions.map((act, i) => (
+                                  <button
+                                    key={i}
+                                    type="button"
+                                    onClick={() => onSendMessage(`@mestre Escolho: ${act}`, nameInput)}
+                                    className="text-left text-[10px] px-2 py-1 rounded bg-slate-900/90 hover:bg-amber-900/60 text-amber-200 border border-amber-500/30 transition flex items-center gap-1.5"
+                                  >
+                                    <ArrowRight size={10} className="text-amber-400 shrink-0" />
+                                    <span>{act}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })
                   )}
+
+                  {/* Indicador de Carregamento da IA */}
+                  {isAiResponding && (
+                    <div className="p-2 rounded-lg bg-amber-950/50 border border-amber-500/40 text-amber-200 text-xs flex items-center gap-2 animate-pulse font-serif">
+                      <Loader2 size={13} className="animate-spin text-amber-400 shrink-0" />
+                      <span>O Mestre Supremo (IA) está consultando os pergaminhos...</span>
+                    </div>
+                  )}
+
+                  <div ref={chatEndRef} />
                 </div>
 
                 {/* Input de Mensagem */}

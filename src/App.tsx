@@ -19,7 +19,9 @@ import { Spellbook } from './components/Spellbook';
 import { Inventory } from './components/Inventory';
 import { FeaturesAndTraits } from './components/FeaturesAndTraits';
 import { DmScreen } from './components/dm/DmScreen';
-import { BattleMap } from './components/vtt/BattleMap';
+import { TabletopSessionView } from './components/vtt/TabletopSessionView';
+import { BestiaryModal } from './components/dm/BestiaryModal';
+import { SpellCompendiumModal } from './components/SpellCompendiumModal';
 import { DiceRollerBar } from './components/DiceRollerBar';
 import { RollHistoryModal } from './components/RollHistoryModal';
 import { CharacterManagerModal } from './components/CharacterManagerModal';
@@ -172,6 +174,8 @@ export function App() {
   const [isLevelUpOpen, setIsLevelUpOpen] = useState(false);
   const [isMusicPlayerOpen, setIsMusicPlayerOpen] = useState(false);
   const [isAiDmOpen, setIsAiDmOpen] = useState(false);
+  const [isBestiaryOpen, setIsBestiaryOpen] = useState(false);
+  const [isSpellCompendiumOpen, setIsSpellCompendiumOpen] = useState(false);
   const [currentTheme, setCurrentTheme] = useState<ThemeId>(() => {
     try {
       return (localStorage.getItem('arcanasheet_theme') as ThemeId) || 'default';
@@ -1084,17 +1088,25 @@ export function App() {
         </div>
       )}
 
-      {/* MODO 3: TABULEIRO TÁTICO & MAPA DE BATALHA (VTT) */}
+      {/* MODO 3: MESA VIRTUAL ONLINE COMPLETA (MODELO FANTASY GROUNDS) */}
       {currentMode === 'vtt' && (
         <div className="flex flex-col flex-1 animate-in fade-in">
-          <BattleMap
+          <TabletopSessionView
+            character={character}
+            charactersList={charactersList}
+            encounter={encounter}
             mapConfig={mapConfig}
             tokens={tokens}
             selectedTokenId={selectedTokenId}
             zoom={zoom}
             pan={pan}
             activeTool={activeTool}
-            encounter={encounter}
+            chatLog={chatLog}
+            currentUserName={character.name}
+            isHost={isHost}
+            isConnected={isConnected}
+            connectedPeers={connectedPeers}
+            isAiResponding={isAiResponding}
             onSelectToken={setSelectedTokenId}
             onMoveToken={handleMoveToken}
             onSetZoom={setZoom}
@@ -1110,12 +1122,38 @@ export function App() {
             onRemoveToken={removeToken}
             onAddToken={addToken}
             onApplyCharacterAvatar={(dataUrl) => updateCharacter({ avatarUrl: dataUrl } as any)}
+            onSendMessage={handleUserChatMessage}
+            onRollDie={handleRollDie}
+            onRollFormula={(formula, label) => handleRollFormula(formula, label)}
+            onRollD20={handleRollD20}
+            onStartEncounter={startEncounter}
+            onNextTurn={nextTurn}
+            onPreviousTurn={previousTurn}
+            onSortInitiative={sortCombatantsByInitiative}
+            onResetEncounter={resetEncounter}
+            onHpDelta={applyCombatantHpDelta}
+            onToggleCondition={toggleCombatantCondition}
+            onUpdateInitiative={updateCombatantInitiative}
+            onRemoveCombatant={removeCombatant}
+            onRollMonsterAttack={(monName, actName, bonus) =>
+              handleRollD20(`${monName}: ${actName}`, bonus)
+            }
+            onRollMonsterDamage={(monName, actName, formula) =>
+              handleRollFormula(formula, `${monName}: ${actName}`)
+            }
+            onOpenMultiplayerModal={() => setIsMultiplayerOpen(true)}
+            onOpenAiDmModal={() => setIsAiDmOpen(true)}
+            onOpenCompendium={() => setIsSpellCompendiumOpen(true)}
+            onOpenBestiary={() => setIsBestiaryOpen(true)}
+            onOpenCharacterSheet={() => setCurrentMode('player')}
+            onOpenMusicPlayer={() => setIsMusicPlayerOpen(true)}
           />
         </div>
       )}
 
-      {/* Barra de Rolagem de Dados Fixa no Rodapé */}
-      <DiceRollerBar
+      {/* Barra de Rolagem de Dados Fixa no Rodapé (oculta no VTT pois possui sua própria doca) */}
+      {currentMode !== 'vtt' && (
+        <DiceRollerBar
         advantageMode={advantageMode}
         setAdvantageMode={setAdvantageMode}
         lastRoll={lastRoll}
@@ -1135,6 +1173,7 @@ export function App() {
           });
         }}
       />
+      )}
 
       {/* Modal de Histórico de Rolagens */}
       <RollHistoryModal
@@ -1324,6 +1363,38 @@ export function App() {
           sendChatMessage(msg, '✨ Mestre Supremo (IA)');
           showNotification('Narração do Mestre IA transmitida para a mesa online!');
         }}
+      />
+
+      {/* Modal do Bestiário de Monstros */}
+      <BestiaryModal
+        isOpen={isBestiaryOpen}
+        onClose={() => setIsBestiaryOpen(false)}
+        onAddMonster={addMonsterCombatant}
+        onRollMonsterAttack={(monName, actName, bonus) =>
+          handleRollD20(`${monName}: ${actName}`, bonus)
+        }
+        onRollMonsterDamage={(monName, actName, formula) =>
+          handleRollFormula(formula, `${monName}: ${actName}`)
+        }
+        onAddTokenToMap={handleAddTokenFromMonster}
+      />
+
+      {/* Modal do Compêndio de Magias SRD */}
+      <SpellCompendiumModal
+        isOpen={isSpellCompendiumOpen}
+        onClose={() => setIsSpellCompendiumOpen(false)}
+        onAddSpell={(spell) => {
+          updateCharacter((prev) => ({
+            ...prev,
+            spellcasting: {
+              ...prev.spellcasting,
+              spells: [...(prev.spellcasting?.spells || []), { ...spell, id: `spell-${Date.now()}` }],
+            },
+          }));
+          showNotification(`Magia "${spell.name}" adicionada ao Grimório!`);
+        }}
+        characterSpells={character.spellcasting?.spells || []}
+        characterClass={character.characterClass}
       />
     </div>
   );

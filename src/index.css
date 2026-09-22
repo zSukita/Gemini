@@ -264,3 +264,73 @@ body.theme-arcane .rpg-input,
   color: #e0e7ff !important;
 }
 
+/* =========================================================
+   ESTILOS DA MESA VIRTUAL ONLINE (MODELO FANTASY GROUNDS)
+   ========================================================= */
+
+/* Tampo de Mesa de Madeira Rústica / Dark Walnut Desk */
+.tabletop-wood-bg {
+  background-color: #160d08;
+  background-image: 
+    radial-gradient(ellipse at center, rgba(46, 26, 17, 0.85) 0%, rgba(12, 6, 3, 0.98) 100%),
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.2) 0px, rgba(0, 0, 0, 0.2) 2px, transparent 2px, transparent 90px),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.015) 0px, rgba(255, 255, 255, 0.015) 1px, transparent 1px, transparent 3px);
+  box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.9);
+}
+
+/* Janela de Pergaminho Envelhecido com Borda Dupla */
+.tabletop-parchment {
+  background: #f5eedb;
+  background-image: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.4) 0%, rgba(200, 175, 140, 0.25) 100%);
+  color: #26190b;
+  border: 3px solid #6b4c2b;
+  box-shadow: 
+    inset 0 0 35px rgba(140, 100, 55, 0.25),
+    0 10px 30px rgba(0, 0, 0, 0.7);
+  position: relative;
+}
+
+.tabletop-parchment::before {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border: 1px solid #9e7a4f;
+  pointer-events: none;
+  border-radius: 4px;
+}
+
+/* Cabeçalho de Pergaminho Ornamental */
+.tabletop-parchment-header {
+  background: linear-gradient(180deg, #dfd0b5 0%, #cbb796 100%);
+  border-bottom: 2px solid #7c5c36;
+  color: #3b240e;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+/* Badge de Rolagem de Dados Inline (Estilo Fantasy Grounds) */
+.dice-hex-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #1a1612;
+  color: #fce7cf;
+  border: 1.5px solid #d4af37;
+  padding: 1px 7px;
+  border-radius: 9999px;
+  font-family: ui-monospace, monospace;
+  font-weight: 800;
+  font-size: 11px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+  line-height: 1.2;
+}
+
+.dice-hex-badge .dice-val {
+  color: #ffd700;
+  font-size: 12px;
+}
+
+.dice-hex-badge .dice-mod {
+  color: #e2d2ba;
+}
+
+

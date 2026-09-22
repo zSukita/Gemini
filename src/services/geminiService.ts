@@ -13,7 +13,7 @@ const API_KEY_STORAGE_KEY = 'arcanasheet_gemini_api_key';
 const CONFIG_STORAGE_KEY = 'arcanasheet_ai_dm_config';
 const CHAT_HISTORY_STORAGE_KEY = 'arcanasheet_ai_dm_history';
 
-export const DEFAULT_MODEL = 'gemini-2.5-flash';
+export const DEFAULT_MODEL = 'gemini-3.6-flash';
 
 export const DEFAULT_AI_CONFIG: AiDmConfig = {
   apiKey: '',
@@ -44,9 +44,18 @@ export function getStoredAiConfig(): AiDmConfig {
       const raw = localStorage.getItem(CONFIG_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
+        // Migra automaticamente modelos descontinuados pelo Google (ex: 2.5, 2.0, 1.5)
+        const isDeprecated =
+          !parsed.model ||
+          parsed.model.includes('2.5') ||
+          parsed.model.includes('2.0') ||
+          parsed.model.includes('1.5');
+        const model = isDeprecated ? DEFAULT_MODEL : parsed.model;
+
         return {
           ...DEFAULT_AI_CONFIG,
           ...parsed,
+          model,
           apiKey: getStoredApiKey(),
         };
       }
@@ -382,18 +391,37 @@ export async function testGeminiApiKey(apiKey: string, model: string = DEFAULT_M
     return { success: false, message: 'A chave da API está vazia.' };
   }
 
+  const effectiveModel =
+    !model || model.includes('2.5') || model.includes('2.0') || model.includes('1.5')
+      ? DEFAULT_MODEL
+      : model;
+
   try {
     const client = new GoogleGenAI({ apiKey: apiKey.trim() });
     const res = await client.models.generateContent({
-      model: model || DEFAULT_MODEL,
+      model: effectiveModel,
       contents: 'Diga apenas: "ArcanaSheet conectado!".',
     });
 
     if (res.text) {
-      return { success: true, message: `Conexão estabelecida com sucesso! (${model})` };
+      return { success: true, message: `Conexão estabelecida com sucesso! (${effectiveModel})` };
     }
     return { success: false, message: 'Nenhuma resposta recebida do modelo.' };
   } catch (err: unknown) {
+    if (effectiveModel !== DEFAULT_MODEL) {
+      try {
+        const client = new GoogleGenAI({ apiKey: apiKey.trim() });
+        const res = await client.models.generateContent({
+          model: DEFAULT_MODEL,
+          contents: 'Diga apenas: "ArcanaSheet conectado!".',
+        });
+        if (res.text) {
+          return { success: true, message: `Conexão estabelecida com sucesso! (${DEFAULT_MODEL})` };
+        }
+      } catch {
+        // fallback
+      }
+    }
     const msg = err instanceof Error ? err.message : String(err);
     return { success: false, message: `Erro ao testar chave: ${msg}` };
   }

@@ -159,5 +159,18 @@ A porta à sua frente permanece entreaberta, pingando água barrenta.
       expect(loaded.customInstructions).toBe('Seja implacável nos combates.');
       expect(loaded.model).toBe(DEFAULT_MODEL);
     });
+
+    it('deve migrar modelos depreciados como gemini-2.5-flash automaticamente para gemini-3.6-flash', () => {
+      localStorageMock.setItem(
+        'arcanasheet_ai_dm_config',
+        JSON.stringify({
+          model: 'gemini-2.5-flash',
+          tone: 'heroic',
+        })
+      );
+
+      const config = getStoredAiConfig();
+      expect(config.model).toBe('gemini-3.6-flash');
+    });
   });
 });

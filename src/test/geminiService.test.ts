@@ -172,5 +172,18 @@ A porta à sua frente permanece entreaberta, pingando água barrenta.
       const config = getStoredAiConfig();
       expect(config.model).toBe('gemini-2.5-flash');
     });
+
+    it('deve migrar gemini-2.5-flash-lite descontinuado para gemini-2.5-flash', () => {
+      localStorageMock.setItem(
+        'arcanasheet_ai_dm_config',
+        JSON.stringify({
+          model: 'gemini-2.5-flash-lite',
+          tone: 'heroic',
+        })
+      );
+
+      const config = getStoredAiConfig();
+      expect(config.model).toBe('gemini-2.5-flash');
+    });
   });
 });

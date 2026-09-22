@@ -28,6 +28,10 @@ import { CharacterManagerModal } from './components/CharacterManagerModal';
 import { CharacterWizardModal } from './components/CharacterWizardModal';
 import { MultiplayerModal } from './components/multiplayer/MultiplayerModal';
 import { FloatingOnlineList } from './components/multiplayer/FloatingOnlineList';
+import { SocialSidebar } from './components/social/SocialSidebar';
+import { GameInviteModal } from './components/social/GameInviteModal';
+import { useSocialPresence } from './hooks/useSocialPresence';
+import type { GameInvite } from './firebase/presenceAndFriends';
 import { DiceRollAnimation } from './components/DiceRollAnimation';
 import { PrintSheetModal } from './components/PrintSheetModal';
 import { SessionChatModal } from './components/SessionChatModal';
@@ -260,6 +264,27 @@ export function App() {
       return next;
     });
   }, [showNotification]);
+
+  const [isSocialSidebarOpen, setIsSocialSidebarOpen] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('arcanasheet_social_sidebar_open');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const handleToggleSocialSidebar = useCallback(() => {
+    setIsSocialSidebarOpen((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('arcanasheet_social_sidebar_open', String(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, []);
 
   const toggleDiceAnimation = useCallback(() => {
     setIsDiceAnimationEnabled((prev) => {
@@ -553,6 +578,57 @@ export function App() {
       sendChatMessage,
       showNotification,
     ]
+  );
+
+  // Hook de Presença Social, Quem Está Online e Lista de Amigos
+  const {
+    onlineUsers,
+    friends,
+    pendingInvites,
+    handleAddFriend,
+    handleRemoveFriend,
+    handleSendGameInvite,
+    handleAcceptInvite,
+    handleDeclineInvite,
+  } = useSocialPresence({
+    user,
+    character,
+    currentRoomCode: roomCode,
+    isConnectedMultiplayer: isConnected,
+  });
+
+  // Aceitar convite de jogo de um amigo
+  const handleAcceptGameInvite = useCallback(
+    async (invite: GameInvite) => {
+      const targetRoomCode = await handleAcceptInvite(invite);
+      if (targetRoomCode) {
+        showNotification(`Conectando à mesa de ${invite.fromUserName} (${targetRoomCode})...`);
+        const ok = await joinRoom(targetRoomCode, character.name || 'Jogador');
+        if (ok) {
+          setCurrentMode('vtt');
+          showNotification(`🎉 Você entrou na mesa ${targetRoomCode}!`);
+        } else {
+          showNotification(`⚠️ Não foi possível entrar na sala ${targetRoomCode}. Verifique o código.`);
+        }
+      }
+    },
+    [handleAcceptInvite, joinRoom, character.name, showNotification]
+  );
+
+  // Criar sala e convidar amigo caso ainda não esteja em uma sala
+  const handleCreateRoomAndInvite = useCallback(
+    async (friendUserId: string, friendName: string) => {
+      let code = roomCode;
+      if (!isConnected) {
+        code = await createRoom(character.name || 'Herói');
+        setCurrentMode('vtt');
+      }
+      if (code) {
+        await handleSendGameInvite(friendUserId, friendName, code);
+        showNotification(`⚔️ Convite para a mesa ${code} enviado para ${friendName}!`);
+      }
+    },
+    [isConnected, roomCode, createRoom, character.name, handleSendGameInvite, showNotification]
   );
 
   // Mover Token local e transmitir para a rede P2P
@@ -957,6 +1033,9 @@ export function App() {
         isHost={isHost}
         isPinnedOnlineList={isOnlineListPinned}
         onTogglePinOnlineList={handleTogglePinOnlineList}
+        isSocialOpen={isSocialSidebarOpen}
+        onToggleSocial={handleToggleSocialSidebar}
+        onlineUsersCount={onlineUsers.filter((u) => u.userId !== (user?.uid || 'local_user')).length}
         currentTheme={currentTheme}
         onSelectTheme={handleThemeChange}
         onOpenMultiplayer={() => setIsMultiplayerOpen(true)}
@@ -1366,6 +1445,40 @@ export function App() {
         isHost={isHost}
         onUnpin={() => setIsOnlineListPinned(false)}
         onOpenModal={() => setIsMultiplayerOpen(true)}
+      />
+
+      {/* Barra Lateral Social: Pessoas Online & Amigos (Área Direita da Tela) */}
+      <SocialSidebar
+        isOpen={isSocialSidebarOpen}
+        onToggle={handleToggleSocialSidebar}
+        onlineUsers={onlineUsers}
+        friends={friends}
+        currentUserId={user?.uid || 'local_user'}
+        currentUserName={character.name || user?.displayName || 'Você'}
+        currentRoomCode={isConnected ? roomCode : undefined}
+        onAddFriend={handleAddFriend}
+        onRemoveFriend={handleRemoveFriend}
+        onSendGameInvite={async (friendId, fName, rCode) => {
+          const res = await handleSendGameInvite(friendId, fName, rCode);
+          if (res.ok) {
+            showNotification(`⚔️ Convite para a mesa ${rCode} enviado para ${fName}!`);
+          }
+          return res;
+        }}
+        onCreateAndInvite={handleCreateRoomAndInvite}
+        onJoinRoom={async (code) => {
+          const ok = await joinRoom(code, character.name || 'Jogador');
+          if (ok) {
+            setCurrentMode('vtt');
+          }
+        }}
+      />
+
+      {/* Modal de Convite de Jogo Recebido */}
+      <GameInviteModal
+        invites={pendingInvites}
+        onAccept={handleAcceptGameInvite}
+        onDecline={handleDeclineInvite}
       />
 
       {/* Animação 3D de Rolagem de Dados Poliédricos */}

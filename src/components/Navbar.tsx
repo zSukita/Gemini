@@ -16,6 +16,7 @@ import {
   LogOut,
   Compass,
   Sparkles,
+  Users,
 } from 'lucide-react';
 
 import type { PeerUser } from '../types/vtt';
@@ -33,6 +34,9 @@ interface NavbarProps {
   isHost?: boolean;
   isPinnedOnlineList?: boolean;
   onTogglePinOnlineList?: () => void;
+  isSocialOpen?: boolean;
+  onToggleSocial?: () => void;
+  onlineUsersCount?: number;
   currentTheme: ThemeId;
   onSelectTheme: (theme: ThemeId) => void;
   onOpenMultiplayer: () => void;
@@ -63,6 +67,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   isHost = false,
   isPinnedOnlineList = false,
   onTogglePinOnlineList,
+  isSocialOpen = false,
+  onToggleSocial,
+  onlineUsersCount,
   currentTheme,
   onSelectTheme,
   onOpenMultiplayer,
@@ -205,6 +212,25 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <Sparkles size={14} className="text-amber-400 animate-pulse" />
             <span className="hidden sm:inline text-xs font-black tracking-wide bg-gradient-to-r from-amber-200 to-amber-400 bg-clip-text text-transparent">Mestre IA</span>
+          </button>
+        )}
+
+        {/* Botão de Amigos & Comunidade Online */}
+        {onToggleSocial && (
+          <button
+            type="button"
+            onClick={onToggleSocial}
+            className={`p-2 rounded-xl border transition shadow-sm flex items-center gap-1.5 ${
+              isSocialOpen
+                ? 'bg-amber-950/80 border-amber-500/60 text-amber-300'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700 hover:border-amber-500/40'
+            }`}
+            title="Comunidade: Quem está Online no Site & Lista de Amigos"
+          >
+            <Users size={14} className="text-amber-400" />
+            <span className="hidden sm:inline text-xs font-bold">
+              Amigos{onlineUsersCount !== undefined && onlineUsersCount > 0 ? ` (${onlineUsersCount})` : ''}
+            </span>
           </button>
         )}
 

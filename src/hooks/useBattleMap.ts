@@ -89,6 +89,7 @@ export function useBattleMap(encounter?: Encounter) {
             y: startY,
             size,
             color: isPlayer ? '#10b981' : c.type === 'monster' ? '#f43f5e' : '#6366f1',
+            avatarUrl: c.avatarUrl || c.monsterData?.avatarUrl,
             currentHp: c.currentHp,
             maxHp: c.maxHp,
             type: c.type,

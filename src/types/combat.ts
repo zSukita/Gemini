@@ -41,7 +41,7 @@ export interface MonsterTrait {
 export interface Monster {
   id: string;
   name: string;
-  size: 'Miúdo' | 'Pequeno' | 'Médio' | 'Grande' | 'Enorme' | 'Imenso';
+  size: 'Miúdo' | 'Pequeno' | 'Médio' | 'Grande' | 'Enorme' | 'Imenso' | 'Gargantuesco';
   type: string; // ex: "Humanoide (goblinóide)", "Monstruosidade", "Morto-vivo", "Dragão"
   alignment: string;
   armorClass: number;
@@ -54,6 +54,7 @@ export interface Monster {
   xp: number;
   senses: string;
   languages: string;
+  avatarUrl?: string;
   traits?: MonsterTrait[];
   actions: MonsterAction[];
   reactions?: MonsterAction[];
@@ -64,6 +65,7 @@ export interface Combatant {
   id: string;
   name: string;
   type: 'player' | 'monster' | 'npc';
+  avatarUrl?: string;
   initiative: number;
   armorClass: number;
   maxHp: number;

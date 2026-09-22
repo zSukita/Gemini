@@ -722,6 +722,7 @@ export function App() {
         y: 200 + Math.floor(Math.random() * 60),
         size,
         color: '#f43f5e',
+        avatarUrl: monster.avatarUrl,
         currentHp: monster.hitPoints,
         maxHp: monster.hitPoints,
         type: 'monster',

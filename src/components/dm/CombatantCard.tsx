@@ -79,7 +79,7 @@ export const CombatantCard: React.FC<CombatantCardProps> = ({
         {/* Esquerda: Iniciativa, Nome, Tipo e CA */}
         <div className="flex items-center gap-3">
           {/* Caixa de Iniciativa */}
-          <div className="flex flex-col items-center justify-center bg-slate-950/90 border border-slate-700 rounded-xl w-12 h-14 shadow-inner">
+          <div className="flex flex-col items-center justify-center bg-slate-950/90 border border-slate-700 rounded-xl w-12 h-14 shadow-inner shrink-0">
             <span className="text-[9px] uppercase font-bold text-slate-400">Init</span>
             <input
               type="number"
@@ -89,6 +89,18 @@ export const CombatantCard: React.FC<CombatantCardProps> = ({
               title="Iniciativa do combatente (clique para alterar)"
             />
           </div>
+
+          {/* Avatar do Combatente / Monstro */}
+          {(combatant.avatarUrl || combatant.monsterData?.avatarUrl) && (
+            <img
+              src={combatant.avatarUrl || combatant.monsterData?.avatarUrl}
+              alt={combatant.name}
+              className="w-11 h-11 rounded-full object-cover border border-amber-500/40 bg-slate-950 shrink-0 shadow-sm"
+              onError={(e) => {
+                (e.target as HTMLElement).style.display = 'none';
+              }}
+            />
+          )}
 
           <div>
             <div className="flex items-center gap-2">

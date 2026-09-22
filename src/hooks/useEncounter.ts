@@ -120,6 +120,7 @@ export function useEncounter() {
           id: `combatant-monster-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 4)}`,
           name: displayName,
           type: 'monster',
+          avatarUrl: monster.avatarUrl,
           initiative: initialInit,
           armorClass: monster.armorClass,
           maxHp: monster.hitPoints,

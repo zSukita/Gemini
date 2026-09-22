@@ -115,21 +115,40 @@ export const BestiaryModal: React.FC<BestiaryModalProps> = ({
                 className="bg-slate-900/80 rounded-xl border border-slate-800 p-3.5 hover:border-slate-700 transition flex flex-col gap-2"
               >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    {monster.avatarUrl ? (
+                      <img
+                        src={monster.avatarUrl}
+                        alt={monster.name}
+                        className="w-12 h-12 rounded-full object-cover border-2 border-amber-500/50 bg-slate-950 shrink-0 shadow-md cursor-pointer hover:scale-105 transition-transform"
                         onClick={() => setExpandedId(isExpanded ? null : monster.id)}
-                        className="text-base font-serif font-bold text-amber-200 cursor-pointer hover:text-amber-300 transition"
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <div
+                        onClick={() => setExpandedId(isExpanded ? null : monster.id)}
+                        className="w-12 h-12 rounded-full border border-slate-700 bg-slate-950 flex items-center justify-center shrink-0 text-slate-400 text-xs font-bold font-serif cursor-pointer hover:border-amber-500/50 transition-colors"
                       >
-                        {monster.name}
-                      </h3>
-                      <span className="text-xs text-slate-400">
-                        {monster.size} {monster.type}, {monster.alignment}
-                      </span>
-                      <span className="text-[10px] font-bold text-amber-400 bg-amber-500/20 px-1.5 py-0.2 rounded border border-amber-500/40">
-                        ND {monster.challengeRating} ({monster.xp} XP)
-                      </span>
-                    </div>
+                        {monster.name.slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3
+                          onClick={() => setExpandedId(isExpanded ? null : monster.id)}
+                          className="text-base font-serif font-bold text-amber-200 cursor-pointer hover:text-amber-300 transition"
+                        >
+                          {monster.name}
+                        </h3>
+                        <span className="text-xs text-slate-400">
+                          {monster.size} {monster.type}, {monster.alignment}
+                        </span>
+                        <span className="text-[10px] font-bold text-amber-400 bg-amber-500/20 px-1.5 py-0.2 rounded border border-amber-500/40">
+                          ND {monster.challengeRating} ({monster.xp} XP)
+                        </span>
+                      </div>
 
                     <div className="flex items-center gap-4 text-xs text-slate-300 mt-1">
                       <span className="flex items-center gap-1">
@@ -144,6 +163,7 @@ export const BestiaryModal: React.FC<BestiaryModalProps> = ({
                       </span>
                     </div>
                   </div>
+                </div>
 
                   {/* Controle de Adição ao Combate e Mapa */}
                   <div className="flex items-center gap-2 self-end sm:self-center flex-wrap justify-end">

@@ -47,6 +47,7 @@ export const Header: React.FC<HeaderProps> = ({
       updateCharacter((prev) => ({
         ...prev,
         characterClass: cls.name,
+        avatarUrl: prev.avatarUrl && !prev.avatarUrl.startsWith('/tokens/classes/') ? prev.avatarUrl : cls.avatarUrl,
         hitDice: {
           ...prev.hitDice,
           dieType: cls.hitDie,
@@ -90,6 +91,11 @@ export const Header: React.FC<HeaderProps> = ({
   const prevXp = xpThresholds[character.level - 1] || 0;
   const xpProgress = Math.min(100, Math.max(0, ((character.experience - prevXp) / (nextXp - prevXp || 1)) * 100));
 
+  const currentClassObj = SRD_CLASSES.find(
+    (c) => c.name.toLowerCase() === (character.characterClass || '').toLowerCase()
+  );
+  const avatarSrc = character.avatarUrl || currentClassObj?.avatarUrl;
+
   return (
     <header className="rpg-card rounded-xl p-4 sm:p-6 mb-6 relative overflow-hidden border-amber-900/30">
       {/* Detalhe estético dourado superior */}
@@ -97,23 +103,33 @@ export const Header: React.FC<HeaderProps> = ({
 
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         {/* Lado Esquerdo: Nome e Detalhes Principais */}
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl sm:text-3xl font-serif font-black tracking-wide text-amber-200 drop-shadow-sm flex items-center gap-2">
-              {character.name ? (
-                character.name
-              ) : (
-                <span className="text-slate-500 italic font-normal text-xl">Novo Personagem (Em Branco)</span>
-              )}
-            </h1>
-            <button
-              onClick={() => setIsEditingInfo(!isEditingInfo)}
-              className="text-slate-400 hover:text-amber-400 p-1.5 rounded-lg hover:bg-slate-800 transition"
-              title="Editar dados básicos"
-            >
-              {isEditingInfo ? <Check size={18} className="text-emerald-400" /> : <Edit3 size={18} />}
-            </button>
-          </div>
+        <div className="flex-1 flex items-start gap-3.5 sm:gap-4">
+          {avatarSrc && (
+            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-amber-500/20 via-slate-900 to-slate-950 border-2 border-amber-500/40 shadow-xl shadow-amber-950/30 p-1 flex items-center justify-center shrink-0 overflow-hidden">
+              <img
+                src={avatarSrc}
+                alt={character.name || character.characterClass}
+                className="w-full h-full object-contain filter drop-shadow hover:scale-105 transition duration-200"
+              />
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl sm:text-3xl font-serif font-black tracking-wide text-amber-200 drop-shadow-sm flex items-center gap-2 truncate">
+                {character.name ? (
+                  character.name
+                ) : (
+                  <span className="text-slate-500 italic font-normal text-xl">Novo Personagem (Em Branco)</span>
+                )}
+              </h1>
+              <button
+                onClick={() => setIsEditingInfo(!isEditingInfo)}
+                className="text-slate-400 hover:text-amber-400 p-1.5 rounded-lg hover:bg-slate-800 transition shrink-0"
+                title="Editar dados básicos"
+              >
+                {isEditingInfo ? <Check size={18} className="text-emerald-400" /> : <Edit3 size={18} />}
+              </button>
+            </div>
 
           {/* Botões de Ação Imediata se a Ficha Estiver em Branco */}
           {!character.name && !isEditingInfo && (
@@ -282,6 +298,7 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="text-slate-500 font-mono">Próx: {nextXp}</span>
           </div>
         </div>
+      </div>
 
         {/* Lado Direito: Ações Rápidas, Inspiração e Descansos */}
         <div className="flex flex-wrap items-center gap-2 sm:gap-3 pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-800">

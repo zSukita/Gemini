@@ -226,6 +226,7 @@ export function buildCharacterFromWizard(data: CharacterWizardData): Character {
     id: `char-${Date.now()}`,
     name: data.name.trim() || 'Aventureiro Sem Nome',
     characterClass: charClass.name,
+    avatarUrl: charClass.avatarUrl,
     level: 1,
     race: charRace.name,
     background: data.background.trim() || 'Aventureiro',

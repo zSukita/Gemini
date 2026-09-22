@@ -17,6 +17,7 @@ export interface SrdClassEquipment {
 export interface SrdClassDefinition {
   id: string;
   name: string;
+  avatarUrl: string;
   description: string;
   hitDie: 'd6' | 'd8' | 'd10' | 'd12';
   hitDieValue: number;
@@ -34,6 +35,7 @@ export const SRD_CLASSES: SrdClassDefinition[] = [
   {
     id: 'barbarian',
     name: 'Bárbaro',
+    avatarUrl: '/tokens/classes/barbarian.png',
     description: 'Guerreiro feroz guiado pela fúria primordial, imensa vitalidade e resistência sobrenatural em batalha.',
     hitDie: 'd12',
     hitDieValue: 12,
@@ -61,6 +63,7 @@ export const SRD_CLASSES: SrdClassDefinition[] = [
   {
     id: 'bard',
     name: 'Bardo',
+    avatarUrl: '/tokens/classes/bard.png',
     description: 'Mestre da canção, fala e magia, manipulando ilusões, encantos e inspirando aliados com melodias arcanas.',
     hitDie: 'd8',
     hitDieValue: 8,
@@ -90,6 +93,7 @@ export const SRD_CLASSES: SrdClassDefinition[] = [
   {
     id: 'cleric',
     name: 'Clérigo',
+    avatarUrl: '/tokens/classes/cleric.png',
     description: 'Campeão divino que empunha magia sagrada a serviço de uma divindade maior, curando feridos e esmagando mortos-vivos.',
     hitDie: 'd8',
     hitDieValue: 8,
@@ -119,6 +123,7 @@ export const SRD_CLASSES: SrdClassDefinition[] = [
   {
     id: 'druid',
     name: 'Druida',
+    avatarUrl: '/tokens/classes/druid.png',
     description: 'Sacerdote da Natureza Antiga, canalizando os poderes elementais e assumindo as formas ferozes dos animais.',
     hitDie: 'd8',
     hitDieValue: 8,
@@ -148,6 +153,7 @@ export const SRD_CLASSES: SrdClassDefinition[] = [
   {
     id: 'fighter',
     name: 'Guerreiro',
+    avatarUrl: '/tokens/classes/fighter.png',
     description: 'Mestre inigualável das armas e do combate marcial, perito com qualquer armadura e táticas no campo de batalha.',
     hitDie: 'd10',
     hitDieValue: 10,
@@ -176,6 +182,7 @@ export const SRD_CLASSES: SrdClassDefinition[] = [
   {
     id: 'monk',
     name: 'Monge',
+    avatarUrl: '/tokens/classes/monk.png',
     description: 'Mestre das artes marciais desarmadas, canalizando a energia do Ki corporal para desferir golpes relâmpago e feitos acrobáticos.',
     hitDie: 'd8',
     hitDieValue: 8,
@@ -203,6 +210,7 @@ export const SRD_CLASSES: SrdClassDefinition[] = [
   {
     id: 'paladin',
     name: 'Paladino',
+    avatarUrl: '/tokens/classes/paladin.png',
     description: 'Guerreiro sagrado ligado por um juramento inquebrável, combinando poderio bélico letal com magia divina protetora.',
     hitDie: 'd10',
     hitDieValue: 10,
@@ -232,6 +240,7 @@ export const SRD_CLASSES: SrdClassDefinition[] = [
   {
     id: 'ranger',
     name: 'Patrulheiro',
+    avatarUrl: '/tokens/classes/ranger.png',
     description: 'Batedor implacável e caçador das fronteiras selvagens, especialista em rastreio, sobrevivência, arquearia e combate.',
     hitDie: 'd10',
     hitDieValue: 10,
@@ -260,6 +269,7 @@ export const SRD_CLASSES: SrdClassDefinition[] = [
   {
     id: 'rogue',
     name: 'Ladino',
+    avatarUrl: '/tokens/classes/rogue.png',
     description: 'Especialista em furtividade, precisão cirúrgica e perícias ladinas, explorando pontos fracos e armadilhas com maestria.',
     hitDie: 'd8',
     hitDieValue: 8,
@@ -293,6 +303,7 @@ export const SRD_CLASSES: SrdClassDefinition[] = [
   {
     id: 'sorcerer',
     name: 'Feiticeiro',
+    avatarUrl: '/tokens/classes/sorcerer.png',
     description: 'Conjurador cuja magia pulsa diretamente em seu sangue por herança dracônica, caos primordial ou fada.',
     hitDie: 'd6',
     hitDieValue: 6,
@@ -321,6 +332,7 @@ export const SRD_CLASSES: SrdClassDefinition[] = [
   {
     id: 'warlock',
     name: 'Bruxo',
+    avatarUrl: '/tokens/classes/warlock.png',
     description: 'Barganhador de segredos cósmicos sob pacto com seres de poder incomensurável (Ínferos, Grandes Antigos ou Arquifadas).',
     hitDie: 'd8',
     hitDieValue: 8,
@@ -349,6 +361,7 @@ export const SRD_CLASSES: SrdClassDefinition[] = [
   {
     id: 'wizard',
     name: 'Mago',
+    avatarUrl: '/tokens/classes/wizard.png',
     description: 'Estudioso supremo das artes arcanas, capaz de dobrar a própria realidade através de séculos de estudo e seu grimório.',
     hitDie: 'd6',
     hitDieValue: 6,

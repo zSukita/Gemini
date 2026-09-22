@@ -11,6 +11,7 @@ import {
   Move
 } from 'lucide-react';
 import type { MapToken } from '../../types/vtt';
+import { SRD_CLASSES } from '../../data/srdClasses';
 
 interface TokenMakerModalProps {
   isOpen: boolean;
@@ -388,6 +389,38 @@ export const TokenMakerModal: React.FC<TokenMakerModalProps> = ({
               <Upload size={14} className="text-amber-400" />
               Carregar Imagem / Foto
             </button>
+
+            {/* Presets Rápidos de Classes D&D */}
+            <div className="w-full max-w-[280px]">
+              <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1.5 text-center">
+                Ou use a ilustração de uma Classe:
+              </span>
+              <div className="grid grid-cols-6 gap-1 bg-slate-950/60 p-1.5 rounded-xl border border-slate-800">
+                {SRD_CLASSES.map((cls) => (
+                  <button
+                    key={cls.id}
+                    type="button"
+                    title={cls.name}
+                    onClick={() => {
+                      setImageSrc(cls.avatarUrl);
+                      setTokenName(cls.name);
+                      setTokenType('player');
+                      setScale(1);
+                      setRotation(0);
+                      setOffset({ x: 0, y: 0 });
+                    }}
+                    className="w-9 h-9 rounded-lg bg-slate-900 hover:bg-amber-950/50 border border-slate-800 hover:border-amber-500/50 flex items-center justify-center p-0.5 transition active:scale-95 group"
+                  >
+                    <img
+                      src={cls.avatarUrl}
+                      alt={cls.name}
+                      className="w-full h-full object-contain filter drop-shadow group-hover:scale-110 transition"
+                      loading="lazy"
+                    />
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           {/* Lado Direito: Controles & Molduras */}

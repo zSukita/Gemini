@@ -419,24 +419,34 @@ export const CharacterWizardModal: React.FC<CharacterWizardModalProps> = ({
                     <div
                       key={cls.id}
                       onClick={() => setSelectedClassId(cls.id)}
-                      className={`cursor-pointer p-4 rounded-xl border transition flex flex-col justify-between gap-3 text-left ${
+                      className={`cursor-pointer p-3 sm:p-4 rounded-xl border transition flex flex-col justify-between gap-3 text-left ${
                         isSelected
                           ? 'bg-amber-950/40 border-amber-400 ring-2 ring-amber-400/30'
                           : 'bg-slate-900/70 border-slate-800 hover:border-slate-600 hover:bg-slate-900'
                       }`}
                     >
-                      <div>
-                        <div className="flex items-center justify-between">
-                          <h4 className="font-serif font-bold text-base text-slate-100">
-                            {cls.name}
-                          </h4>
-                          <span className="font-mono text-xs font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1.5 py-0.5 rounded">
-                            {cls.hitDie}
-                          </span>
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-xl bg-slate-950/80 border border-amber-500/30 flex items-center justify-center p-1 shrink-0 overflow-hidden shadow-inner">
+                          <img
+                            src={cls.avatarUrl}
+                            alt={cls.name}
+                            className="w-full h-full object-contain filter drop-shadow hover:scale-110 transition duration-200"
+                            loading="lazy"
+                          />
                         </div>
-                        <p className="text-xs text-slate-400 mt-1 line-clamp-2">
-                          {cls.description}
-                        </p>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-1">
+                            <h4 className="font-serif font-bold text-base text-slate-100 truncate">
+                              {cls.name}
+                            </h4>
+                            <span className="font-mono text-xs font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1.5 py-0.5 rounded shrink-0">
+                              {cls.hitDie}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-400 mt-1 line-clamp-2">
+                            {cls.description}
+                          </p>
+                        </div>
                       </div>
 
                       <div className="pt-2 border-t border-slate-800/80 flex flex-wrap gap-1 text-[11px]">
@@ -459,15 +469,27 @@ export const CharacterWizardModal: React.FC<CharacterWizardModalProps> = ({
 
               {/* Detalhes da Classe Selecionada */}
               {selectedClass && (
-                <div className="p-4 bg-slate-950/80 border border-amber-500/30 rounded-xl space-y-2">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-serif font-bold text-sm text-amber-200">
-                      Habilidades de 1º Nível ({selectedClass.name}):
-                    </h4>
-                    <span className="text-xs text-slate-400">
-                      Dado de Vida: <strong>1{selectedClass.hitDie}</strong> • PV Inicial:{' '}
-                      <strong className="text-emerald-400">{selectedClass.hitDieValue} + Mod CON</strong>
-                    </span>
+                <div className="p-4 bg-slate-950/80 border border-amber-500/30 rounded-xl space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-14 h-14 rounded-xl bg-amber-950/40 border border-amber-500/40 p-1 flex items-center justify-center shrink-0 shadow-lg">
+                      <img
+                        src={selectedClass.avatarUrl}
+                        alt={selectedClass.name}
+                        className="w-full h-full object-contain filter drop-shadow-md"
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h4 className="font-serif font-bold text-base text-amber-200">
+                          {selectedClass.name} — Habilidades de 1º Nível
+                        </h4>
+                        <span className="text-xs text-slate-400">
+                          Dado de Vida: <strong className="text-amber-300">1{selectedClass.hitDie}</strong> • PV Inicial:{' '}
+                          <strong className="text-emerald-400">{selectedClass.hitDieValue} + Mod CON</strong>
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5">{selectedClass.description}</p>
+                    </div>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                     {selectedClass.features.map((f) => (
@@ -617,16 +639,25 @@ export const CharacterWizardModal: React.FC<CharacterWizardModalProps> = ({
 
               {/* Card de Apresentação */}
               <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/30 border border-amber-500/40 shadow-xl space-y-3">
-                <div className="flex items-start justify-between border-b border-slate-800 pb-3">
-                  <div>
-                    <h4 className="font-serif font-black text-xl text-amber-200">
-                      {name.trim() || 'Aventureiro Sem Nome'}
-                    </h4>
-                    <p className="text-xs text-slate-300 mt-0.5">
-                      {selectedRace.name} • {selectedClass.name} Nível 1 • {background}
-                    </p>
+                <div className="flex items-start justify-between border-b border-slate-800 pb-3 gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-14 h-14 rounded-2xl bg-slate-950/90 border border-amber-500/50 p-1 flex items-center justify-center shrink-0 shadow-md">
+                      <img
+                        src={selectedClass.avatarUrl}
+                        alt={selectedClass.name}
+                        className="w-full h-full object-contain filter drop-shadow"
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className="font-serif font-black text-xl text-amber-200 truncate">
+                        {name.trim() || 'Aventureiro Sem Nome'}
+                      </h4>
+                      <p className="text-xs text-slate-300 mt-0.5">
+                        {selectedRace.name} • {selectedClass.name} Nível 1 • {background}
+                      </p>
+                    </div>
                   </div>
-                  <span className="text-xs font-bold text-amber-400/90 bg-amber-500/10 border border-amber-500/30 px-2 py-1 rounded-lg">
+                  <span className="text-xs font-bold text-amber-400/90 bg-amber-500/10 border border-amber-500/30 px-2 py-1 rounded-lg shrink-0">
                     {alignment}
                   </span>
                 </div>

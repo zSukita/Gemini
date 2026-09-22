@@ -46,4 +46,10 @@ describe('SRD Classes catalog', () => {
     expect(wizard?.savingThrows).toEqual(['int', 'wis']);
     expect(wizard?.spellcastingAbility).toBe('int');
   });
+
+  it('todas as 12 classes devem possuir avatarUrl apontando para /tokens/classes/', () => {
+    SRD_CLASSES.forEach((cls) => {
+      expect(cls.avatarUrl).toMatch(/^\/tokens\/classes\/[a-z-]+\.png$/);
+    });
+  });
 });

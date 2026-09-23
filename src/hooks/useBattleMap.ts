@@ -3,6 +3,7 @@ import type { BattleMapConfig, MapToken, FogShape, PeerUser } from '../types/vtt
 import type { Encounter } from '../types/combat';
 import type { Character } from '../types/dnd5e';
 import { DEFAULT_MAP_PRESETS, type DefaultMapPreset } from '../data/defaultMaps';
+import { SRD_CLASSES } from '../data/srdClasses';
 import { snapCoordinateToGrid } from '../utils/mapRenderer';
 
 const STORAGE_KEY_MAP = 'arcanasheet_battlemap_config';
@@ -77,7 +78,11 @@ export function useBattleMap(
           (t) => t.combatantId === c.id || t.name.toLowerCase() === c.name.toLowerCase()
         );
 
-        const charAvatar = c.avatarUrl || c.monsterData?.avatarUrl;
+        let charAvatar = c.avatarUrl || c.monsterData?.avatarUrl;
+        if (!charAvatar && c.type === 'player' && character) {
+          const cls = SRD_CLASSES.find((cl) => cl.name.toLowerCase() === (character.characterClass || '').toLowerCase());
+          charAvatar = cls?.avatarUrl;
+        }
 
         if (existingToken) {
           existingToken.name = c.name;
@@ -93,8 +98,8 @@ export function useBattleMap(
           // Cria novo token se ainda não existir no mapa
           const isPlayer = c.type === 'player';
           const size = c.monsterData?.size === 'Grande' ? 2 : c.monsterData?.size === 'Enorme' ? 3 : 1;
-          const startX = isPlayer ? 100 : 350 + (index % 4) * 60;
-          const startY = 150 + Math.floor(index / 4) * 60;
+          const startX = isPlayer ? 550 + (index % 4) * 65 : 450 + (index % 4) * 75;
+          const startY = isPlayer ? 550 + Math.floor(index / 4) * 65 : 180 + Math.floor(index / 4) * 75;
 
           updated.push({
             id: `token-${c.id}`,
@@ -115,7 +120,7 @@ export function useBattleMap(
 
       return updated;
     });
-  }, [encounter]);
+  }, [encounter, character]);
 
   // Sincronizar token do jogador local e de todos os participantes conectados na sala
   useEffect(() => {
@@ -124,13 +129,18 @@ export function useBattleMap(
 
       // 1. Jogador Local
       if (character && character.name) {
+        const classObj = SRD_CLASSES.find(
+          (cl) => cl.name.toLowerCase() === (character.characterClass || '').toLowerCase()
+        );
+        const effectiveAvatar = character.avatarUrl || classObj?.avatarUrl;
+
         const localToken = updated.find(
           (t) => t.type === 'player' && t.name.toLowerCase() === (character.name || '').toLowerCase()
         );
 
         if (localToken) {
-          if (character.avatarUrl && localToken.avatarUrl !== character.avatarUrl) {
-            localToken.avatarUrl = character.avatarUrl;
+          if (effectiveAvatar && localToken.avatarUrl !== effectiveAvatar) {
+            localToken.avatarUrl = effectiveAvatar;
           }
           localToken.currentHp = character.currentHp ?? localToken.currentHp;
           localToken.maxHp = character.maxHp ?? localToken.maxHp;
@@ -138,11 +148,11 @@ export function useBattleMap(
           updated.push({
             id: `token-player-${character.id || 'local'}`,
             name: character.name,
-            x: 100,
-            y: 150,
+            x: 550,
+            y: 550,
             size: 1,
             color: '#10b981',
-            avatarUrl: character.avatarUrl,
+            avatarUrl: effectiveAvatar,
             currentHp: character.currentHp || 10,
             maxHp: character.maxHp || 10,
             type: 'player',
@@ -168,8 +178,8 @@ export function useBattleMap(
             updated.push({
               id: `token-peer-${peer.peerId}`,
               name: peer.name,
-              x: 100 + ((pIdx + 1) % 4) * 60,
-              y: 150 + Math.floor((pIdx + 1) / 4) * 60,
+              x: 550 + ((pIdx + 1) % 4) * 65,
+              y: 550 + Math.floor((pIdx + 1) / 4) * 65,
               size: 1,
               color: '#06b6d4',
               avatarUrl: peer.avatarUrl,
@@ -184,7 +194,7 @@ export function useBattleMap(
 
       return updated;
     });
-  }, [character?.id, character?.name, character?.avatarUrl, character?.currentHp, character?.maxHp, connectedPeers]);
+  }, [character?.id, character?.name, character?.characterClass, character?.avatarUrl, character?.currentHp, character?.maxHp, connectedPeers]);
 
   // Mover Token
   const moveToken = useCallback(

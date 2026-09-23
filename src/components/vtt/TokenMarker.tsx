@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import type { MapToken } from '../../types/vtt';
 
 interface TokenMarkerProps {
@@ -20,8 +20,8 @@ const CONDITION_ICONS: Record<string, string> = {
   invisible: '👻',
   paralyzed: '⚡',
   petrified: '🗿',
-  poisoned: '🤢',
-  prone: '🙇',
+  poisoned: '🧪',
+  prone: '🛡️',
   restrained: '🕸️',
   stunned: '💫',
   unconscious: '💀',
@@ -35,6 +35,12 @@ export const TokenMarker: React.FC<TokenMarkerProps> = ({
   onSelect,
   onDragStart,
 }) => {
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [token.avatarUrl]);
+
   const pixelSize = token.size * gridSize;
   const hpPercent = Math.max(0, Math.min(100, (token.currentHp / (token.maxHp || 1)) * 100));
   const activeConditions = token.conditions || [];
@@ -69,10 +75,11 @@ export const TokenMarker: React.FC<TokenMarkerProps> = ({
         }}
       >
         {/* Imagem do Avatar ou Iniciais */}
-        {token.avatarUrl ? (
+        {token.avatarUrl && !imgError ? (
           <img
             src={token.avatarUrl}
             alt={token.name}
+            onError={() => setImgError(true)}
             className="w-full h-full rounded-full object-cover pointer-events-none select-none"
           />
         ) : (

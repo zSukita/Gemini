@@ -36,7 +36,13 @@ export const FloatingOnlineList: React.FC<FloatingOnlineListProps> = ({
 
   if (!isVisible) return null;
 
-  const totalOnline = connectedPeers.length + 1;
+  const normalizedCurrent = (currentUserName || '').toLowerCase().trim();
+  const otherPeers = connectedPeers.filter(
+    (p, idx, arr) =>
+      p.name.toLowerCase().trim() !== normalizedCurrent &&
+      arr.findIndex((x) => x.name.toLowerCase().trim() === p.name.toLowerCase().trim()) === idx
+  );
+  const totalOnline = otherPeers.length + 1;
 
   const handleCopyLink = () => {
     const inviteUrl = `${window.location.origin}?room=${roomCode}`;
@@ -116,7 +122,7 @@ export const FloatingOnlineList: React.FC<FloatingOnlineListProps> = ({
               </div>
 
               {/* Demais Usuários Conectados via WebRTC */}
-              {connectedPeers.map((peer, idx) => {
+              {otherPeers.map((peer, idx) => {
                 const isPeerHost = peer.role === 'dm';
                 return (
                   <div

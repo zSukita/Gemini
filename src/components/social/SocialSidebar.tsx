@@ -335,7 +335,7 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
   // Se a barra estiver recolhida (minimizado na lateral direita)
   if (!isOpen) {
     return (
-      <div className="fixed top-20 right-0 z-30 hidden xl:flex flex-col items-center">
+      <div className="fixed top-28 right-0 z-50 hidden xl:flex flex-col items-center">
         <button
           type="button"
           onClick={onToggle}
@@ -362,7 +362,7 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
   }
 
   return (
-    <aside className="fixed top-3 right-3 bottom-24 w-80 max-w-[92vw] z-30 flex flex-col bg-slate-950/95 border border-amber-500/40 rounded-2xl shadow-2xl backdrop-blur-md text-slate-100 overflow-hidden animate-in slide-in-from-right-4 duration-200">
+    <aside className="fixed top-20 right-3 bottom-20 w-80 max-w-[92vw] z-50 flex flex-col bg-slate-950/95 border border-amber-500/40 rounded-2xl shadow-2xl backdrop-blur-md text-slate-100 overflow-hidden animate-in slide-in-from-right-4 duration-200">
       
       {/* 1. Cabeçalho da Barra Lateral */}
       <div className="px-3.5 py-3 border-b border-slate-800 bg-gradient-to-r from-slate-900 via-amber-950/20 to-slate-900 flex items-center justify-between shrink-0">

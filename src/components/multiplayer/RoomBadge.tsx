@@ -70,7 +70,13 @@ export const RoomBadge: React.FC<RoomBadgeProps> = ({
     );
   }
 
-  const totalOnline = peersCount + 1;
+  const normalizedCurrent = (currentUserName || '').toLowerCase().trim();
+  const otherPeers = connectedPeers.filter(
+    (p, idx, arr) =>
+      p.name.toLowerCase().trim() !== normalizedCurrent &&
+      arr.findIndex((x) => x.name.toLowerCase().trim() === p.name.toLowerCase().trim()) === idx
+  );
+  const totalOnline = otherPeers.length > 0 ? otherPeers.length + 1 : Math.max(peersCount + 1, 1);
 
   const handleCopyLink = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -153,7 +159,7 @@ export const RoomBadge: React.FC<RoomBadgeProps> = ({
               </div>
 
               {/* Demais Participantes Conectados via WebRTC */}
-              {connectedPeers.map((peer, idx) => {
+              {otherPeers.map((peer, idx) => {
                 const isPeerHost = peer.role === 'dm';
                 return (
                   <div

@@ -34,7 +34,11 @@ export class P2PNetworkManager {
   }
 
   public getConnectedPeers(): PeerUser[] {
-    return this.activePeers;
+    const curName = (this.currentUserName || '').toLowerCase().trim();
+    const curPeerId = this.peer?.id;
+    return this.activePeers.filter(
+      (p) => p.peerId !== curPeerId && p.name.toLowerCase().trim() !== curName
+    );
   }
 
   public isConnected(): boolean {

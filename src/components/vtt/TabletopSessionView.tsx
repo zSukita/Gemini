@@ -444,6 +444,8 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
               currentUserName={currentUserName}
               character={character}
               isAiResponding={isAiResponding}
+              encounter={encounter}
+              onHpDelta={onHpDelta}
               onOpenEndSessionModal={onOpenEndSessionModal}
               onSendMessage={onSendMessage}
             />

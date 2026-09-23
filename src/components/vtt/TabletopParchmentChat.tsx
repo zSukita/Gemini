@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { ChatMessage, ChatMessageType } from '../../types/chat';
 import type { Character, DiceRollResult, SkillKey, AbilityKey } from '../../types/dnd5e';
+import type { Encounter } from '../../types/combat';
 import { SKILLS, ABILITIES } from '../../types/dnd5e';
 import { rollFormula } from '../../utils/diceRoller';
 import { 
@@ -20,6 +21,8 @@ interface TabletopParchmentChatProps {
   currentUserName: string;
   character?: Character | null;
   isAiResponding?: boolean;
+  encounter?: Encounter;
+  onHpDelta?: (combatantId: string, delta: number) => void;
   onOpenEndSessionModal?: () => void;
   onSendMessage: (
     textOrPayload:
@@ -44,6 +47,8 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
   currentUserName,
   character,
   isAiResponding,
+  encounter,
+  onHpDelta,
   onOpenEndSessionModal,
   onSendMessage,
 }) => {
@@ -117,6 +122,109 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
 
     const rollRes = rollFormula(formula, label);
     const dcInfo = req.dc ? ` (vs ${isAttack ? 'CA' : 'CD'} ${req.dc})` : '';
+
+    // Resolução Completa de Ataque D&D 5e com Acerto/Erro, Dano e Redução de PV
+    if (isAttack && req.dc) {
+      const natural = rollRes.rolls?.[0] ?? rollRes.selectedRoll;
+      const isCritHit = Boolean(rollRes.isCriticalSuccess || natural === 20);
+      const isCritMiss = Boolean(rollRes.isCriticalFailure || natural === 1);
+      const isHit = isCritHit || (!isCritMiss && rollRes.total >= req.dc);
+
+      // Localiza o monstro alvo nos combatentes ativos
+      const monsterCandidates = encounter?.combatants.filter((c) => c.type === 'monster' && c.currentHp > 0) || [];
+      const reasonLower = req.reason.toLowerCase();
+      const skillLower = req.skillOrAbility.toLowerCase();
+
+      let targetMonster = monsterCandidates.find(
+        (m) => reasonLower.includes(m.name.toLowerCase()) || skillLower.includes(m.name.toLowerCase())
+      );
+      if (!targetMonster && monsterCandidates.length > 0) {
+        targetMonster = monsterCandidates[0];
+      }
+
+      const targetDisplayName = targetMonster?.name || 'o Inimigo';
+
+      if (isHit) {
+        // Encontra a arma utilizada ou deduz fórmula de dano da classe
+        const matchingAttack = character?.attacks?.find((a) => target.includes(a.name.toLowerCase()));
+        let baseDamageFormula = matchingAttack?.damage?.trim() || '';
+
+        if (!baseDamageFormula) {
+          const strScore = character?.abilities.str?.score ?? 10;
+          const dexScore = character?.abilities.dex?.score ?? 10;
+          const isFinesse = target.includes('adaga') || target.includes('rapieira') || target.includes('arco') || target.includes('destreza');
+          const statMod = Math.floor(((isFinesse ? Math.max(strScore, dexScore) : strScore) - 10) / 2);
+          const modStr = statMod > 0 ? `+${statMod}` : statMod < 0 ? `${statMod}` : '';
+
+          if (target.includes('machado grande') || target.includes('greataxe')) {
+            baseDamageFormula = `1d12${modStr}`;
+          } else if (target.includes('espada grande') || target.includes('greatsword')) {
+            baseDamageFormula = `2d6${modStr}`;
+          } else if (target.includes('espada longa') || target.includes('longsword') || target.includes('martelo') || target.includes('warhammer')) {
+            baseDamageFormula = `1d8${modStr}`;
+          } else if (target.includes('adaga') || target.includes('dagger')) {
+            baseDamageFormula = `1d4${modStr}`;
+          } else if (target.includes('arco') || target.includes('lança')) {
+            baseDamageFormula = `1d6${modStr}`;
+          } else {
+            baseDamageFormula = `1d8${modStr}`;
+          }
+        }
+
+        // No Acerto Crítico (20 natural), dobra a quantidade de dados de dano
+        let finalDamageFormula = baseDamageFormula;
+        if (isCritHit) {
+          finalDamageFormula = baseDamageFormula.replace(/^(\d+)d(\d+)/, (_, count, die) => `${Number(count) * 2}d${die}`);
+        }
+
+        const dmgRoll = rollFormula(finalDamageFormula, `Dano de ${req.skillOrAbility}`);
+        const damageVal = Math.max(1, dmgRoll.total);
+
+        // Aplica dedução de PV no monstro alvo
+        if (targetMonster && onHpDelta) {
+          onHpDelta(targetMonster.id, -damageVal);
+        }
+
+        const newHp = targetMonster ? Math.max(0, targetMonster.currentHp - damageVal) : undefined;
+        const isDefeated = newHp !== undefined && newHp <= 0;
+        const hitStatus = isCritHit ? '💥 ACERTO CRÍTICO!' : '🎯 ACERTOU!';
+
+        const hitAnnouncement = `${hitStatus} [${rollRes.breakdown}] = ${rollRes.total} (vs CA ${req.dc})\n` +
+          `⚔️ **Dano (${finalDamageFormula}):** [${dmgRoll.breakdown}] = **${damageVal} de dano** em **${targetDisplayName}**!\n` +
+          (targetMonster ? `🩸 **${targetDisplayName}** agora possui **${newHp}/${targetMonster.maxHp} PV** ${isDefeated ? '💀 (**DERROTADO!**)' : ''}` : '');
+
+        const promptText = `@mestre Ataque realizado com ${req.skillOrAbility}: ${hitStatus} com resultado ${rollRes.total} (vs CA ${req.dc}) causando ${damageVal} de dano. ` +
+          (targetMonster ? `O monstro ${targetDisplayName} ficou com ${newHp}/${targetMonster.maxHp} PV ${isDefeated ? 'e caiu derrotado em combate!' : 'e continua em combate.'} ` : '') +
+          `Descreva cinematograficamente o impacto do golpe e a reação do monstro.`;
+
+        onSendMessage(
+          {
+            text: `${hitAnnouncement}\n\n${promptText}`,
+            senderName: character?.name || currentUserName || 'Aventureiro',
+            type: 'PUBLIC',
+            diceRoll: rollRes,
+          },
+          currentUserName
+        );
+        return;
+      } else {
+        // Ataque Errou (Miss)
+        const missStatus = isCritMiss ? '💨 FALHA CRÍTICA (1 natural - Erro Automático)!' : '❌ ERROU!';
+        const missAnnouncement = `${missStatus} [${rollRes.breakdown}] = ${rollRes.total} (vs CA ${req.dc}). O ataque não conseguiu superar a defesa de ${targetDisplayName}.`;
+        const promptText = `@mestre Ataque realizado com ${req.skillOrAbility}: ${missStatus} com resultado ${rollRes.total} (vs CA ${req.dc}). O golpe não acertou ${targetDisplayName}. Descreva a esquiva ou defesa do adversário.`;
+
+        onSendMessage(
+          {
+            text: `${missAnnouncement}\n\n${promptText}`,
+            senderName: character?.name || currentUserName || 'Aventureiro',
+            type: 'PUBLIC',
+            diceRoll: rollRes,
+          },
+          currentUserName
+        );
+        return;
+      }
+    }
 
     let promptText = '';
     if (isAttack) {

@@ -67,6 +67,7 @@ import {
 } from './firebase/campaignSync';
 import { DEFAULT_MAP_PRESETS, type DefaultMapPreset } from './data/defaultMaps';
 import { SRD_MONSTERS } from './data/srdMonsters';
+import { SRD_CLASSES } from './data/srdClasses';
 import { type AiAdventureScenario } from './data/aiAdventureScenarios';
 
 import { 
@@ -100,6 +101,7 @@ export function App() {
   const {
     character,
     charactersList,
+    isCloudLoaded,
     activeId,
     setActiveId,
     updateCharacter,
@@ -246,13 +248,28 @@ export function App() {
     }
   }, [currentTheme]);
 
-  // Abre automaticamente o Assistente de Criação de Personagem se o jogador logou e a ficha está em branco
+  // Abre automaticamente o Assistente de Criação de Personagem se o jogador logou, nuvem carregou e não possui nenhum herói com nome
   useEffect(() => {
-    if (isAuthenticated && character && !character.name && !hasAutoOpenedWizardRef.current) {
+    if (!isAuthenticated || !isCloudLoaded) return;
+
+    // Se o usuário já tiver heróis nomeados, nunca abrir automaticamente
+    const hasAnyNamedHero = charactersList.some((c) => c.name && c.name.trim().length > 0);
+    if (hasAnyNamedHero) return;
+
+    // Verifica se já foi dispensado ou aberto anteriormente
+    const storageKey = user?.uid ? `arcanasheet_wizard_dismissed_${user.uid}` : 'arcanasheet_wizard_dismissed_guest';
+    const alreadyDismissed = localStorage.getItem(storageKey);
+
+    if (!alreadyDismissed && !hasAutoOpenedWizardRef.current) {
       hasAutoOpenedWizardRef.current = true;
+      try {
+        localStorage.setItem(storageKey, 'true');
+      } catch {
+        // ignore
+      }
       setIsWizardOpen(true);
     }
-  }, [isAuthenticated, character]);
+  }, [isAuthenticated, isCloudLoaded, charactersList, user?.uid]);
 
   const showNotification = useCallback((msg: string) => {
     setNotification(msg);
@@ -614,21 +631,65 @@ export function App() {
               const dist = squares * 50;
               const act = move.actionOrTarget.toLowerCase();
 
+              const mapW = mapConfigRef.current?.width || 1200;
+              const mapH = mapConfigRef.current?.height || 800;
+
+              // Procura se a ação cita algum outro combatente (alvo de aproximação ou combate)
+              const otherTargetToken = tokensRef.current.find(
+                (other) =>
+                  other.id !== tokenToMove.id &&
+                  act.includes(other.name.toLowerCase())
+              );
+
               let newX = tokenToMove.x;
               let newY = tokenToMove.y;
 
-              if (act.includes('recua') || act.includes('norte') || act.includes('cima') || act.includes('trás')) {
+              if (otherTargetToken) {
+                // Move em direção ao token alvo, mantendo 1 casa (50px) de distância
+                const dx = otherTargetToken.x - tokenToMove.x;
+                const dy = otherTargetToken.y - tokenToMove.y;
+                const currentDist = Math.sqrt(dx * dx + dy * dy);
+
+                if (currentDist > 60) {
+                  const moveAmount = Math.min(dist, currentDist - 50);
+                  const ratio = moveAmount / currentDist;
+                  newX = Math.round(tokenToMove.x + dx * ratio);
+                  newY = Math.round(tokenToMove.y + dy * ratio);
+                }
+              } else if (act.includes('recua') || act.includes('trás') || act.includes('afasta')) {
+                // Recua para longe do centro
+                newY = tokenToMove.y < mapH / 2 ? Math.max(50, newY - dist) : Math.min(mapH - 60, newY + dist);
+              } else if (act.includes('norte') || act.includes('cima')) {
                 newY = Math.max(50, newY - dist);
-              } else if (act.includes('avança') || act.includes('sul') || act.includes('baixo') || act.includes('investe') || act.includes('frente')) {
-                newY = Math.min(1800, newY + dist);
+              } else if (act.includes('sul') || act.includes('baixo')) {
+                newY = Math.min(mapH - 60, newY + dist);
               } else if (act.includes('esquerda') || act.includes('oeste')) {
                 newX = Math.max(50, newX - dist);
               } else if (act.includes('direita') || act.includes('leste')) {
-                newX = Math.min(1800, newX + dist);
-              } else {
-                newX = Math.min(1800, newX + Math.floor(dist * 0.7));
-                newY = Math.min(1800, newY + Math.floor(dist * 0.7));
+                newX = Math.min(mapW - 60, newX + dist);
+              } else if (act.includes('avança') || act.includes('investe') || act.includes('frente') || act.includes('aproxima')) {
+                // Avança em direção ao time oposto mais próximo
+                const opponentToken = tokensRef.current.find(
+                  (e) => e.type !== tokenToMove.type && (e.currentHp ?? 1) > 0
+                );
+                if (opponentToken) {
+                  const dx = opponentToken.x - tokenToMove.x;
+                  const dy = opponentToken.y - tokenToMove.y;
+                  const currentDist = Math.sqrt(dx * dx + dy * dy);
+                  if (currentDist > 60) {
+                    const moveAmount = Math.min(dist, currentDist - 50);
+                    const ratio = moveAmount / currentDist;
+                    newX = Math.round(tokenToMove.x + dx * ratio);
+                    newY = Math.round(tokenToMove.y + dy * ratio);
+                  }
+                } else {
+                  newX = tokenToMove.x < mapW / 2 ? tokenToMove.x + Math.floor(dist * 0.7) : tokenToMove.x - Math.floor(dist * 0.7);
+                  newY = tokenToMove.y < mapH / 2 ? tokenToMove.y + Math.floor(dist * 0.7) : tokenToMove.y - Math.floor(dist * 0.7);
+                }
               }
+
+              newX = Math.max(50, Math.min(mapW - 60, newX));
+              newY = Math.max(50, Math.min(mapH - 60, newY));
 
               moveToken(tokenToMove.id, newX, newY);
 
@@ -718,6 +779,13 @@ export function App() {
       const willHandleAi = isAiCommand && Boolean(apiKey);
 
       if (isObj) {
+        if (textOrPayload.diceRoll) {
+          addRollResult(textOrPayload.diceRoll);
+          if (isConnected) {
+            broadcastDiceRoll(textOrPayload.diceRoll, senderName);
+          }
+        }
+
         sendChatMessage(
           {
             ...textOrPayload,
@@ -744,7 +812,7 @@ export function App() {
         triggerAiDm(cleanPrompt);
       }
     },
-    [sendChatMessage, character.name, triggerAiDm]
+    [sendChatMessage, character.name, triggerAiDm, addRollResult, isConnected, broadcastDiceRoll]
   );
 
   // Criar Mesa Cooperativa com Mestre IA (Mapa Tático + Monstros + História)
@@ -752,7 +820,11 @@ export function App() {
     async (scenario: AiAdventureScenario, customTitle?: string, customPrompt?: string) => {
       // 1. Cria a sala P2P com o nome do herói/usuário e seu avatar
       const hostName = character.name || 'Herói';
-      const code = await createRoom(hostName, undefined, character.avatarUrl);
+      const classAvatar = SRD_CLASSES.find(
+        (c) => c.name.toLowerCase() === (character.characterClass || '').toLowerCase()
+      )?.avatarUrl;
+      const effectiveAvatar = character.avatarUrl || classAvatar;
+      const code = await createRoom(hostName, undefined, effectiveAvatar);
 
       // 2. Carrega o mapa predefinido correspondente ao cenário
       const targetPreset =
@@ -878,7 +950,11 @@ export function App() {
       const targetRoomCode = await handleAcceptInvite(invite);
       if (targetRoomCode) {
         showNotification(`Conectando à mesa de ${invite.fromUserName} (${targetRoomCode})...`);
-        const ok = await joinRoom(targetRoomCode, character.name || 'Jogador', character.avatarUrl);
+        const classAvatar = SRD_CLASSES.find(
+          (c) => c.name.toLowerCase() === (character.characterClass || '').toLowerCase()
+        )?.avatarUrl;
+        const effectiveAvatar = character.avatarUrl || classAvatar;
+        const ok = await joinRoom(targetRoomCode, character.name || 'Jogador', effectiveAvatar);
         if (ok) {
           setCurrentMode('vtt');
           showNotification(`🎉 Você entrou na mesa ${targetRoomCode}!`);
@@ -887,7 +963,7 @@ export function App() {
         }
       }
     },
-    [handleAcceptInvite, joinRoom, character.name, character.avatarUrl, showNotification]
+    [handleAcceptInvite, joinRoom, character.name, character.characterClass, character.avatarUrl, showNotification]
   );
 
   // Criar sala e convidar amigo caso ainda não esteja em uma sala
@@ -895,7 +971,11 @@ export function App() {
     async (friendUserId: string, friendName: string) => {
       let code = roomCode;
       if (!isConnected) {
-        code = await createRoom(character.name || 'Herói', undefined, character.avatarUrl);
+        const classAvatar = SRD_CLASSES.find(
+          (c) => c.name.toLowerCase() === (character.characterClass || '').toLowerCase()
+        )?.avatarUrl;
+        const effectiveAvatar = character.avatarUrl || classAvatar;
+        code = await createRoom(character.name || 'Herói', undefined, effectiveAvatar);
         setCurrentMode('vtt');
       }
       if (code) {
@@ -903,7 +983,7 @@ export function App() {
         showNotification(`⚔️ Convite para a mesa ${code} enviado para ${friendName}!`);
       }
     },
-    [isConnected, roomCode, createRoom, character.name, character.avatarUrl, handleSendGameInvite, showNotification]
+    [isConnected, roomCode, createRoom, character.name, character.characterClass, character.avatarUrl, handleSendGameInvite, showNotification]
   );
 
   // Mover Token local e transmitir para a rede P2P
@@ -1972,9 +2052,15 @@ export function App() {
         currentUserName={character.name}
         character={character}
         isAiResponding={isAiResponding}
-        onCreateRoom={(name, customCode) => createRoom(name, customCode, character.avatarUrl)}
+        onCreateRoom={(name, customCode) => {
+          const classAvatar = SRD_CLASSES.find((c) => c.name.toLowerCase() === (character.characterClass || '').toLowerCase())?.avatarUrl;
+          return createRoom(name, customCode, character.avatarUrl || classAvatar);
+        }}
         onCreateAiRoom={handleCreateAiRoom}
-        onJoinRoom={(code, name) => joinRoom(code, name, character.avatarUrl)}
+        onJoinRoom={(code, name) => {
+          const classAvatar = SRD_CLASSES.find((c) => c.name.toLowerCase() === (character.characterClass || '').toLowerCase())?.avatarUrl;
+          return joinRoom(code, name, character.avatarUrl || classAvatar);
+        }}
         onDisconnect={disconnect}
         onSendMessage={handleUserChatMessage}
         onOpenTabletop={() => setCurrentMode('vtt')}

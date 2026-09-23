@@ -25,6 +25,7 @@ const STORAGE_KEY_ACTIVE = 'arcanasheet_active_character_id';
 const STORAGE_KEY_CHARACTERS = 'arcanasheet_characters_list';
 
 export function useCharacter(userId?: string | null) {
+  const [isCloudLoaded, setIsCloudLoaded] = useState<boolean>(!userId);
   const [characters, setCharacters] = useState<Character[]>(() => {
     try {
       const storageKey = userId ? `arcanasheet_characters_${userId}` : STORAGE_KEY_CHARACTERS;
@@ -57,8 +58,12 @@ export function useCharacter(userId?: string | null) {
 
   // Carregar personagens da nuvem quando o usuário faz login
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) {
+      setIsCloudLoaded(true);
+      return;
+    }
 
+    setIsCloudLoaded(false);
     let isMounted = true;
     const userStorageKey = `arcanasheet_characters_${userId}`;
     const userActiveKey = `arcanasheet_active_${userId}`;
@@ -96,9 +101,11 @@ export function useCharacter(userId?: string | null) {
             console.error('Erro ao salvar personagem em branco inicial:', err)
           );
         }
+        setIsCloudLoaded(true);
       })
       .catch((err) => {
         console.error('Erro ao carregar personagens da nuvem:', err);
+        if (isMounted) setIsCloudLoaded(true);
       });
 
     return () => {
@@ -595,6 +602,7 @@ export function useCharacter(userId?: string | null) {
   return {
     character: activeCharacter,
     charactersList: characters,
+    isCloudLoaded,
     activeId,
     setActiveId,
     updateCharacter,

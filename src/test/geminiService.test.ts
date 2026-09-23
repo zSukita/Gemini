@@ -13,7 +13,10 @@ import {
   getStoredCampaignSummary,
   saveStoredCampaignSummary,
   DEFAULT_MODEL,
-  DEFAULT_GROQ_MODEL
+  DEFAULT_GROQ_MODEL,
+  getStoredGroqModel,
+  saveStoredGroqModel,
+  pickBestGroqModel
 } from '../services/geminiService';
 import type { Character } from '../types/dnd5e';
 
@@ -283,6 +286,19 @@ Vocês vasculham os restos do acampamento e encontram um baú com reforços de l
       expect(config.provider).toBe('groq');
       expect(config.groqApiKey).toBe('gsk_sample');
       expect(config.model).toBe(DEFAULT_GROQ_MODEL);
+    });
+
+    it('deve selecionar inteligentemente o melhor modelo Groq disponível', () => {
+      expect(getStoredGroqModel()).toBe(DEFAULT_GROQ_MODEL);
+      saveStoredGroqModel('openai/gpt-oss-20b');
+      expect(getStoredGroqModel()).toBe('openai/gpt-oss-20b');
+
+      const mockLiveModels = ['whisper-large-v3', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b'];
+      const chosen = pickBestGroqModel(mockLiveModels);
+      expect(chosen).toBe('openai/gpt-oss-20b');
+
+      const mockFallback = ['custom-llama-v1'];
+      expect(pickBestGroqModel(mockFallback)).toBe('custom-llama-v1');
     });
   });
 });

@@ -23,10 +23,82 @@ const CHAT_HISTORY_STORAGE_KEY = 'arcanasheet_ai_dm_history';
 const CAMPAIGN_SUMMARY_STORAGE_KEY = 'arcanasheet_ai_campaign_summary';
 
 export const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash-lite';
-export const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile';
+export const DEFAULT_GROQ_MODEL = 'openai/gpt-oss-120b';
 export const DEFAULT_POLLINATIONS_MODEL = 'openai';
 
 export const DEFAULT_MODEL = DEFAULT_GEMINI_MODEL;
+const GROQ_ACTIVE_MODEL_STORAGE_KEY = 'arcanasheet_groq_active_model';
+
+export function getStoredGroqModel(): string {
+  if (typeof localStorage !== 'undefined') {
+    const m = localStorage.getItem(GROQ_ACTIVE_MODEL_STORAGE_KEY);
+    if (m && m.trim()) return m.trim();
+  }
+  return DEFAULT_GROQ_MODEL;
+}
+
+export function saveStoredGroqModel(model: string): void {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(GROQ_ACTIVE_MODEL_STORAGE_KEY, model.trim());
+  }
+}
+
+/**
+ * Consulta a lista de modelos ativos e acessíveis para a chave da Groq
+ */
+export async function fetchActiveGroqModels(apiKey: string): Promise<string[]> {
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/models', {
+      headers: {
+        Authorization: `Bearer ${apiKey.trim()}`,
+      },
+    });
+    if (!res.ok) return [];
+    const json = await res.json();
+    const data: Array<{ id: string }> = json.data || [];
+    return data
+      .map((d) => d.id)
+      .filter(
+        (id) =>
+          !id.includes('whisper') &&
+          !id.includes('guard') &&
+          !id.includes('vision') &&
+          !id.includes('embedding')
+      );
+  } catch (err) {
+    console.warn('Erro ao consultar modelos ativos no Groq:', err);
+    return [];
+  }
+}
+
+/**
+ * Seleciona o melhor modelo disponível para texto e narrativa
+ */
+export function pickBestGroqModel(availableModels: string[]): string {
+  const preferred = [
+    'openai/gpt-oss-120b',
+    'openai/gpt-oss-20b',
+    'qwen/qwen3.8-27b',
+    'qwen/qwen3.6-27b',
+    'llama-3.3-70b-versatile',
+    'llama-3.1-8b-instant',
+    'llama3-70b-8192',
+    'llama3-8b-8192',
+    'mixtral-8x7b-32768',
+    'gemma2-9b-it',
+  ];
+  for (const p of preferred) {
+    if (availableModels.includes(p)) return p;
+  }
+  const gptOss = availableModels.find((m) => m.includes('gpt-oss'));
+  if (gptOss) return gptOss;
+  const llama = availableModels.find((m) => m.includes('llama'));
+  if (llama) return llama;
+  const qwen = availableModels.find((m) => m.includes('qwen'));
+  if (qwen) return qwen;
+
+  return availableModels[0] || DEFAULT_GROQ_MODEL;
+}
 
 export function getStoredAiProvider(): AiProvider {
   if (typeof localStorage !== 'undefined') {
@@ -589,7 +661,7 @@ export function parseAiResponse(rawText: string): {
 }
 
 /**
- * Chamada à API ultra-rápida do Groq (LPU, Llama 3.3 70B & 3.1 8B)
+ * Chamada à API ultra-rápida do Groq (Hardware LPU, modelos OpenAI GPT-OSS e Llama)
  */
 async function callGroqChat(
   apiKey: string,
@@ -598,8 +670,22 @@ async function callGroqChat(
   history: AiMessage[],
   userAction: string
 ): Promise<AiMessage> {
-  const groqCandidateModels = Array.from(
-    new Set([model, 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant'])
+  const storedModel = getStoredGroqModel();
+  const safeModel =
+    model && !model.includes('llama-3.3-70b-versatile') && !model.includes('llama-3.1-8b-instant')
+      ? model
+      : storedModel;
+
+  let candidateModels = Array.from(
+    new Set([
+      safeModel,
+      storedModel,
+      'openai/gpt-oss-120b',
+      'openai/gpt-oss-20b',
+      'qwen/qwen3.8-27b',
+      'llama-3.3-70b-versatile',
+      'llama-3.1-8b-instant',
+    ])
   );
 
   const messages = [
@@ -616,56 +702,68 @@ async function callGroqChat(
 
   let lastErr: unknown = null;
 
-  for (const m of groqCandidateModels) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    for (const m of candidateModels) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
 
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey.trim()}`,
-        },
-        body: JSON.stringify({
-          model: m,
-          messages,
-          temperature: 0.85,
-          max_completion_tokens: 1500,
-          top_p: 0.95,
-        }),
-        signal: controller.signal,
-      });
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey.trim()}`,
+          },
+          body: JSON.stringify({
+            model: m,
+            messages,
+            temperature: 0.85,
+            max_completion_tokens: 1500,
+            top_p: 0.95,
+          }),
+          signal: controller.signal,
+        });
 
-      clearTimeout(timeoutId);
+        clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`Groq HTTP ${response.status}: ${errText}`);
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`Groq HTTP ${response.status}: ${errText}`);
+        }
+
+        const data = await response.json();
+        const rawText = data.choices?.[0]?.message?.content || 'O Mestre aguarda em silêncio...';
+        const parsed = parseAiResponse(rawText);
+
+        saveStoredGroqModel(m);
+
+        return {
+          id: `ai_groq_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          role: 'narrator',
+          content: parsed.cleanText,
+          timestamp: Date.now(),
+          suggestedActions: parsed.suggestedActions,
+          requestedRoll: parsed.requestedRoll,
+          handoutProposal: parsed.handoutProposal,
+          monsterAttack: parsed.monsterAttack,
+          monsterSpawns: parsed.monsterSpawns,
+          mapMoves: parsed.mapMoves,
+          defeatedMonsters: parsed.defeatedMonsters,
+          monsterDamage: parsed.monsterDamage,
+          lootReward: parsed.lootReward,
+        };
+      } catch (err: unknown) {
+        lastErr = err;
+        console.warn(`[Groq] Erro com modelo ${m}:`, err);
       }
+    }
 
-      const data = await response.json();
-      const rawText = data.choices?.[0]?.message?.content || 'O Mestre aguarda em silêncio...';
-      const parsed = parseAiResponse(rawText);
-
-      return {
-        id: `ai_groq_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        role: 'narrator',
-        content: parsed.cleanText,
-        timestamp: Date.now(),
-        suggestedActions: parsed.suggestedActions,
-        requestedRoll: parsed.requestedRoll,
-        handoutProposal: parsed.handoutProposal,
-        monsterAttack: parsed.monsterAttack,
-        monsterSpawns: parsed.monsterSpawns,
-        mapMoves: parsed.mapMoves,
-        defeatedMonsters: parsed.defeatedMonsters,
-        monsterDamage: parsed.monsterDamage,
-        lootReward: parsed.lootReward,
-      };
-    } catch (err: unknown) {
-      lastErr = err;
-      console.warn(`[Groq] Erro com modelo ${m}:`, err);
+    // Se nenhum dos modelos predefinidos funcionou, busca em tempo real os modelos ativos na conta do usuário
+    if (attempt === 0) {
+      const liveModels = await fetchActiveGroqModels(apiKey);
+      if (liveModels.length > 0) {
+        candidateModels = [pickBestGroqModel(liveModels), ...liveModels.slice(0, 3)];
+      }
     }
   }
 
@@ -1037,6 +1135,7 @@ INSTRUÇÕES:
   // Tenta Groq se ativo ou configurado
   if (provider === 'groq' && groqKey) {
     try {
+      const activeModel = getStoredGroqModel();
       const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -1044,7 +1143,7 @@ INSTRUÇÕES:
           Authorization: `Bearer ${groqKey}`,
         },
         body: JSON.stringify({
-          model: DEFAULT_GROQ_MODEL,
+          model: activeModel,
           messages: [{ role: 'user', content: prompt }],
           temperature: 0.7,
           max_tokens: 600,
@@ -1099,6 +1198,22 @@ export async function testAiApiKey(
       return { success: false, message: 'A chave da API Groq está vazia. Obtenha sua chave gratuita em console.groq.com/keys' };
     }
     try {
+      // 1. Descobre modelos disponíveis para esta chave na Groq
+      const activeModels = await fetchActiveGroqModels(apiKey);
+      if (activeModels.length === 0) {
+        const testAuth = await fetch('https://api.groq.com/openai/v1/models', {
+          headers: { Authorization: `Bearer ${apiKey.trim()}` },
+        });
+        if (testAuth.status === 401) {
+          return { success: false, message: 'Chave de API do Groq inválida. Crie uma chave gratuita em console.groq.com/keys.' };
+        }
+      }
+
+      // 2. Determina o melhor modelo ativo na conta do usuário
+      const targetModel = activeModels.length > 0
+        ? pickBestGroqModel(activeModels)
+        : (model && !model.includes('llama-3.3-70b-versatile') ? model : getStoredGroqModel());
+
       const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -1106,9 +1221,9 @@ export async function testAiApiKey(
           Authorization: `Bearer ${apiKey.trim()}`,
         },
         body: JSON.stringify({
-          model: model || DEFAULT_GROQ_MODEL,
+          model: targetModel,
           messages: [{ role: 'user', content: 'Diga apenas: "ArcanaSheet conectado!".' }],
-          max_tokens: 25,
+          max_completion_tokens: 25,
         }),
       });
 
@@ -1125,9 +1240,11 @@ export async function testAiApiKey(
 
       const data = await res.json();
       const reply = data.choices?.[0]?.message?.content || 'OK';
+      saveStoredGroqModel(targetModel);
+
       return { 
         success: true, 
-        message: `⚡ Conectado ao Groq (${model || DEFAULT_GROQ_MODEL}) com sucesso! Velocidade ultrarrápida ativa. Resposta: "${reply.trim()}"` 
+        message: `⚡ Conectado ao Groq (${targetModel}) com sucesso! Velocidade ultrarrápida ativa. Resposta: "${reply.trim()}"` 
       };
     } catch (err: unknown) {
       return { success: false, message: `Falha de rede ao conectar com a Groq: ${err instanceof Error ? err.message : String(err)}` };
@@ -1263,7 +1380,7 @@ Responda diretamente em português do Brasil com excelente diagramação em mark
           Authorization: `Bearer ${groqKey}`,
         },
         body: JSON.stringify({
-          model: DEFAULT_GROQ_MODEL,
+          model: getStoredGroqModel(),
           messages: [{ role: 'user', content: finalPrompt }],
           temperature: 0.85,
           max_tokens: 1000,

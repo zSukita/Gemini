@@ -441,7 +441,7 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
                     ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
                     : 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
                 }`}>
-                  {provider === 'groq' && '⚡ Groq (Llama 3.3)'}
+                  {provider === 'groq' && '⚡ Groq (Ultra-rápido)'}
                   {provider === 'pollinations' && '🌸 Modo Livre (Sem Chave)'}
                   {provider === 'gemini' && '✨ Google Gemini'}
                 </span>
@@ -1156,7 +1156,7 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
                   )}
 
                   <div className="text-[11px] text-emerald-200/90 leading-relaxed bg-emerald-950/20 p-2.5 rounded-lg border border-emerald-500/20">
-                    ⚡ <strong>Recomendado:</strong> A Groq processa o modelo Llama 3.3 70B com resposta instantânea (&lt;1s), sem limites de cota chatos e 100% gratuita.
+                    ⚡ <strong>Recomendado:</strong> A Groq processa modelos avançados em hardware LPU com resposta instantânea (&lt;1s), sem limites rígidos de cota e 100% gratuita.
                   </div>
                 </div>
               )}

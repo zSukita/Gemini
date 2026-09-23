@@ -172,12 +172,12 @@ export interface AiProviderOption {
 export const AI_PROVIDERS: AiProviderOption[] = [
   {
     id: 'groq',
-    name: 'Groq (Llama 3.3 70B)',
-    badge: 'Recomendado (Ultra-rápido < 1s)',
+    name: 'Groq (Ultra-rápido)',
+    badge: 'Recomendado (< 1s)',
     icon: '⚡',
-    description: 'Respostas em menos de 1 segundo com o modelo Llama 3.3 70B. 100% gratuito sem pedir cartão.',
-    model: 'llama-3.3-70b-versatile',
-    recommendedModel: 'llama-3.3-70b-versatile',
+    description: 'Respostas instantâneas (< 1s) em chips LPU dedicados. 100% gratuito sem pedir cartão.',
+    model: 'openai/gpt-oss-120b',
+    recommendedModel: 'openai/gpt-oss-120b',
     requiresKey: true,
     keyUrl: 'https://console.groq.com/keys',
     keyLabel: 'Obter Chave Gratuita no console.groq.com',

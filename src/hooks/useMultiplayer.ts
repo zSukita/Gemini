@@ -413,6 +413,7 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
     roomCode,
     connectedPeers,
     chatLog,
+    setChatLog,
     createRoom,
     joinRoom,
     disconnect,

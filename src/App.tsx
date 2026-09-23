@@ -55,10 +55,10 @@ import { HandoutModal } from './components/dm/HandoutModal';
 import { HandoutViewerModal } from './components/HandoutViewerModal';
 import { AiDungeonMasterModal } from './components/ai/AiDungeonMasterModal';
 import { EndSessionModal } from './components/vtt/EndSessionModal';
-import { getStoredApiKey, sendToAiDungeonMaster, clearStoredChatHistory } from './services/geminiService';
+import { getStoredApiKey, sendToAiDungeonMaster, clearStoredChatHistory, saveStoredChatHistory } from './services/geminiService';
 import type { AiMessage, MonsterAttackAction } from './types/aiDm';
 import type { Combatant, Monster } from './types/combat';
-import type { ChatMessageType } from './types/chat';
+import type { ChatMessage, ChatMessageType } from './types/chat';
 import {
   type CampaignHandout,
   type CampaignPartyMember,
@@ -407,6 +407,7 @@ export function App() {
     roomCode,
     connectedPeers,
     chatLog,
+    setChatLog,
     createRoom,
     joinRoom,
     disconnect,
@@ -892,6 +893,106 @@ export function App() {
       importPlayerCharacters,
       addMonsterCombatant,
       sendChatMessage,
+      showNotification,
+    ]
+  );
+
+  // Transferir Crônica da Aventura Solo do Modal para o Mapa Tático (VTT)
+  const handleOpenVttFromAiDm = useCallback(
+    (history: AiMessage[]) => {
+      if (history.length > 0) {
+        const converted: ChatMessage[] = history.map((aiMsg, index) => ({
+          id: aiMsg.id || `chat-from-aidm-${Date.now()}-${index}`,
+          senderId: aiMsg.role === 'player' ? (character.id || 'player') : 'ai_dm',
+          senderName: aiMsg.role === 'player' ? (character.name || 'Herói') : '✨ Mestre Supremo (IA)',
+          text: aiMsg.content,
+          type: aiMsg.role === 'player' ? 'PUBLIC' : 'AI_DM',
+          suggestedActions: aiMsg.suggestedActions,
+          requestedRoll: aiMsg.requestedRoll,
+          monsterSpawns: aiMsg.monsterSpawns,
+          mapMoves: aiMsg.mapMoves,
+          timestamp: aiMsg.timestamp || Date.now(),
+        }));
+        setChatLog(converted);
+      }
+
+      setIsAiDmOpen(false);
+      setCurrentMode('vtt');
+      showNotification('🗺️ Aventura Solo transferida para o Mapa Tático! O Mestre IA continuará narrando pelo chat.');
+    },
+    [character.id, character.name, setChatLog, showNotification]
+  );
+
+  // Iniciar Aventura Solo Diretamente no Mapa Tático (VTT)
+  const handleStartSoloAdventureOnMap = useCallback(
+    (scenario: AiAdventureScenario, customPrompt?: string) => {
+      // 1. Carrega o preset do mapa tático correspondente
+      const targetPreset =
+        DEFAULT_MAP_PRESETS.find((p) => p.id === scenario.mapPresetId) ||
+        DEFAULT_MAP_PRESETS[0];
+      if (targetPreset) {
+        selectMapPreset(targetPreset);
+      }
+
+      // 2. Atualiza iluminação ambiente e névoa
+      updateMapConfig({
+        ambientLight: scenario.ambientLight,
+        fogOfWarEnabled: false,
+      });
+
+      // 3. Reinicia encontro e insere o personagem ativo
+      resetEncounter();
+      importPlayerCharacters([character]);
+
+      // 4. Adiciona os monstros do cenário ao encontro e tokens do mapa
+      scenario.monsters.forEach((m) => {
+        const mon = SRD_MONSTERS.find((s) => s.id === m.monsterId);
+        if (mon) {
+          addMonsterCombatant(mon, m.count);
+        }
+      });
+
+      // 5. Monta o prólogo narrativo da IA
+      const prologueText = customPrompt?.trim()
+        ? `📜 **Prólogo da Aventura Solo: ${scenario.title}**\n\n${customPrompt}\n\nO Mestre Supremo (IA) aguarda as suas ações no mapa tático!`
+        : `📜 **Prólogo da Aventura Solo: ${scenario.title}**\n\n${scenario.initialPrompt}`;
+
+      const prologueMsg: ChatMessage = {
+        id: `prologue_${Date.now()}`,
+        senderId: 'ai_dm',
+        senderName: '✨ Mestre Supremo (IA)',
+        text: prologueText,
+        type: 'AI_DM',
+        suggestedActions: scenario.suggestedActions,
+        requestedRoll: scenario.requestedRoll,
+        timestamp: Date.now(),
+      };
+
+      setChatLog([prologueMsg]);
+      saveStoredChatHistory([
+        {
+          id: prologueMsg.id,
+          role: 'narrator',
+          content: prologueMsg.text,
+          timestamp: prologueMsg.timestamp,
+          suggestedActions: prologueMsg.suggestedActions,
+          requestedRoll: prologueMsg.requestedRoll,
+        },
+      ]);
+
+      // 6. Transiciona para a tela do VTT e fecha modais
+      setIsAiDmOpen(false);
+      setCurrentMode('vtt');
+      showNotification(`🗺️ Aventura "${scenario.title}" iniciada no Mapa Tático com o Mestre IA!`);
+    },
+    [
+      character,
+      selectMapPreset,
+      updateMapConfig,
+      resetEncounter,
+      importPlayerCharacters,
+      addMonsterCombatant,
+      setChatLog,
       showNotification,
     ]
   );
@@ -1658,6 +1759,7 @@ export function App() {
         isSocialOpen={isSocialSidebarOpen}
         onToggleSocial={handleToggleSocialSidebar}
         onlineUsersCount={onlineUsers.filter((u) => u.userId !== (user?.uid || 'local_user')).length}
+        friendsCount={friends.length}
         currentTheme={currentTheme}
         onSelectTheme={handleThemeChange}
         onOpenMultiplayer={() => setIsMultiplayerOpen(true)}
@@ -1955,6 +2057,7 @@ export function App() {
             onOpenCharacterSheet={() => setCurrentMode('player')}
             onOpenMusicPlayer={() => setIsMusicPlayerOpen(true)}
             onOpenEndSessionModal={() => setIsEndSessionOpen(true)}
+            onStartScenario={handleStartSoloAdventureOnMap}
           />
         </div>
       )}
@@ -2239,6 +2342,8 @@ export function App() {
           sendChatMessage(msg, '✨ Mestre Supremo (IA)');
           showNotification('Narração do Mestre IA transmitida para a mesa online!');
         }}
+        onOpenVttWithAdventure={handleOpenVttFromAiDm}
+        onStartSoloAdventureOnMap={handleStartSoloAdventureOnMap}
       />
 
       {/* Modal do Bestiário de Monstros */}

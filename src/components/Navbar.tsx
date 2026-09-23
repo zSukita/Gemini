@@ -37,6 +37,7 @@ interface NavbarProps {
   isSocialOpen?: boolean;
   onToggleSocial?: () => void;
   onlineUsersCount?: number;
+  friendsCount?: number;
   currentTheme: ThemeId;
   onSelectTheme: (theme: ThemeId) => void;
   onOpenMultiplayer: () => void;
@@ -70,6 +71,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   isSocialOpen = false,
   onToggleSocial,
   onlineUsersCount,
+  friendsCount,
   currentTheme,
   onSelectTheme,
   onOpenMultiplayer,
@@ -132,7 +134,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       )}
 
       {/* Seletor de Modos (Ficha, Mestre, Mapa) + Sala Online + Dual Monitor */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap xl:flex-nowrap">
         {/* Alternador de 3 Modos */}
         <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
           <button
@@ -220,108 +222,114 @@ export const Navbar: React.FC<NavbarProps> = ({
           <button
             type="button"
             onClick={onToggleSocial}
-            className={`p-2 rounded-xl border transition shadow-sm flex items-center gap-1.5 ${
+            className={`p-2 rounded-xl border transition shadow-sm flex items-center gap-1.5 cursor-pointer ${
               isSocialOpen
-                ? 'bg-amber-950/80 border-amber-500/60 text-amber-300'
+                ? 'bg-amber-950/80 border-amber-500/60 text-amber-300 ring-1 ring-amber-500/40'
                 : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700 hover:border-amber-500/40'
             }`}
             title="Comunidade: Quem está Online no Site & Lista de Amigos"
           >
-            <Users size={14} className="text-amber-400" />
+            <Users size={14} className={isSocialOpen ? 'text-amber-300' : 'text-amber-400'} />
             <span className="hidden sm:inline text-xs font-bold">
-              Amigos{onlineUsersCount !== undefined && onlineUsersCount > 0 ? ` (${onlineUsersCount})` : ''}
+              Amigos{friendsCount !== undefined && friendsCount > 0 ? ` (${friendsCount})` : ''}
             </span>
+            {onlineUsersCount !== undefined && onlineUsersCount > 0 && (
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" title={`${onlineUsersCount} online agora`} />
+            )}
           </button>
         )}
 
-        {/* Botão de Chat Tático */}
-        {onToggleChat && (
-          <button
-            type="button"
-            onClick={onToggleChat}
-            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30 transition shadow-sm relative"
-            title="Abrir Chat Tático e Rolagens da Sessão"
-          >
-            <MessageSquare size={14} />
-          </button>
-        )}
-
-        {/* Botão de Impressão / Salvar PDF */}
-        {onOpenPrint && (
-          <button
-            type="button"
-            onClick={onOpenPrint}
-            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 transition shadow-sm"
-            title="Imprimir Ficha ou Salvar em PDF"
-          >
-            <Printer size={14} />
-          </button>
-        )}
-
-        {/* Reprodutor de Trilha Sonora Mini */}
-        {onOpenMusicPlayer && (
-          <SoundtrackMiniPlayer onOpenFullModal={onOpenMusicPlayer} />
-        )}
-
-        {/* Menu Seletor de Temas Visuais */}
-        <div className="relative z-50" ref={themeMenuRef}>
-          <button
-            type="button"
-            onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
-            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 border border-amber-500/30 transition shadow-sm flex items-center gap-1"
-            title="Mudar Tema Visual da Interface"
-          >
-            <Palette size={14} />
-          </button>
-
-          {isThemeMenuOpen && (
-            <div className="absolute right-0 top-full mt-2 w-56 bg-slate-900 border border-amber-500/50 rounded-xl shadow-2xl p-1.5 z-50 backdrop-blur-xl animate-in fade-in zoom-in-95 ring-1 ring-amber-500/30">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2.5 py-1.5 border-b border-slate-800 mb-1 flex items-center gap-1.5">
-                <Palette size={12} className="text-amber-400" />
-                <span>Temas Visuais</span>
-              </div>
-              <div className="space-y-1">
-                {THEME_OPTIONS.map((theme) => {
-                  const isSelected = currentTheme === theme.id;
-                  return (
-                    <button
-                      key={theme.id}
-                      type="button"
-                      onClick={() => {
-                        onSelectTheme(theme.id);
-                        setIsThemeMenuOpen(false);
-                      }}
-                      className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition ${
-                        isSelected
-                          ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40'
-                          : 'text-slate-300 hover:bg-slate-800'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className={`w-3 h-3 rounded-full ${theme.iconColor} shadow-xs border border-white/20`} />
-                        <div>
-                          <p className="leading-none">{theme.label}</p>
-                          <span className="text-[9px] text-slate-400 block mt-0.5">{theme.desc}</span>
-                        </div>
-                      </div>
-                      {isSelected && <Check size={13} className="text-amber-400" />}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+        {/* Barra de Ferramentas Rápidas (Chat, Impressão, Música, Temas, Tela Dupla) */}
+        <div className="flex items-center gap-1 bg-slate-950/70 p-1 rounded-xl border border-slate-800 shrink-0">
+          {/* Botão de Chat Tático */}
+          {onToggleChat && (
+            <button
+              type="button"
+              onClick={onToggleChat}
+              className="p-1.5 rounded-lg hover:bg-slate-800 text-indigo-300 transition relative cursor-pointer"
+              title="Abrir Chat Tático e Rolagens da Sessão"
+            >
+              <MessageSquare size={14} />
+            </button>
           )}
-        </div>
 
-        {/* Botão Dual Screen (Abrir Segunda Janela) */}
-        <button
-          type="button"
-          onClick={handleOpenSecondWindow}
-          className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
-          title="Abrir em nova janela (ideal para 2 monitores: mapa em uma tela, ficha na outra)"
-        >
-          <ExternalLink size={14} />
-        </button>
+          {/* Botão de Impressão / Salvar PDF */}
+          {onOpenPrint && (
+            <button
+              type="button"
+              onClick={onOpenPrint}
+              className="p-1.5 rounded-lg hover:bg-slate-800 text-amber-300 transition cursor-pointer"
+              title="Imprimir Ficha ou Salvar em PDF"
+            >
+              <Printer size={14} />
+            </button>
+          )}
+
+          {/* Reprodutor de Trilha Sonora Mini */}
+          {onOpenMusicPlayer && (
+            <SoundtrackMiniPlayer onOpenFullModal={onOpenMusicPlayer} />
+          )}
+
+          {/* Menu Seletor de Temas Visuais */}
+          <div className="relative z-50" ref={themeMenuRef}>
+            <button
+              type="button"
+              onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
+              className="p-1.5 rounded-lg hover:bg-slate-800 text-amber-400 transition flex items-center justify-center cursor-pointer"
+              title="Mudar Tema Visual da Interface"
+            >
+              <Palette size={14} />
+            </button>
+
+            {isThemeMenuOpen && (
+              <div className="absolute right-0 top-full mt-2 w-56 bg-slate-900 border border-amber-500/50 rounded-xl shadow-2xl p-1.5 z-50 backdrop-blur-xl animate-in fade-in zoom-in-95 ring-1 ring-amber-500/30">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2.5 py-1.5 border-b border-slate-800 mb-1 flex items-center gap-1.5">
+                  <Palette size={12} className="text-amber-400" />
+                  <span>Temas Visuais</span>
+                </div>
+                <div className="space-y-1">
+                  {THEME_OPTIONS.map((theme) => {
+                    const isSelected = currentTheme === theme.id;
+                    return (
+                      <button
+                        key={theme.id}
+                        type="button"
+                        onClick={() => {
+                          onSelectTheme(theme.id);
+                          setIsThemeMenuOpen(false);
+                        }}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition cursor-pointer ${
+                          isSelected
+                            ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40'
+                            : 'text-slate-300 hover:bg-slate-800'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className={`w-3 h-3 rounded-full ${theme.iconColor} shadow-xs border border-white/20`} />
+                          <div>
+                            <p className="leading-none">{theme.label}</p>
+                            <span className="text-[9px] text-slate-400 block mt-0.5">{theme.desc}</span>
+                          </div>
+                        </div>
+                        {isSelected && <Check size={13} className="text-amber-400" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Botão Dual Screen (Abrir Segunda Janela) */}
+          <button
+            type="button"
+            onClick={handleOpenSecondWindow}
+            className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-300 transition cursor-pointer"
+            title="Abrir em nova janela (ideal para 2 monitores: mapa em uma tela, ficha na outra)"
+          >
+            <ExternalLink size={14} />
+          </button>
+        </div>
 
         {/* Info do Usuário + Sair */}
         {userName && onLogout && (

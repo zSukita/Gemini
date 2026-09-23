@@ -25,6 +25,7 @@ import {
   ChevronUp,
   Flag
 } from 'lucide-react';
+import type { AiAdventureScenario } from '../../data/aiAdventureScenarios';
 
 interface TabletopSessionViewProps {
   character: Character;
@@ -105,6 +106,7 @@ interface TabletopSessionViewProps {
   onOpenCharacterSheet?: () => void;
   onOpenMusicPlayer?: () => void;
   onOpenEndSessionModal?: () => void;
+  onStartScenario?: (scenario: AiAdventureScenario) => void;
 }
 
 export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
@@ -161,6 +163,7 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
   onOpenCharacterSheet,
   onOpenMusicPlayer,
   onOpenEndSessionModal,
+  onStartScenario,
 }) => {
   // Alternância entre Visão Completa da Mesa e Modo Foco no Mapa
   const [isMapFocusOnly, setIsMapFocusOnly] = useState(false);
@@ -447,6 +450,7 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
               encounter={encounter}
               onHpDelta={onHpDelta}
               onOpenEndSessionModal={onOpenEndSessionModal}
+              onStartScenario={onStartScenario}
               onSendMessage={onSendMessage}
             />
           </div>

@@ -41,10 +41,11 @@ import {
   CheckCircle2,
   AlertTriangle,
   Wand2,
-  ChevronRight,
-  Wifi
+  Wifi,
+  Map
 } from 'lucide-react';
 import type { ChatMessageType } from '../../types/chat';
+import { AI_ADVENTURE_SCENARIOS, type AiAdventureScenario } from '../../data/aiAdventureScenarios';
 
 interface AiDungeonMasterModalProps {
   isOpen: boolean;
@@ -60,6 +61,8 @@ interface AiDungeonMasterModalProps {
     suggestedActions?: string[];
     requestedRoll?: { skillOrAbility: string; dc?: number; reason: string };
   }) => void;
+  onOpenVttWithAdventure?: (history: AiMessage[]) => void;
+  onStartSoloAdventureOnMap?: (scenario: AiAdventureScenario, customPrompt?: string) => void;
 }
 
 type TabType = 'adventure' | 'oracle' | 'settings';
@@ -71,6 +74,8 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
   onTransmitHandout,
   onSaveNpcToJournal,
   onBroadcastToRoom,
+  onOpenVttWithAdventure,
+  onStartSoloAdventureOnMap,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('adventure');
   const [autoBroadcastToRoom, setAutoBroadcastToRoom] = useState(false);
@@ -362,6 +367,14 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
     }
   };
 
+  const getScenarioForPremise = (premiseId: string): AiAdventureScenario => {
+    if (premiseId === 'tavern_ambush') return AI_ADVENTURE_SCENARIOS.find((s) => s.id === 'tavern_brawl') || AI_ADVENTURE_SCENARIOS[2];
+    if (premiseId === 'abandoned_mine') return AI_ADVENTURE_SCENARIOS.find((s) => s.id === 'crystal_cavern') || AI_ADVENTURE_SCENARIOS[3];
+    if (premiseId === 'shadow_manor') return AI_ADVENTURE_SCENARIOS.find((s) => s.id === 'crypt_ancestors') || AI_ADVENTURE_SCENARIOS[0];
+    if (premiseId === 'whispering_woods') return AI_ADVENTURE_SCENARIOS.find((s) => s.id === 'forest_ambush') || AI_ADVENTURE_SCENARIOS[1];
+    return AI_ADVENTURE_SCENARIOS[0];
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in">
       <div className="w-full max-w-5xl h-[92vh] max-h-[850px] bg-slate-900 border-2 border-amber-500/50 rounded-2xl shadow-2xl flex flex-col overflow-hidden relative">
@@ -435,6 +448,19 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
               </button>
             </div>
 
+            {onOpenVttWithAdventure && history.length > 0 && (
+              <button
+                type="button"
+                onClick={() => onOpenVttWithAdventure(history)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md shadow-amber-500/20 cursor-pointer"
+                title="Continuar esta aventura diretamente no Mapa Tático com miniaturas e dados 3D"
+              >
+                <Map size={14} />
+                <span className="hidden sm:inline">Abrir no</span>
+                <span>Mapa Tático (VTT)</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={onClose}
@@ -496,9 +522,24 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
                             {premise.subtitle}
                           </p>
                         </div>
-                        <div className="pt-4 flex items-center justify-between text-xs font-bold text-amber-400 group-hover:translate-x-1 transition">
-                          <span>Entrar nesta aventura</span>
-                          <ChevronRight size={16} />
+                        <div className="pt-4 flex items-center justify-between gap-2 border-t border-slate-800/80 mt-3">
+                          <span className="text-xs font-bold text-slate-400 group-hover:text-amber-300 transition flex items-center gap-1">
+                            <span>📜 Apenas Texto</span>
+                          </span>
+                          {onStartSoloAdventureOnMap && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onStartSoloAdventureOnMap(getScenarioForPremise(premise.id));
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                              title="Iniciar com Mapa Tático, miniaturas e dados 3D"
+                            >
+                              <Map size={13} />
+                              <span>Jogar no Mapa</span>
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -525,10 +566,23 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
                         type="button"
                         onClick={handleStartCustomPremise}
                         disabled={!customPremiseText.trim()}
-                        className="px-4 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold text-xs rounded-xl transition shadow-md"
+                        className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 font-bold text-xs rounded-xl transition border border-slate-700"
+                        title="Iniciar apenas em texto nesta janela"
                       >
-                        Iniciar
+                        Iniciar (Texto)
                       </button>
+                      {onStartSoloAdventureOnMap && (
+                        <button
+                          type="button"
+                          onClick={() => onStartSoloAdventureOnMap(AI_ADVENTURE_SCENARIOS[0], customPremiseText)}
+                          disabled={!customPremiseText.trim()}
+                          className="px-4 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold text-xs rounded-xl transition shadow-md flex items-center gap-1.5 cursor-pointer"
+                          title="Iniciar com Mapa Tático e miniaturas"
+                        >
+                          <Map size={14} />
+                          <span>Iniciar no Mapa</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -544,6 +598,18 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
                     </div>
 
                     <div className="flex items-center gap-2">
+                      {onOpenVttWithAdventure && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenVttWithAdventure(history)}
+                          className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold transition flex items-center gap-1.5 text-[11px] shadow-sm shadow-amber-500/20 cursor-pointer"
+                          title="Continuar esta crônica diretamente no Mapa Tático com miniaturas e dados 3D"
+                        >
+                          <Map size={12} className="shrink-0" />
+                          <span>🗺️ Jogar no Mapa Tático</span>
+                        </button>
+                      )}
+
                       {onBroadcastToRoom && (
                         <button
                           type="button"

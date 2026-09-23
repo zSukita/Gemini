@@ -5,7 +5,6 @@ import {
   Swords,
   User,
   Check,
-  ChevronRight,
   ChevronLeft,
   X,
   Heart,
@@ -36,6 +35,7 @@ interface SocialSidebarProps {
   currentRoomCode?: string;
   connectedPeers?: PeerUser[];
   directMessages?: DirectMessage[];
+  initialTab?: 'online' | 'friends' | 'messages';
   onAddFriend: (identifier: string) => Promise<{ success: boolean; message: string }>;
   onRemoveFriend: (friendUserId: string) => Promise<void>;
   onSendGameInvite: (friendUserId: string, friendName: string, roomCode: string) => Promise<{ ok: boolean }>;
@@ -55,6 +55,7 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
   currentRoomCode,
   connectedPeers = [],
   directMessages,
+  initialTab,
   onAddFriend,
   onRemoveFriend,
   onSendGameInvite,
@@ -63,7 +64,7 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
   onCreateAndInvite,
   onJoinRoom,
 }) => {
-  const [activeTab, setActiveTab] = useState<'online' | 'friends' | 'messages'>('online');
+  const [activeTab, setActiveTab] = useState<'online' | 'friends' | 'messages'>(initialTab || 'friends');
   const [activeChatPartner, setActiveChatPartner] = useState<{
     userId: string;
     name: string;
@@ -76,6 +77,23 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
   const [addFeedback, setAddFeedback] = useState<{ msg: string; isError?: boolean } | null>(null);
   const [isSubmittingFriend, setIsSubmittingFriend] = useState(false);
   const [invitedFriends, setInvitedFriends] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onToggle();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onToggle]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -335,12 +353,12 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
   // Se a barra estiver recolhida (minimizado na lateral direita)
   if (!isOpen) {
     return (
-      <div className="fixed top-28 right-0 z-50 hidden xl:flex flex-col items-center">
+      <div className="fixed top-24 right-0 z-50 hidden xl:flex flex-col items-center">
         <button
           type="button"
           onClick={onToggle}
-          className="bg-slate-900/95 hover:bg-slate-800 text-amber-300 border-l border-y border-amber-500/40 p-2.5 rounded-l-2xl shadow-2xl backdrop-blur-md flex flex-col items-center gap-2 transition hover:scale-105 group"
-          title="Abrir Lista de Pessoas Online, Amigos e Mensagens"
+          className="bg-slate-900/95 hover:bg-slate-800 text-amber-300 border-l border-y border-amber-500/40 p-2.5 rounded-l-2xl shadow-2xl backdrop-blur-md flex flex-col items-center gap-2 transition hover:scale-105 group cursor-pointer"
+          title="Abrir Lista de Amigos e Comunidade Online"
         >
           <ChevronLeft size={16} className="text-amber-400 group-hover:-translate-x-0.5 transition" />
           <div className="relative">
@@ -354,7 +372,7 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
             ) : null}
           </div>
           <span className="[writing-mode:vertical-rl] text-[10px] font-serif font-bold uppercase tracking-wider text-amber-200">
-            Social ({otherOnlineUsers.length})
+            Amigos {friends.length > 0 ? `(${friends.length})` : ''}
           </span>
         </button>
       </div>
@@ -362,34 +380,41 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
   }
 
   return (
-    <aside className="fixed top-20 right-3 bottom-20 w-80 max-w-[92vw] z-50 flex flex-col bg-slate-950/95 border border-amber-500/40 rounded-2xl shadow-2xl backdrop-blur-md text-slate-100 overflow-hidden animate-in slide-in-from-right-4 duration-200">
-      
-      {/* 1. Cabeçalho da Barra Lateral */}
-      <div className="px-3.5 py-3 border-b border-slate-800 bg-gradient-to-r from-slate-900 via-amber-950/20 to-slate-900 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center text-slate-950 font-bold shadow-sm shrink-0">
-            <Users size={15} />
-          </div>
-          <div>
-            <h3 className="font-serif font-bold text-xs text-amber-200 leading-tight">
-              Comunidade Arcana
-            </h3>
-            <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-mono">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              {currentUserName || 'Você'}
-            </span>
-          </div>
-        </div>
+    <>
+      {/* Backdrop para fechar ao clicar fora em telas menores */}
+      <div
+        className="fixed inset-0 bg-black/60 z-45 lg:hidden backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
+        onClick={onToggle}
+      />
 
-        <button
-          type="button"
-          onClick={onToggle}
-          className="text-slate-400 hover:text-slate-200 p-1 rounded-lg hover:bg-slate-800 transition"
-          title="Recolher barra lateral"
-        >
-          <ChevronRight size={16} />
-        </button>
-      </div>
+      <aside className="fixed top-0 right-0 bottom-0 h-screen w-88 sm:w-92 max-w-[95vw] z-50 flex flex-col bg-slate-950/98 border-l border-amber-500/40 shadow-2xl backdrop-blur-xl text-slate-100 overflow-hidden animate-in slide-in-from-right duration-200">
+        
+        {/* 1. Cabeçalho da Barra Lateral */}
+        <div className="px-4 py-3.5 border-b border-slate-800 bg-gradient-to-r from-slate-900 via-amber-950/20 to-slate-900 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center text-slate-950 font-bold shadow-md shadow-amber-500/20 shrink-0">
+              <Users size={16} />
+            </div>
+            <div>
+              <h3 className="font-serif font-bold text-sm text-amber-200 leading-tight">
+                Comunidade Arcana
+              </h3>
+              <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-mono">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                {currentUserName || 'Você'}
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onToggle}
+            className="p-1.5 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-slate-800/80 transition flex items-center justify-center cursor-pointer"
+            title="Fechar barra lateral (Esc)"
+          >
+            <X size={18} />
+          </button>
+        </div>
 
       {/* TELA DE CHAT ATIVO COM UM USUÁRIO */}
       {activeChatPartner ? (
@@ -512,15 +537,28 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
         </div>
       ) : (
         <>
-          {/* 2. Seletor de Abas: Online Agora vs Amigos vs Mensagens */}
-          <div className="flex p-1 bg-slate-950 border-b border-slate-800/80 gap-1 shrink-0">
+          {/* 2. Seletor de Abas: Amigos vs Online vs Chat */}
+          <div className="flex p-1.5 bg-slate-950 border-b border-slate-800/80 gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => setActiveTab('friends')}
+              className={`flex-1 py-2 px-1.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                activeTab === 'friends'
+                  ? 'bg-amber-950/80 border border-amber-500/50 text-amber-200 shadow-sm shadow-amber-950/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+              }`}
+            >
+              <Heart size={12} className={activeTab === 'friends' ? 'text-rose-400 fill-rose-400 shrink-0' : 'text-slate-400 shrink-0'} />
+              <span className="truncate">Amigos ({friends.length})</span>
+            </button>
+
             <button
               type="button"
               onClick={() => setActiveTab('online')}
-              className={`flex-1 py-1.5 px-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 ${
+              className={`flex-1 py-2 px-1.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
                 activeTab === 'online'
-                  ? 'bg-emerald-950/80 border border-emerald-500/40 text-emerald-200 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-emerald-950/80 border border-emerald-500/50 text-emerald-200 shadow-sm shadow-emerald-950/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
               }`}
             >
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
@@ -529,30 +567,17 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
 
             <button
               type="button"
-              onClick={() => setActiveTab('friends')}
-              className={`flex-1 py-1.5 px-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 ${
-                activeTab === 'friends'
-                  ? 'bg-amber-950/80 border border-amber-500/40 text-amber-200 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Heart size={11} className={activeTab === 'friends' ? 'text-rose-400 fill-rose-400 shrink-0' : 'text-slate-400 shrink-0'} />
-              <span className="truncate">Amigos ({friends.length})</span>
-            </button>
-
-            <button
-              type="button"
               onClick={() => setActiveTab('messages')}
-              className={`flex-1 py-1.5 px-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 relative ${
+              className={`flex-1 py-2 px-1.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 relative cursor-pointer ${
                 activeTab === 'messages'
-                  ? 'bg-purple-950/80 border border-purple-500/40 text-purple-200 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-purple-950/80 border border-purple-500/50 text-purple-200 shadow-sm shadow-purple-950/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
               }`}
             >
-              <MessageSquare size={11} className={activeTab === 'messages' ? 'text-purple-300 shrink-0' : 'text-slate-400 shrink-0'} />
+              <MessageSquare size={12} className={activeTab === 'messages' ? 'text-purple-300 shrink-0' : 'text-slate-400 shrink-0'} />
               <span className="truncate">Chat</span>
               {totalUnreadCount > 0 && (
-                <span className="bg-rose-500 text-white text-[8px] font-bold px-1 rounded-full animate-pulse">
+                <span className="bg-rose-500 text-white text-[8px] font-bold px-1.5 py-0.2 rounded-full animate-pulse">
                   {totalUnreadCount}
                 </span>
               )}
@@ -991,5 +1016,6 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
       )}
 
     </aside>
+    </>
   );
 };

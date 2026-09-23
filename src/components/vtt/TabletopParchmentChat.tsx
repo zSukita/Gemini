@@ -13,8 +13,10 @@ import {
   ScrollText, 
   Loader2,
   ShieldAlert,
-  RotateCcw
+  RotateCcw,
+  Swords
 } from 'lucide-react';
+import { AI_ADVENTURE_SCENARIOS, type AiAdventureScenario } from '../../data/aiAdventureScenarios';
 
 interface TabletopParchmentChatProps {
   chatLog: ChatMessage[];
@@ -24,6 +26,7 @@ interface TabletopParchmentChatProps {
   encounter?: Encounter;
   onHpDelta?: (combatantId: string, delta: number) => void;
   onOpenEndSessionModal?: () => void;
+  onStartScenario?: (scenario: AiAdventureScenario) => void;
   onSendMessage: (
     textOrPayload:
       | string
@@ -50,6 +53,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
   encounter,
   onHpDelta,
   onOpenEndSessionModal,
+  onStartScenario,
   onSendMessage,
 }) => {
   const [inputText, setInputText] = useState('');
@@ -307,14 +311,51 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
       {/* Corpo do Log de Chat */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3 font-serif text-xs select-text">
         {chatLog.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-center p-6 text-amber-900/60 space-y-2">
-            <ScrollText size={32} className="opacity-40" />
-            <p className="italic text-sm">
-              As páginas deste tomo aguardam as façanhas do seu grupo.
-            </p>
-            <p className="text-[11px] font-sans">
-              Digite <code className="font-bold bg-amber-900/10 px-1.5 py-0.5 rounded">@mestre</code> abaixo para convocar a narrativa da IA.
-            </p>
+          <div className="h-full flex flex-col justify-start p-4 space-y-3.5 text-amber-950 overflow-y-auto">
+            <div className="text-center space-y-1 py-1.5 border-b border-amber-900/20">
+              <div className="inline-flex items-center justify-center p-2 rounded-full bg-amber-900/10 text-amber-900 mb-0.5">
+                <ScrollText size={22} />
+              </div>
+              <h3 className="font-serif font-black text-sm text-amber-950 uppercase tracking-wide">
+                Aventura Solo no Mapa Tático
+              </h3>
+              <p className="text-[11px] text-amber-900/80 leading-relaxed max-w-xs mx-auto">
+                Escolha um cenário para o Mestre IA carregar o mapa tático, posicionar as miniaturas e narrar o prólogo:
+              </p>
+            </div>
+
+            {onStartScenario && (
+              <div className="space-y-2">
+                {AI_ADVENTURE_SCENARIOS.map((scen) => (
+                  <button
+                    key={scen.id}
+                    type="button"
+                    onClick={() => onStartScenario(scen)}
+                    className="w-full text-left p-2.5 rounded-lg bg-amber-900/5 hover:bg-amber-900/15 border border-amber-900/20 hover:border-amber-900/40 transition group shadow-xs cursor-pointer flex flex-col gap-1"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-serif font-bold text-xs text-amber-950 group-hover:text-amber-900 flex items-center gap-1.5">
+                        <span className="text-base">{scen.icon}</span>
+                        <span>{scen.title}</span>
+                      </span>
+                      <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-amber-900/10 text-amber-900 border border-amber-900/20 flex items-center gap-1">
+                        <Swords size={10} />
+                        <span>Jogar</span>
+                      </span>
+                    </div>
+                    <p className="text-[10.5px] text-amber-900/70 line-clamp-2 leading-tight">
+                      {scen.subtitle}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="text-center pt-2 text-[11px] text-amber-900/60 space-y-1 border-t border-amber-900/10">
+              <p>
+                Ou digite <code className="font-bold bg-amber-900/10 px-1 py-0.5 rounded text-amber-950">@mestre</code> abaixo para iniciar uma história livre.
+              </p>
+            </div>
           </div>
         ) : (
           chatLog.map((msg) => {

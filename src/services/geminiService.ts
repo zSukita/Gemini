@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import type { Character } from '../types/dnd5e';
+import { type Character, SKILLS } from '../types/dnd5e';
 import type { 
   AiDmConfig, 
   AiMessage, 
@@ -143,7 +143,10 @@ export function buildSystemPrompt(character?: Character | null, tone: AdventureT
 
     const skillsProficient = Object.entries(character.skills || {})
       .filter(([, s]) => s.proficiency === 'proficient' || s.proficiency === 'expertise')
-      .map(([name, s]) => `${name}${s.proficiency === 'expertise' ? ' (Especialista)' : ''}`)
+      .map(([name, s]) => {
+        const ptName = SKILLS[name as keyof typeof SKILLS]?.name || name;
+        return `${ptName}${s.proficiency === 'expertise' ? ' (Especialista)' : ''}`;
+      })
       .join(', ') || 'Nenhuma declarada';
 
     const attacks = character.attacks?.map(a => `${a.name} (${a.attackBonus >= 0 ? `+${a.attackBonus}` : a.attackBonus}, dano: ${a.damage} ${a.damageType})`).join('; ') || 'Nenhum cadastrado';

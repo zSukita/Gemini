@@ -80,6 +80,7 @@ export interface BattleMapConfig {
 
 export type P2PMessageType =
   | 'ROOM_SYNC'
+  | 'REQUEST_ROOM_STATE'
   | 'PEER_LIST'
   | 'DICE_ROLL'
   | 'TOKEN_MOVE'
@@ -89,7 +90,9 @@ export type P2PMessageType =
   | 'MAP_CONFIG'
   | 'MAP_DRAWING'
   | 'MAP_PING'
-  | 'CHAT_MESSAGE';
+  | 'CHAT_MESSAGE'
+  | 'DIRECT_MESSAGE'
+  | 'GAME_INVITE';
 
 export interface P2PMessage {
   type: P2PMessageType;
@@ -104,4 +107,7 @@ export interface PeerUser {
   name: string;
   role: 'dm' | 'player';
   joinedAt: number;
+  avatarUrl?: string;
+  currentHp?: number;
+  maxHp?: number;
 }

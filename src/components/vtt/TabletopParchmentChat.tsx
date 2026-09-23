@@ -57,40 +57,79 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
 
   const handleRollRequested = (req: { skillOrAbility: string; dc?: number; reason: string }) => {
     let mod = 0;
-    if (character) {
-      const target = req.skillOrAbility.toLowerCase();
-      const profBonus = Math.floor(((character.level || 1) - 1) / 4) + 2;
+    const target = req.skillOrAbility.toLowerCase();
+    const formulaMatch = req.skillOrAbility.match(/(\d+d\d+(?:\s*[+-]\s*\d+)?)/i);
+    let formula = '';
+    let label = `Teste de ${req.skillOrAbility}`;
+    let isAttack = false;
+    let isDamage = false;
 
-      const skillEntry = Object.entries(SKILLS).find(
-        ([k, def]) => target.includes(k) || target.includes(def.name.toLowerCase())
-      ) as [SkillKey, { ability: AbilityKey; name: string }] | undefined;
-
-      if (skillEntry) {
-        const [skillKey, def] = skillEntry;
-        const abilityScore = character.abilities[def.ability]?.score ?? 10;
-        const abilityMod = Math.floor((abilityScore - 10) / 2);
-        const skillProf = character.skills?.[skillKey]?.proficiency ?? 'none';
-        mod = abilityMod + (skillProf === 'expertise' ? profBonus * 2 : skillProf === 'proficient' ? profBonus : 0);
+    if (formulaMatch && (target.includes('dano') || target.includes('damage') || target.includes('rolagem'))) {
+      // Pedido de dano com fórmula explícita (ex: 1d12+3, 2d6, 1d8)
+      formula = formulaMatch[1].replace(/\s+/g, '');
+      label = `Dano: ${req.skillOrAbility}`;
+      isDamage = true;
+    } else if (target.includes('ataque') || target.includes('attack') || target.includes('golpe')) {
+      isAttack = true;
+      const matchingAttack = character?.attacks?.find((a) => target.includes(a.name.toLowerCase()));
+      if (matchingAttack) {
+        mod = matchingAttack.attackBonus;
       } else {
-        const abilityEntry = Object.entries(ABILITIES).find(
-          ([k, def]) =>
-            target.includes(k) ||
-            target.includes(def.name.toLowerCase()) ||
-            target.includes(def.abbr.toLowerCase())
-        ) as [AbilityKey, { name: string; abbr: string }] | undefined;
-        if (abilityEntry) {
-          const abilityKey = abilityEntry[0];
-          const abilityScore = character.abilities[abilityKey]?.score ?? 10;
-          mod = Math.floor((abilityScore - 10) / 2);
+        const isDex = target.includes('destreza') || target.includes('dex') || target.includes('arco') || target.includes('adaga') || target.includes('rapieira');
+        const abilityScore = isDex ? (character?.abilities.dex?.score ?? 10) : (character?.abilities.str?.score ?? 10);
+        const abilityMod = Math.floor((abilityScore - 10) / 2);
+        const profBonus = Math.floor(((character?.level || 1) - 1) / 4) + 2;
+        mod = abilityMod + profBonus;
+      }
+      formula = mod === 0 ? '1d20' : mod > 0 ? `1d20+${mod}` : `1d20${mod}`;
+      label = `Ataque: ${req.skillOrAbility}`;
+    } else {
+      // Teste padrão de perícia ou atributo D&D 5e
+      if (character) {
+        const profBonus = Math.floor(((character.level || 1) - 1) / 4) + 2;
+
+        const skillEntry = Object.entries(SKILLS).find(
+          ([k, def]) => target.includes(k) || target.includes(def.name.toLowerCase())
+        ) as [SkillKey, { ability: AbilityKey; name: string }] | undefined;
+
+        if (skillEntry) {
+          const [skillKey, def] = skillEntry;
+          const abilityScore = character.abilities[def.ability]?.score ?? 10;
+          const abilityMod = Math.floor((abilityScore - 10) / 2);
+          const skillProf = character.skills?.[skillKey]?.proficiency ?? 'none';
+          mod = abilityMod + (skillProf === 'expertise' ? profBonus * 2 : skillProf === 'proficient' ? profBonus : 0);
+        } else {
+          const abilityEntry = Object.entries(ABILITIES).find(
+            ([k, def]) =>
+              target.includes(k) ||
+              target.includes(def.name.toLowerCase()) ||
+              target.includes(def.abbr.toLowerCase())
+          ) as [AbilityKey, { name: string; abbr: string }] | undefined;
+          if (abilityEntry) {
+            const abilityKey = abilityEntry[0];
+            const abilityScore = character.abilities[abilityKey]?.score ?? 10;
+            mod = Math.floor((abilityScore - 10) / 2);
+          }
         }
       }
+      formula = mod === 0 ? '1d20' : mod > 0 ? `1d20+${mod}` : `1d20${mod}`;
     }
 
-    const formula = mod === 0 ? '1d20' : mod > 0 ? `1d20+${mod}` : `1d20${mod}`;
-    const rollRes = rollFormula(formula, `Teste de ${req.skillOrAbility}`);
+    const rollRes = rollFormula(formula, label);
+    const dcInfo = req.dc ? ` (vs ${isAttack ? 'CA' : 'CD'} ${req.dc})` : '';
+
+    let promptText = '';
+    if (isAttack) {
+      promptText = `@mestre Ataque realizado com ${req.skillOrAbility}: [${rollRes.breakdown}] = ${rollRes.total}${dcInfo}. O ataque acertou o alvo?`;
+    } else if (isDamage) {
+      promptText = `@mestre Rolagem de dano: [${rollRes.breakdown}] = ${rollRes.total} de dano! Qual o efeito no alvo?`;
+    } else {
+      promptText = `@mestre Realizei o teste de ${req.skillOrAbility}: [${rollRes.breakdown}] = ${rollRes.total}${dcInfo}. Como a cena prossegue?`;
+    }
+
     onSendMessage(
       {
-        text: `@mestre Realizei o teste de ${req.skillOrAbility}: ${rollRes.breakdown} = ${rollRes.total}. Como o destino responde?`,
+        text: promptText,
         senderName: character?.name || currentUserName || 'Aventureiro',
         type: 'PUBLIC',
         diceRoll: rollRes,

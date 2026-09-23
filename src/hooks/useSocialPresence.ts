@@ -51,6 +51,7 @@ export function useSocialPresence({
       updateUserPresence({
         userId,
         name: userName,
+        email: user?.email || undefined,
         avatarUrl,
         characterName: character?.name,
         characterClass: character?.characterClass,
@@ -59,6 +60,9 @@ export function useSocialPresence({
         status: isConnectedRef.current && currentRoomRef.current ? 'in_game' : 'online',
         currentRoomCode: isConnectedRef.current ? currentRoomRef.current : undefined,
       });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('arcanasheet_presence_change'));
+      }
     };
 
     // Reporta imediatamente
@@ -77,7 +81,7 @@ export function useSocialPresence({
       clearInterval(interval);
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [userId, userName, avatarUrl, character?.name, character?.characterClass, character?.level]);
+  }, [userId, userName, user?.email, avatarUrl, character?.name, character?.characterClass, character?.level]);
 
   // 2. Escuta lista de usuários online em tempo real
   useEffect(() => {
@@ -99,16 +103,20 @@ export function useSocialPresence({
     return () => unsubscribe();
   }, [userId]);
 
-  // 4. Escuta convites de jogo recebidos
+  // 4. Escuta convites de jogo recebidos (por ID ou por Nome de Usuário)
   useEffect(() => {
     if (!userId) return;
 
-    const unsubscribe = subscribeToIncomingInvites(userId, (invites) => {
-      setPendingInvites(invites);
-    });
+    const unsubscribe = subscribeToIncomingInvites(
+      userId,
+      (invites) => {
+        setPendingInvites(invites);
+      },
+      userName
+    );
 
     return () => unsubscribe();
-  }, [userId]);
+  }, [userId, userName]);
 
   // Ação: Adicionar amigo por email, nome ou id
   const handleAddFriend = useCallback(
@@ -120,8 +128,9 @@ export function useSocialPresence({
       const matched = onlineUsers.find(
         (u) =>
           u.userId !== userId &&
-          (u.name.toLowerCase() === clean.toLowerCase() ||
-            u.characterName?.toLowerCase() === clean.toLowerCase())
+          ((u.name && u.name.toLowerCase() === clean.toLowerCase()) ||
+            (u.characterName && u.characterName.toLowerCase() === clean.toLowerCase()) ||
+            (u.email && u.email.toLowerCase() === clean.toLowerCase()))
       );
 
       let targetFriend: Omit<FriendUser, 'addedAt'>;
@@ -130,6 +139,7 @@ export function useSocialPresence({
         targetFriend = {
           userId: matched.userId,
           name: matched.characterName || matched.name,
+          email: matched.email,
           avatarUrl: matched.avatarUrl,
           characterName: matched.characterName,
           characterClass: matched.characterClass,
@@ -174,17 +184,32 @@ export function useSocialPresence({
         return { ok: false };
       }
 
+      // Se friendUserId for temporário (começa com friend_), tenta resolver o userId real nos usuários online
+      let finalToUserId = friendUserId;
+      if (friendUserId.startsWith('friend_')) {
+        const found = onlineUsers.find(
+          (u) =>
+            u.userId !== userId &&
+            ((u.name && u.name.toLowerCase() === friendName.toLowerCase()) ||
+              (u.characterName && u.characterName.toLowerCase() === friendName.toLowerCase()) ||
+              (u.email && u.email.toLowerCase() === friendName.toLowerCase()))
+        );
+        if (found) {
+          finalToUserId = found.userId;
+        }
+      }
+
       const inviteId = await sendGameInvite({
         fromUserId: userId,
         fromUserName: userName,
-        toUserId: friendUserId,
+        toUserId: finalToUserId,
         toUserName: friendName,
         roomCode: roomCodeToSend,
       });
 
       return { ok: true, inviteId };
     },
-    [userId, userName]
+    [userId, userName, onlineUsers]
   );
 
   // Ação: Aceitar convite de jogo

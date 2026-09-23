@@ -5,7 +5,7 @@ import { useBattleMap } from './hooks/useBattleMap';
 import { useMultiplayer } from './hooks/useMultiplayer';
 
 import type { AdvantageMode, DiceRollResult, Spell, ThemeId, CampaignNpc } from './types/dnd5e';
-import type { FogShape } from './types/vtt';
+import type { FogShape, MapToken, BattleMapConfig } from './types/vtt';
 import { rollD20, rollDie, rollFormula } from './utils/diceRoller';
 import { broadcastSyncMessage } from './utils/syncChannel';
 
@@ -55,9 +55,9 @@ import { HandoutModal } from './components/dm/HandoutModal';
 import { HandoutViewerModal } from './components/HandoutViewerModal';
 import { AiDungeonMasterModal } from './components/ai/AiDungeonMasterModal';
 import { EndSessionModal } from './components/vtt/EndSessionModal';
-import { getStoredApiKey, sendToAiDungeonMaster } from './services/geminiService';
+import { getStoredApiKey, sendToAiDungeonMaster, clearStoredChatHistory } from './services/geminiService';
 import type { AiMessage, MonsterAttackAction } from './types/aiDm';
-import type { Combatant } from './types/combat';
+import type { Combatant, Monster } from './types/combat';
 import type { ChatMessageType } from './types/chat';
 import {
   type CampaignHandout,
@@ -65,11 +65,9 @@ import {
   broadcastHandoutToCampaign,
   subscribeToCampaign,
 } from './firebase/campaignSync';
-import type { Monster } from './types/combat';
-import { DEFAULT_MAP_PRESETS } from './data/defaultMaps';
+import { DEFAULT_MAP_PRESETS, type DefaultMapPreset } from './data/defaultMaps';
 import { SRD_MONSTERS } from './data/srdMonsters';
 import { type AiAdventureScenario } from './data/aiAdventureScenarios';
-import type { MapToken } from './types/vtt';
 
 import { 
   Shield, 
@@ -140,6 +138,7 @@ export function App() {
 
   const {
     encounter,
+    setEncounter,
     addMonsterCombatant,
     importPlayerCharacters,
     addCustomCombatant,
@@ -323,7 +322,7 @@ export function App() {
     async (toUserId: string, toUserName: string, content: string) => {
       const myId = user?.uid || 'local_user';
       const myName = character.name || user?.displayName || 'Você';
-      await sendDirectMessage({
+      const sentMsg = await sendDirectMessage({
         fromUserId: myId,
         fromUserName: myName,
         fromAvatarUrl: character.avatarUrl,
@@ -331,6 +330,9 @@ export function App() {
         toUserName,
         content,
       });
+      if (sentMsg) {
+        setDirectMessages((prev) => (prev.some((m) => m.id === sentMsg.id) ? prev : [...prev, sentMsg]));
+      }
     },
     [user?.uid, user?.displayName, character.name, character.avatarUrl]
   );
@@ -367,7 +369,105 @@ export function App() {
     [isDiceAnimationEnabled]
   );
 
-  // Hook do Tabuleiro Tático / VTT
+  const [isAiResponding, setIsAiResponding] = useState(false);
+  const triggerAiDmRef = useRef<((promptText: string) => Promise<void>) | undefined>(undefined);
+  const executeAiMonsterAttackRef = useRef<((attack: MonsterAttackAction) => void) | undefined>(undefined);
+  const handleTriggerAiMonsterTurnRef = useRef<((combatant?: Combatant) => void) | undefined>(undefined);
+
+  const setTokensRef = useRef<React.Dispatch<React.SetStateAction<MapToken[]>> | null>(null);
+  const setMapConfigRef = useRef<React.Dispatch<React.SetStateAction<BattleMapConfig>> | null>(null);
+  const mapConfigRef = useRef<BattleMapConfig | null>(null);
+  const tokensRef = useRef<MapToken[]>([]);
+  const chatLogRef = useRef<any[]>([]);
+  const encounterRef = useRef(encounter);
+  encounterRef.current = encounter;
+
+  // Hook Multiplayer P2P WebRTC
+  const {
+    isConnected,
+    isConnecting,
+    isHost,
+    roomCode,
+    connectedPeers,
+    chatLog,
+    createRoom,
+    joinRoom,
+    disconnect,
+    clearChatLog,
+    broadcastDiceRoll,
+    broadcastTokenMove,
+    broadcastFogUpdate,
+    broadcastMapConfig,
+    broadcastRoomSync,
+    sendChatMessage,
+  } = useMultiplayer({
+    onRemoteDiceRoll: (roll) => {
+      addRollResult(roll);
+      showNotification(`Rolagem remota: ${roll.label} = ${roll.total}`);
+    },
+    onRemoteTokenMove: (remoteTokens) => {
+      setTokensRef.current?.(remoteTokens);
+    },
+    onRemoteFogUpdate: (shapes) => {
+      setMapConfigRef.current?.((prev) => ({ ...prev, revealedShapes: shapes }));
+    },
+    onRemoteMapConfig: (newConfig) => {
+      setMapConfigRef.current?.((prev) => ({ ...prev, ...newConfig }));
+    },
+    onRemoteRoomSync: (syncData) => {
+      if (syncData.mapConfig) {
+        setMapConfigRef.current?.(syncData.mapConfig);
+      }
+      if (syncData.tokens && Array.isArray(syncData.tokens)) {
+        setTokensRef.current?.(syncData.tokens);
+      }
+      if (syncData.encounter) {
+        setEncounter(syncData.encounter);
+      }
+      showNotification('🗺️ Mesa e mapa sincronizados com o Mestre!');
+    },
+    onRequestRoomState: (requesterPeerId) => {
+      if (isHost && mapConfigRef.current) {
+        broadcastRoomSync(
+          {
+            mapConfig: mapConfigRef.current,
+            tokens: tokensRef.current,
+            chatLog: chatLogRef.current,
+            encounter: encounterRef.current,
+          },
+          requesterPeerId
+        );
+      }
+    },
+    onRemoteDirectMessage: (dm) => {
+      setDirectMessages((prev) => (prev.some((m) => m.id === dm.id) ? prev : [...prev, dm]));
+      showNotification(
+        `💬 Mensagem de ${dm.fromUserName}: "${dm.content.substring(0, 35)}${
+          dm.content.length > 35 ? '...' : ''
+        }"`
+      );
+    },
+    onRemoteChatMessage: (remoteMsg, rawPayload) => {
+      // Se for o Host da sala e o remetente não tiver processado a IA localmente
+      if (isHost && remoteMsg.type === 'PUBLIC' && rawPayload?.aiHandledBySender !== true) {
+        const trimmed = remoteMsg.text.trim();
+        const isAiCommand =
+          trimmed.startsWith('@mestre') ||
+          trimmed.startsWith('/mestre') ||
+          trimmed.startsWith('/ia') ||
+          trimmed.startsWith('@ia') ||
+          trimmed.startsWith('@dm');
+        if (isAiCommand) {
+          const cleanPrompt =
+            trimmed.replace(/^(@mestre|\/mestre|\/ia|@ia|@dm)\s*/i, '').trim() ||
+            'Os aventureiros olham ao redor aguardando suas palavras. O que acontece agora? Descreva o ambiente e sugira opções de ação.';
+          triggerAiDmRef.current?.(cleanPrompt);
+        }
+      }
+    },
+  });
+
+  // Hook do Tabuleiro Tático / VTT sincronizado com o jogador local e todos os pares conectados
   const {
     mapConfig,
     setMapConfig,
@@ -391,58 +491,13 @@ export function App() {
     addFogShape,
     resetFog,
     revealAllFog,
-  } = useBattleMap(encounter);
+  } = useBattleMap(encounter, character, connectedPeers);
 
-  const [isAiResponding, setIsAiResponding] = useState(false);
-  const triggerAiDmRef = useRef<((promptText: string) => Promise<void>) | undefined>(undefined);
-  const executeAiMonsterAttackRef = useRef<((attack: MonsterAttackAction) => void) | undefined>(undefined);
-  const handleTriggerAiMonsterTurnRef = useRef<((combatant?: Combatant) => void) | undefined>(undefined);
-
-  // Hook Multiplayer P2P WebRTC
-  const {
-    isConnected,
-    isConnecting,
-    isHost,
-    roomCode,
-    connectedPeers,
-    chatLog,
-    createRoom,
-    joinRoom,
-    disconnect,
-    broadcastDiceRoll,
-    broadcastTokenMove,
-    broadcastFogUpdate,
-    sendChatMessage,
-  } = useMultiplayer({
-    onRemoteDiceRoll: (roll) => {
-      addRollResult(roll);
-      showNotification(`Rolagem remota: ${roll.label} = ${roll.total}`);
-    },
-    onRemoteTokenMove: (remoteTokens) => {
-      setTokens(remoteTokens);
-    },
-    onRemoteFogUpdate: (shapes) => {
-      setMapConfig((prev) => ({ ...prev, revealedShapes: shapes }));
-    },
-    onRemoteChatMessage: (remoteMsg, rawPayload) => {
-      // Se for o Host da sala e o remetente não tiver processado a IA localmente
-      if (isHost && remoteMsg.type === 'PUBLIC' && rawPayload?.aiHandledBySender !== true) {
-        const trimmed = remoteMsg.text.trim();
-        const isAiCommand =
-          trimmed.startsWith('@mestre') ||
-          trimmed.startsWith('/mestre') ||
-          trimmed.startsWith('/ia') ||
-          trimmed.startsWith('@ia') ||
-          trimmed.startsWith('@dm');
-        if (isAiCommand) {
-          const cleanPrompt =
-            trimmed.replace(/^(@mestre|\/mestre|\/ia|@ia|@dm)\s*/i, '').trim() ||
-            'Os aventureiros olham ao redor aguardando suas palavras. O que acontece agora? Descreva o ambiente e sugira opções de ação.';
-          triggerAiDmRef.current?.(cleanPrompt);
-        }
-      }
-    },
-  });
+  setTokensRef.current = setTokens;
+  setMapConfigRef.current = setMapConfig;
+  mapConfigRef.current = mapConfig;
+  tokensRef.current = tokens;
+  chatLogRef.current = chatLog;
 
   const triggerAiDm = useCallback(
     async (promptText: string) => {
@@ -483,8 +538,120 @@ export function App() {
           suggestedActions: aiReply.suggestedActions,
           requestedRoll: aiReply.requestedRoll,
           monsterAttack: aiReply.monsterAttack,
+          monsterSpawns: aiReply.monsterSpawns,
+          mapMoves: aiReply.mapMoves,
         });
 
+        // 1. Inserir novos monstros no encontro e tokens no mapa (SPAWN)
+        if (aiReply.monsterSpawns && aiReply.monsterSpawns.length > 0) {
+          aiReply.monsterSpawns.forEach((spawn) => {
+            const foundMon = SRD_MONSTERS.find(
+              (m) =>
+                m.name.toLowerCase().includes(spawn.monsterName.toLowerCase()) ||
+                spawn.monsterName.toLowerCase().includes(m.name.toLowerCase())
+            );
+
+            if (foundMon) {
+              addMonsterCombatant(foundMon, spawn.count);
+            } else {
+              const fallbackMon: Monster = {
+                id: `custom-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+                name: spawn.monsterName,
+                size: 'Médio',
+                type: 'Monstruosidade',
+                alignment: 'Hostil',
+                armorClass: 13,
+                hitPoints: 22,
+                hitDice: '3d8+6',
+                speed: '9m',
+                abilities: {
+                  str: 14,
+                  dex: 12,
+                  con: 14,
+                  int: 8,
+                  wis: 10,
+                  cha: 8,
+                },
+                challengeRating: '1',
+                xp: 200,
+                senses: 'Visão no Escuro 18m',
+                languages: 'Comum',
+                actions: [
+                  {
+                    name: 'Ataque Selvagem',
+                    type: 'melee',
+                    description: 'Ataque corpo-a-corpo: +4 para acertar, dano 1d8+2 cortante.',
+                    attackBonus: 4,
+                    damageFormula: '1d8+2',
+                  },
+                ],
+              };
+              addMonsterCombatant(fallbackMon, spawn.count);
+            }
+
+            sendChatMessage(
+              {
+                text: `⚠️ **Reforços Inimigos:** ${spawn.count}x **${spawn.monsterName}** entraram no combate e foram adicionados ao mapa tático!`,
+                senderName: '✨ Mestre Supremo (IA)',
+                type: 'AI_DM',
+              },
+              '✨ Mestre Supremo (IA)'
+            );
+          });
+        }
+
+        // 2. Mover tokens de monstros ou jogadores no mapa (MOVER)
+        if (aiReply.mapMoves && aiReply.mapMoves.length > 0) {
+          aiReply.mapMoves.forEach((move) => {
+            const tokenToMove = tokensRef.current.find(
+              (t) =>
+                t.name.toLowerCase().includes(move.tokenName.toLowerCase()) ||
+                move.tokenName.toLowerCase().includes(t.name.toLowerCase())
+            );
+
+            if (tokenToMove) {
+              const squares = move.distanceSquares || 4;
+              const dist = squares * 50;
+              const act = move.actionOrTarget.toLowerCase();
+
+              let newX = tokenToMove.x;
+              let newY = tokenToMove.y;
+
+              if (act.includes('recua') || act.includes('norte') || act.includes('cima') || act.includes('trás')) {
+                newY = Math.max(50, newY - dist);
+              } else if (act.includes('avança') || act.includes('sul') || act.includes('baixo') || act.includes('investe') || act.includes('frente')) {
+                newY = Math.min(1800, newY + dist);
+              } else if (act.includes('esquerda') || act.includes('oeste')) {
+                newX = Math.max(50, newX - dist);
+              } else if (act.includes('direita') || act.includes('leste')) {
+                newX = Math.min(1800, newX + dist);
+              } else {
+                newX = Math.min(1800, newX + Math.floor(dist * 0.7));
+                newY = Math.min(1800, newY + Math.floor(dist * 0.7));
+              }
+
+              moveToken(tokenToMove.id, newX, newY);
+
+              if (isConnected) {
+                const updated = tokensRef.current.map((t) =>
+                  t.id === tokenToMove.id ? { ...t, x: newX, y: newY } : t
+                );
+                broadcastTokenMove(updated, character.name);
+              }
+
+              sendChatMessage(
+                {
+                  text: `👣 **Movimentação:** **${tokenToMove.name}** deslocou-se ${squares} casas (${move.actionOrTarget}) no mapa!`,
+                  senderName: '✨ Mestre Supremo (IA)',
+                  type: 'AI_DM',
+                },
+                '✨ Mestre Supremo (IA)'
+              );
+            }
+          });
+        }
+
+        // 3. Executar ataque mecânico do monstro
         if (aiReply.monsterAttack) {
           executeAiMonsterAttackRef.current?.(aiReply.monsterAttack);
         }
@@ -499,7 +666,7 @@ export function App() {
         setIsAiResponding(false);
       }
     },
-    [chatLog, character, sendChatMessage]
+    [chatLog, character, sendChatMessage, addMonsterCombatant, moveToken, isConnected, broadcastTokenMove]
   );
 
   triggerAiDmRef.current = triggerAiDm;
@@ -583,9 +750,9 @@ export function App() {
   // Criar Mesa Cooperativa com Mestre IA (Mapa Tático + Monstros + História)
   const handleCreateAiRoom = useCallback(
     async (scenario: AiAdventureScenario, customTitle?: string, customPrompt?: string) => {
-      // 1. Cria a sala P2P com o nome do herói/usuário
+      // 1. Cria a sala P2P com o nome do herói/usuário e seu avatar
       const hostName = character.name || 'Herói';
-      const code = await createRoom(hostName);
+      const code = await createRoom(hostName, undefined, character.avatarUrl);
 
       // 2. Carrega o mapa predefinido correspondente ao cenário
       const targetPreset =
@@ -659,11 +826,14 @@ export function App() {
 
   // Handlers para Finalizar Mesa / Iniciar Nova Aventura
   const handleStartNewAdventure = useCallback(() => {
+    clearStoredChatHistory();
+    clearChatLog();
     resetEncounter();
     setTokens((prev) => prev.filter((t) => t.type === 'player'));
     setIsEndSessionOpen(false);
     setIsMultiplayerOpen(true);
-  }, [resetEncounter, setTokens]);
+    showNotification('✨ Memória da IA limpa! Escolha um cenário ou inicie uma nova aventura.');
+  }, [clearChatLog, resetEncounter, setTokens, showNotification]);
 
   const handleClearMonstersAndCombat = useCallback(() => {
     resetEncounter();
@@ -676,11 +846,14 @@ export function App() {
     if (isConnected) {
       disconnect();
     }
+    clearStoredChatHistory();
+    clearChatLog();
     resetEncounter();
     setTokens((prev) => prev.filter((t) => t.type === 'player'));
     setIsEndSessionOpen(false);
-    showNotification('🚪 Sessão finalizada.');
-  }, [isConnected, disconnect, resetEncounter, setTokens, showNotification]);
+    setCurrentMode('player');
+    showNotification('🚪 Sessão finalizada. Retornando à ficha do personagem.');
+  }, [isConnected, disconnect, clearChatLog, resetEncounter, setTokens, showNotification]);
 
   // Hook de Presença Social, Quem Está Online e Lista de Amigos
   const {
@@ -705,7 +878,7 @@ export function App() {
       const targetRoomCode = await handleAcceptInvite(invite);
       if (targetRoomCode) {
         showNotification(`Conectando à mesa de ${invite.fromUserName} (${targetRoomCode})...`);
-        const ok = await joinRoom(targetRoomCode, character.name || 'Jogador');
+        const ok = await joinRoom(targetRoomCode, character.name || 'Jogador', character.avatarUrl);
         if (ok) {
           setCurrentMode('vtt');
           showNotification(`🎉 Você entrou na mesa ${targetRoomCode}!`);
@@ -714,7 +887,7 @@ export function App() {
         }
       }
     },
-    [handleAcceptInvite, joinRoom, character.name, showNotification]
+    [handleAcceptInvite, joinRoom, character.name, character.avatarUrl, showNotification]
   );
 
   // Criar sala e convidar amigo caso ainda não esteja em uma sala
@@ -722,7 +895,7 @@ export function App() {
     async (friendUserId: string, friendName: string) => {
       let code = roomCode;
       if (!isConnected) {
-        code = await createRoom(character.name || 'Herói');
+        code = await createRoom(character.name || 'Herói', undefined, character.avatarUrl);
         setCurrentMode('vtt');
       }
       if (code) {
@@ -730,7 +903,7 @@ export function App() {
         showNotification(`⚔️ Convite para a mesa ${code} enviado para ${friendName}!`);
       }
     },
-    [isConnected, roomCode, createRoom, character.name, handleSendGameInvite, showNotification]
+    [isConnected, roomCode, createRoom, character.name, character.avatarUrl, handleSendGameInvite, showNotification]
   );
 
   // Mover Token local e transmitir para a rede P2P
@@ -782,6 +955,112 @@ export function App() {
       }
     },
     [addFogShape, isConnected, isHost, broadcastFogUpdate, mapConfig.revealedShapes]
+  );
+
+  // Redefinir Névoa e transmitir para a rede
+  const handleResetFog = useCallback(() => {
+    resetFog();
+    if (isConnected && isHost) {
+      broadcastFogUpdate([]);
+    }
+  }, [resetFog, isConnected, isHost, broadcastFogUpdate]);
+
+  // Revelar toda a Névoa e transmitir para a rede
+  const handleRevealAllFog = useCallback(() => {
+    revealAllFog();
+    if (isConnected && isHost) {
+      const fullShape: FogShape = {
+        id: 'fog-all-revealed',
+        x: 0,
+        y: 0,
+        width: mapConfig.width || 30,
+        height: mapConfig.height || 30,
+        type: 'rect',
+        isRevealed: true,
+      };
+      broadcastFogUpdate([fullShape]);
+    }
+  }, [revealAllFog, isConnected, isHost, broadcastFogUpdate, mapConfig.width, mapConfig.height]);
+
+  // Atualizar configuração do mapa e transmitir aos outros jogadores
+  const handleUpdateMapConfig = useCallback(
+    (updater: Partial<BattleMapConfig> | ((prev: BattleMapConfig) => BattleMapConfig)) => {
+      if (typeof updater === 'function') {
+        setMapConfig((prev) => {
+          const next = updater(prev);
+          if (isConnected) {
+            broadcastMapConfig(next);
+          }
+          return next;
+        });
+      } else {
+        updateMapConfig(updater);
+        if (isConnected) {
+          broadcastMapConfig(updater);
+        }
+      }
+    },
+    [updateMapConfig, setMapConfig, isConnected, broadcastMapConfig]
+  );
+
+  // Selecionar preset do mapa e sincronizar com todos na mesa
+  const handleSelectMapPreset = useCallback(
+    (preset: DefaultMapPreset) => {
+      selectMapPreset(preset);
+      if (isConnected) {
+        broadcastMapConfig({
+          id: preset.id,
+          title: preset.title,
+          imageUrl: preset.imageUrl,
+          gridSize: preset.gridSize,
+          width: preset.width,
+          height: preset.height,
+        });
+      }
+    },
+    [selectMapPreset, isConnected, broadcastMapConfig]
+  );
+
+  // Fazer upload de mapa customizado e transmitir aos jogadores
+  const handleUploadCustomMap = useCallback(
+    (title: string, imageUrl: string, width?: number, height?: number) => {
+      uploadCustomMap(title, imageUrl, width || 1200, height || 800);
+      if (isConnected) {
+        broadcastMapConfig({
+          id: `map-custom-${Date.now()}`,
+          title,
+          imageUrl,
+          width: width || 1200,
+          height: height || 800,
+        });
+      }
+    },
+    [uploadCustomMap, isConnected, broadcastMapConfig]
+  );
+
+  // Adicionar Token local e transmitir para a rede P2P
+  const handleAddToken = useCallback(
+    (tokenData: Omit<MapToken, 'id'>) => {
+      const newToken = addToken(tokenData);
+      if (isConnected) {
+        const updated = [...tokens, newToken];
+        broadcastTokenMove(updated, character.name);
+      }
+      return newToken;
+    },
+    [addToken, isConnected, tokens, broadcastTokenMove, character.name]
+  );
+
+  // Remover Token local e transmitir para a rede P2P
+  const handleRemoveToken = useCallback(
+    (id: string) => {
+      removeToken(id);
+      if (isConnected) {
+        const updated = tokens.filter((t) => t.id !== id);
+        broadcastTokenMove(updated, character.name);
+      }
+    },
+    [removeToken, isConnected, tokens, broadcastTokenMove, character.name]
   );
 
   // Rolagens com d20 (Testes, Salvaguardas, Perícias, Ataques)
@@ -935,26 +1214,84 @@ export function App() {
     }
   }, [activeRollAnimation, handleRollD20, handleRollDie, handleRollFormula]);
 
-  // Executa o ataque autônomo do monstro pela IA com dados 3D na tela e transmissão P2P
+  // Executa o ataque autônomo do monstro pela IA com dados 3D na tela, transmissão P2P e dedução de PV
   const executeAiMonsterAttack = useCallback(
     (attack: MonsterAttackAction) => {
       // 1. Notificação de início do ataque
       showNotification(`🐉 ${attack.monsterName} ataca com ${attack.attackName}!`);
 
       // 2. Rolagem de Ataque com d20 (aciona animação 3D e broadcast P2P)
+      const targetName = attack.target || character.name || 'o Herói';
+      const targetAc = character.armorClass || 10;
       const attackLabel = `${attack.monsterName}: ${attack.attackName}${attack.target ? ` (vs ${attack.target})` : ''}`;
+      
+      const d20 = Math.floor(Math.random() * 20) + 1;
+      const totalAttack = d20 + (attack.attackBonus || 0);
+      const isNat20 = d20 === 20;
+      const isNat1 = d20 === 1;
+      const isHit = isNat20 || (!isNat1 && totalAttack >= targetAc);
+
       handleRollD20(attackLabel, attack.attackBonus);
 
       // 3. Intervalo de suspense (1.6s) para os jogadores conferirem se acertou a CA antes do dano
       setTimeout(() => {
-        const damageLabel = `${attack.monsterName}: Dano ${attack.attackName}`;
-        handleRollFormula(attack.damageFormula, damageLabel);
+        let finalDamage = 0;
+        let damageRoll: DiceRollResult | null = null;
 
-        // 4. Notificação e aviso para passar o turno (conforme solicitado pelo usuário!)
+        if (isHit) {
+          const damageLabel = `${attack.monsterName}: Dano ${attack.attackName}`;
+          damageRoll = rollFormula(attack.damageFormula || '1d6', damageLabel);
+          finalDamage = isNat20 ? damageRoll.total * 2 : damageRoll.total;
+
+          // Se o herói local for o alvo, deduz vida na ficha e no mapa
+          const isLocalTarget = !attack.target || attack.target.toLowerCase() === (character.name || '').toLowerCase();
+          if (isLocalTarget && finalDamage > 0) {
+            applyDamage(finalDamage);
+
+            setTokens((prev) =>
+              prev.map((t) => {
+                if (t.type === 'player' && t.name.toLowerCase() === (character.name || '').toLowerCase()) {
+                  const current = t.currentHp ?? t.maxHp ?? 10;
+                  return { ...t, currentHp: Math.max(0, current - finalDamage) };
+                }
+                return t;
+              })
+            );
+          }
+        }
+
+        const breakdown = `1d20+${attack.attackBonus} = ${d20}+${attack.attackBonus} = ${totalAttack}`;
+        const outcome = isNat20
+          ? '💥 ACERTO CRÍTICO!'
+          : isHit
+          ? `⚔️ ACERTOU! (vs CA ${targetAc})`
+          : `🛡️ ERROU! (vs CA ${targetAc})`;
+
+        let resultChat = `⚔️ **${attack.monsterName}** desferiu **${attack.attackName}** contra **${targetName}**!\n\n` +
+          `🎲 **Rolagem de Ataque:** [${breakdown}] ➜ **${outcome}**\n`;
+
+        if (isHit && damageRoll) {
+          resultChat += `🩸 **Dano de D&D 5e:** [${damageRoll.breakdown}] = **${finalDamage}** de dano sofrido!\n` +
+            `💔 **${targetName}** sofreu dano em combate!`;
+        } else {
+          resultChat += `🛡️ O golpe ricocheteou na armadura ou foi esquivado a tempo!`;
+        }
+
+        sendChatMessage(
+          {
+            text: resultChat,
+            senderName: '✨ Mestre Supremo (IA)',
+            type: 'AI_DM',
+            diceRoll: damageRoll || undefined,
+          },
+          '✨ Mestre Supremo (IA)'
+        );
+
+        // 4. Notificação e aviso para passar o turno
         showNotification(`⚔️ ${attack.monsterName} finalizou o ataque! Você já pode passar o turno no combate.`);
       }, 1600);
     },
-    [handleRollD20, handleRollFormula, showNotification]
+    [character, applyDamage, handleRollD20, setTokens, sendChatMessage, showNotification]
   );
   executeAiMonsterAttackRef.current = executeAiMonsterAttack;
 
@@ -1501,15 +1838,15 @@ export function App() {
             onSetZoom={setZoom}
             onSetPan={setPan}
             onSetActiveTool={setActiveTool}
-            onUpdateMapConfig={updateMapConfig}
-            onSelectMapPreset={selectMapPreset}
-            onUploadMap={uploadCustomMap}
+            onUpdateMapConfig={handleUpdateMapConfig}
+            onSelectMapPreset={handleSelectMapPreset}
+            onUploadMap={handleUploadCustomMap}
             onAddFogShape={handleAddFogShape}
-            onResetFog={resetFog}
-            onRevealAllFog={revealAllFog}
+            onResetFog={handleResetFog}
+            onRevealAllFog={handleRevealAllFog}
             onUpdateToken={handleUpdateToken}
-            onRemoveToken={removeToken}
-            onAddToken={addToken}
+            onRemoveToken={handleRemoveToken}
+            onAddToken={handleAddToken}
             onApplyCharacterAvatar={(dataUrl) => updateCharacter({ avatarUrl: dataUrl } as any)}
             onSendMessage={handleUserChatMessage}
             onRollDie={handleRollDie}
@@ -1635,9 +1972,9 @@ export function App() {
         currentUserName={character.name}
         character={character}
         isAiResponding={isAiResponding}
-        onCreateRoom={createRoom}
+        onCreateRoom={(name, customCode) => createRoom(name, customCode, character.avatarUrl)}
         onCreateAiRoom={handleCreateAiRoom}
-        onJoinRoom={joinRoom}
+        onJoinRoom={(code, name) => joinRoom(code, name, character.avatarUrl)}
         onDisconnect={disconnect}
         onSendMessage={handleUserChatMessage}
         onOpenTabletop={() => setCurrentMode('vtt')}
@@ -1671,6 +2008,7 @@ export function App() {
         onToggle={handleToggleSocialSidebar}
         onlineUsers={onlineUsers}
         friends={friends}
+        connectedPeers={connectedPeers}
         currentUserId={user?.uid || 'local_user'}
         currentUserName={character.name || user?.displayName || 'Você'}
         currentRoomCode={isConnected ? roomCode : undefined}
@@ -1688,7 +2026,7 @@ export function App() {
         }}
         onCreateAndInvite={handleCreateRoomAndInvite}
         onJoinRoom={async (code) => {
-          const ok = await joinRoom(code, character.name || 'Jogador');
+          const ok = await joinRoom(code, character.name || 'Jogador', character.avatarUrl);
           if (ok) {
             setCurrentMode('vtt');
           }

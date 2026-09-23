@@ -46,17 +46,18 @@ service cloud.firestore {
     }
 
     // 5. Convites para Jogar (Game Invites)
-    // - Criação: Apenas o remetente pode emitir um convite com seu próprio ID
-    // - Leitura/Resposta/Exclusão: Apenas o remetente ou o destinatário do convite
+    // Usuários autenticados podem criar, ler e responder/excluir convites
     match /game_invites/{inviteId} {
-      allow create: if request.auth != null && request.resource.data.fromUserId == request.auth.uid;
-      allow read, update, delete: if request.auth != null && (
-        resource.data.fromUserId == request.auth.uid ||
-        resource.data.toUserId == request.auth.uid
-      );
+      allow create, read, update, delete: if request.auth != null;
     }
 
-    // 6. Bloquear qualquer outra coleção não autorizada expressamente
+    // 6. Mensagens Diretas / Sussurros Privados (Direct Messages)
+    // Permite envio, leitura e atualização de status (lido) para usuários autenticados
+    match /direct_messages/{messageId} {
+      allow create, read, update, delete: if request.auth != null;
+    }
+
+    // 7. Bloquear qualquer outra coleção não autorizada expressamente
     match /{document=**} {
       allow read, write: if false;
     }

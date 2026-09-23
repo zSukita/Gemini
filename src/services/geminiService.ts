@@ -7,7 +7,9 @@ import type {
   AdventureTone,
   RequestedRoll,
   HandoutProposal,
-  MonsterAttackAction
+  MonsterAttackAction,
+  MonsterSpawnAction,
+  MapMoveAction
 } from '../types/aiDm';
 
 const API_KEY_STORAGE_KEY = 'arcanasheet_gemini_api_key';
@@ -173,10 +175,16 @@ DADOS DO PERSONAGEM DO JOGADOR:
 Você é o Mestre Supremo de RPG do ArcanaSheet (Dungeon Master para D&D 5ª Edição).
 Seu objetivo é conduzir uma narrativa interativa de RPG de altíssima qualidade, imersiva, empolgante e totalmente adaptada às escolhas do jogador.
 
-DIRETRIZES FUNDAMENTAIS:
+DIRETRIZES FUNDAMENTAIS DE REGRAS E COMBATE D&D 5e:
 1. Idioma: Português do Brasil impecável, com vocabulário rico de fantasia medieval, descrições sensoriais (sons de passos ecoando, cheiro de ozônio e cinzas, o brilho da tocha nas pedras úmidas).
 2. ${toneGuidelines[tone]}
-3. Conhecimento de Regras D&D 5e: Você conhece todas as regras de atributos, CDs (Classe de Dificuldade: Fácil 10, Médio 15, Difícil 20), salvaguardas e condições.
+3. Conhecimento Estrito das Regras D&D 5e:
+   - NUNCA decida ou narre o sucesso, acerto, dano ou morte de um inimigo ANTES que o jogador role os dados!
+   - Se o jogador declarar um ataque, magia ou ação com risco, descreva a postura do personagem, arme o momento e PARE imediatamente solicitando a rolagem apropriada.
+   - Em ataques de combate do jogador: Peça a Rolagem de Ataque (1d20 + Bônus de Ataque vs CA do alvo). Use a tag:
+     [TESTE: Ataque com {Arma} (Força/Destreza) | CD {CA do Alvo} | Para acertar {Nome do Inimigo}]
+     Exemplo: [TESTE: Ataque com Machado Grande (Força) | CD 13 | Para acertar o Orc Guerreiro]
+   - Somente após o jogador responder com o resultado da rolagem de ataque você narra se acertou ou errou. Se acertar, peça então a rolagem do dado específico de dano da arma do personagem (1d12 para machado grande, 2d6 para espadão, 1d8 para martelo de guerra ou espada longa, 1d6 para lança/arco curto, 1d4 para adaga, etc.).
 4. Respeite as ações do jogador: Nunca jogue pelo jogador nem decida os pensamentos dele. Descreva o ambiente, os NPCs, as reações do mundo e pergunte: "O que você faz?".
 5. Mantenha os turnos concisos e impactantes (entre 2 e 4 parágrafos bem escritos). Evite respostas excessivamente longas que cansem o leitor.
 
@@ -184,25 +192,35 @@ ${charContext}
 
 ${customInstructions ? `INSTRUÇÕES ADICIONAIS DO USUÁRIO:\n${customInstructions}\n` : ''}
 
-REGRAS DE FORMATAÇÃO ESPECIAL (MUITO IMPORTANTE):
+REGRAS DE FORMATAÇÃO ESPECIAL (MANDATÓRIO):
 - Para sugerir ações rápidas ao final do seu turno, inclua sempre exatamente 3 opções no formato:
   [AÇÕES]
   - Opção 1
   - Opção 2
   - Opção 3
   [/AÇÕES]
-- Se a situação exigir um teste de dado do jogador, inclua uma tag no formato:
-  [TESTE: Nome da Perícia ou Atributo | CD Número | Motivo sucinto]
-  Exemplo: [TESTE: Percepção (Sabedoria) | CD 13 | Para ouvir o que sussurram atrás da porta pesada]
-  Exemplo: [TESTE: Atletismo (Força) | CD 15 | Para forçar as grades de ferro enferrujadas]
-- Se o personagem encontrar um pergaminho, carta, diário ou bilhete com texto legível, você pode emitir um Handout no formato:
+- Se a situação exigir um teste ou rolagem de ataque do jogador, inclua uma tag no formato:
+  [TESTE: Nome da Perícia, Atributo ou Ataque | CD Número | Motivo sucinto]
+  Exemplo: [TESTE: Furtividade (Destreza) | CD 12 | Para se esgueirar pelas sombras sem alertar o sentinela]
+  Exemplo: [TESTE: Ataque com Espada Longa (Força) | CD 13 | Para romper a guarda do Orc]
+- Se novos monstros, emboscadas ou criaturas surgirem na cena, declare a tag:
+  [SPAWN_MONSTRO: Nome do Monstro | Quantidade]
+  Exemplo: [SPAWN_MONSTRO: Orc Guerreiro | 2]
+  Exemplo: [SPAWN_MONSTRO: Goblin Sentinela | 1]
+  (O sistema adicionará instantaneamente os tokens e fichas de combate no mapa tático!)
+- Se personagens ou monstros se moverem no campo de batalha tático, declare a tag:
+  [MOVER: Nome do Token | Ação ou Direção | Quantidade de Casas]
+  Exemplo: [MOVER: Goblin Sentinela | recua para as sombras | 4]
+  Exemplo: [MOVER: Orc Guerreiro 1 | avança em direção ao herói | 6]
+- Se monstros atacarem os heróis no turno deles, emita a tag de ataque do monstro:
+  [ATAQUE_MONSTRO: Nome do Monstro | Nome do Golpe | +BônusAtaque | FórmulaDano | Nome do Herói Alvo]
+  Exemplo: [ATAQUE_MONSTRO: Orc Guerreiro | Machadada Vorpal | +5 | 1d12+3 | Thorin]
+  Exemplo: [ATAQUE_MONSTRO: Goblin Sentinela | Flecha Envenenada | +4 | 1d6+2 | Lyra]
+  (O sistema calculará no chat a rolagem do d20 vs CA do herói, rolará o dano exato e descontará o PV!)
+- Se o personagem encontrar um pergaminho, carta, diário ou bilhete com texto legível:
   [PERGAMINHO: Título do Documento | Autor ou Origem]
   Texto exato do bilhete ou carta aqui...
   [/PERGAMINHO]
-- Se monstros atacarem em combate, inclua uma tag de ataque mecânico no formato:
-  [ATAQUE_MONSTRO: Nome do Monstro | Nome do Ataque | +BônusAtaque | FórmulaDano | Nome do Herói Alvo]
-  Exemplo: [ATAQUE_MONSTRO: Goblin 1 | Cimitarra | +4 | 1d6+2 | Thorin]
-  Exemplo: [ATAQUE_MONSTRO: Lobo Alfa | Mordida | +5 | 2d4+2 | Lyra]
 `.trim();
 }
 
@@ -215,12 +233,16 @@ export function parseAiResponse(rawText: string): {
   requestedRoll?: RequestedRoll;
   handoutProposal?: HandoutProposal;
   monsterAttack?: MonsterAttackAction;
+  monsterSpawns?: MonsterSpawnAction[];
+  mapMoves?: MapMoveAction[];
 } {
   let cleanText = rawText;
   let suggestedActions: string[] | undefined;
   let requestedRoll: RequestedRoll | undefined;
   let handoutProposal: HandoutProposal | undefined;
   let monsterAttack: MonsterAttackAction | undefined;
+  const monsterSpawns: MonsterSpawnAction[] = [];
+  const mapMoves: MapMoveAction[] = [];
 
   // 1. Extrair [AÇÕES] ... [/AÇÕES]
   const actionsRegex = /\[AÇÕES\]([\s\S]*?)\[\/AÇÕES\]/i;
@@ -235,7 +257,7 @@ export function parseAiResponse(rawText: string): {
     cleanText = cleanText.replace(actionsRegex, '').trim();
   }
 
-  // 2. Extrair [TESTE: Perícia | CD XX | Motivo]
+  // 2. Extrair [TESTE: Perícia/Ataque | CD XX | Motivo]
   const testRegex = /\[TESTE:\s*([^\]]+)\]/i;
   const testMatch = rawText.match(testRegex);
   if (testMatch) {
@@ -288,12 +310,38 @@ export function parseAiResponse(rawText: string): {
     cleanText = cleanText.replace(monsterAttackRegex, '').trim();
   }
 
+  // 5. Extrair [SPAWN_MONSTRO: Monstro | Quantidade]
+  const spawnRegex = /\[SPAWN_MONSTRO:\s*([^\]]+)\]/gi;
+  let spawnMatch;
+  while ((spawnMatch = spawnRegex.exec(rawText)) !== null) {
+    const parts = spawnMatch[1].split('|').map(p => p.trim());
+    const monsterName = parts[0] || 'Monstro';
+    const count = parts[1] ? (parseInt(parts[1], 10) || 1) : 1;
+    monsterSpawns.push({ monsterName, count });
+  }
+  cleanText = cleanText.replace(spawnRegex, '').trim();
+
+  // 6. Extrair [MOVER: Token | Ação ou Direção | Casas]
+  const moveRegex = /\[MOVER:\s*([^\]]+)\]/gi;
+  let moveMatch;
+  while ((moveMatch = moveRegex.exec(rawText)) !== null) {
+    const parts = moveMatch[1].split('|').map(p => p.trim());
+    const tokenName = parts[0] || 'Token';
+    const actionOrTarget = parts[1] || 'avança';
+    const distMatch = parts[2] ? parts[2].match(/\d+/) : null;
+    const distanceSquares = distMatch ? parseInt(distMatch[0], 10) : undefined;
+    mapMoves.push({ tokenName, actionOrTarget, distanceSquares });
+  }
+  cleanText = cleanText.replace(moveRegex, '').trim();
+
   return {
     cleanText: cleanText.replace(/\n{3,}/g, '\n\n').trim(),
     suggestedActions,
     requestedRoll,
     handoutProposal,
     monsterAttack,
+    monsterSpawns: monsterSpawns.length > 0 ? monsterSpawns : undefined,
+    mapMoves: mapMoves.length > 0 ? mapMoves : undefined,
   };
 }
 
@@ -379,6 +427,8 @@ export async function sendToAiDungeonMaster(
         requestedRoll: parsed.requestedRoll,
         handoutProposal: parsed.handoutProposal,
         monsterAttack: parsed.monsterAttack,
+        monsterSpawns: parsed.monsterSpawns,
+        mapMoves: parsed.mapMoves,
       };
     } catch (err: unknown) {
       lastError = err;
@@ -452,6 +502,8 @@ async function callGeminiRestFallback(
     requestedRoll: parsed.requestedRoll,
     handoutProposal: parsed.handoutProposal,
     monsterAttack: parsed.monsterAttack,
+    monsterSpawns: parsed.monsterSpawns,
+    mapMoves: parsed.mapMoves,
   };
 }
 

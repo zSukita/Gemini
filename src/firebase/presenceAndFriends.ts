@@ -11,6 +11,7 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import { db } from './config';
+import { p2pManager } from '../utils/peerService';
 
 export interface DirectMessage {
   id: string;
@@ -27,6 +28,7 @@ export interface DirectMessage {
 export interface OnlineUserPresence {
   userId: string;
   name: string;
+  email?: string;
   avatarUrl?: string;
   characterName?: string;
   characterClass?: string;
@@ -144,6 +146,10 @@ function saveLocalInvites(invites: GameInvite[]): void {
   } catch {
     // ignore
   }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('arcanasheet_game_invite'));
+  }
 }
 
 /**
@@ -192,43 +198,67 @@ export async function setUserOffline(userId: string): Promise<void> {
 export function subscribeToOnlineUsers(
   callback: (users: OnlineUserPresence[]) => void
 ): () => void {
+  const activeWindow = 10 * 60 * 1000; // 10 minutos para tolerância a abas em segundo plano e throttling
+
+  const getValidOnlineUsers = (list: OnlineUserPresence[]) => {
+    const now = Date.now();
+    return list.filter((u) => {
+      if (!u || !u.lastSeen) return false;
+      const diff = now - u.lastSeen;
+      // Aceita presença nos últimos 10 minutos ou com tolerância a relógios adiantados (até 5 min no futuro)
+      return diff <= activeWindow && diff >= -5 * 60 * 1000;
+    });
+  };
+
+  let firestoreUnsub: (() => void) | null = null;
+
   if (db) {
     try {
       const colRef = collection(db, 'online_users');
-      // Escuta todos os usuários na coleção e filtra no cliente quem esteve ativo nos últimos 2 minutos
-      const unsubscribe = onSnapshot(
+      firestoreUnsub = onSnapshot(
         colRef,
         (snapshot) => {
-          const now = Date.now();
-          const activeWindow = 2 * 60 * 1000; // 2 minutos
           const onlineList: OnlineUserPresence[] = [];
-
           snapshot.forEach((docSnap) => {
             const u = docSnap.data() as OnlineUserPresence;
-            if (u && now - (u.lastSeen || 0) <= activeWindow) {
-              onlineList.push(u);
-            }
+            if (u) onlineList.push(u);
           });
 
-          // Salva no cache local
-          saveLocalPresenceUsers(onlineList);
-          callback(onlineList);
+          const valid = getValidOnlineUsers(onlineList);
+          saveLocalPresenceUsers(valid);
+          callback(valid);
         },
         (err) => {
-          console.warn('Erro na assinatura de usuários online do Firestore, usando fallback:', err);
-          callback(getLocalPresenceUsers());
+          console.warn('Erro na assinatura de usuários online do Firestore, usando fallback local:', err);
+          callback(getValidOnlineUsers(getLocalPresenceUsers()));
         }
       );
-
-      return unsubscribe;
     } catch (e) {
       console.warn('Falha ao inicializar onSnapshot de usuários online:', e);
     }
   }
 
-  // Fallback local: chama uma vez com o cache local
-  callback(getLocalPresenceUsers());
-  return () => {};
+  const localHandler = () => {
+    callback(getValidOnlineUsers(getLocalPresenceUsers()));
+  };
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('storage', localHandler);
+    window.addEventListener('arcanasheet_presence_change', localHandler);
+  }
+
+  // Emissão inicial imediata
+  callback(getValidOnlineUsers(getLocalPresenceUsers()));
+
+  return () => {
+    if (firestoreUnsub) {
+      firestoreUnsub();
+    }
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('storage', localHandler);
+      window.removeEventListener('arcanasheet_presence_change', localHandler);
+    }
+  };
 }
 
 /**
@@ -354,6 +384,25 @@ export async function sendGameInvite(
     status: 'pending',
   };
 
+  // 1. Salva no cache local e notifica a interface
+  const current = getLocalInvites().filter((i) => i.id !== inviteId);
+  saveLocalInvites([...current, fullInvite]);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('arcanasheet_game_invite', { detail: fullInvite }));
+  }
+
+  // 2. Transmite via P2P se conectado
+  if (p2pManager.isConnected()) {
+    p2pManager.broadcast({
+      type: 'GAME_INVITE',
+      senderId: p2pManager.getRoomCode(),
+      senderName: fullInvite.fromUserName,
+      payload: fullInvite,
+      timestamp: fullInvite.timestamp,
+    });
+  }
+
+  // 3. Salva no Firestore
   if (db) {
     try {
       const ref = doc(db, 'game_invites', inviteId);
@@ -363,10 +412,6 @@ export async function sendGameInvite(
     }
   }
 
-  // Salva no cache local
-  const current = getLocalInvites().filter((i) => i.id !== inviteId);
-  saveLocalInvites([...current, fullInvite]);
-
   return inviteId;
 }
 
@@ -375,39 +420,80 @@ export async function sendGameInvite(
  */
 export function subscribeToIncomingInvites(
   userId: string,
-  callback: (invites: GameInvite[]) => void
+  callback: (invites: GameInvite[]) => void,
+  currentUserName?: string
 ): () => void {
+  const isTargetForUser = (inv: GameInvite) => {
+    if (!inv || inv.status !== 'pending') return false;
+    if (inv.toUserId === userId) return true;
+    if (
+      currentUserName &&
+      inv.toUserName &&
+      (inv.toUserName.trim().toLowerCase() === currentUserName.trim().toLowerCase() ||
+        inv.toUserName.trim().toLowerCase().includes(currentUserName.trim().toLowerCase()) ||
+        currentUserName.trim().toLowerCase().includes(inv.toUserName.trim().toLowerCase()))
+    ) {
+      return true;
+    }
+    return false;
+  };
+
+  let firestoreUnsub: (() => void) | null = null;
+
   if (db) {
     try {
       const colRef = collection(db, 'game_invites');
-      const q = query(colRef, where('toUserId', '==', userId), where('status', '==', 'pending'));
-      const unsubscribe = onSnapshot(
+      const q = query(colRef, where('status', '==', 'pending'));
+      firestoreUnsub = onSnapshot(
         q,
         (snapshot) => {
           const list: GameInvite[] = [];
           snapshot.forEach((d) => {
             const inv = d.data() as GameInvite;
-            if (inv && inv.status === 'pending') {
+            if (isTargetForUser(inv)) {
               list.push(inv);
             }
           });
-          callback(list);
+
+          // Mescla com locais para consistência
+          const locals = getLocalInvites().filter(isTargetForUser);
+          const map = new Map<string, GameInvite>();
+          locals.forEach((i) => map.set(i.id, i));
+          list.forEach((i) => map.set(i.id, i));
+          const merged = Array.from(map.values()).sort((a, b) => b.timestamp - a.timestamp);
+          callback(merged);
         },
         (err) => {
-          console.warn('Erro na assinatura de convites de jogo:', err);
-          const locals = getLocalInvites().filter((i) => i.toUserId === userId && i.status === 'pending');
-          callback(locals);
+          console.warn('Erro na assinatura de convites de jogo no Firestore, usando fallback:', err);
+          callback(getLocalInvites().filter(isTargetForUser));
         }
       );
-      return unsubscribe;
     } catch (e) {
       console.warn('Falha ao inicializar onSnapshot de convites:', e);
     }
   }
 
-  const locals = getLocalInvites().filter((i) => i.toUserId === userId && i.status === 'pending');
-  callback(locals);
-  return () => {};
+  const localHandler = () => {
+    callback(getLocalInvites().filter(isTargetForUser));
+  };
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('storage', localHandler);
+    window.addEventListener('arcanasheet_game_invite', localHandler);
+  }
+
+  // Emissão inicial imediata
+  callback(getLocalInvites().filter(isTargetForUser));
+
+  return () => {
+    if (firestoreUnsub) {
+      firestoreUnsub();
+    }
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('storage', localHandler);
+      window.removeEventListener('arcanasheet_game_invite', localHandler);
+    }
+  };
 }
 
 /**
@@ -443,6 +529,22 @@ export async function sendDirectMessage(
     read: false,
   };
 
+  // 1. Atualiza cache local e notifica subscribers imediatamente (otimista)
+  const current = getLocalDirectMessages();
+  saveLocalDirectMessages([...current, fullMessage]);
+
+  // 2. Se P2P estiver conectado, transmite via P2P para entrega em tempo real
+  if (p2pManager.isConnected()) {
+    p2pManager.broadcast({
+      type: 'DIRECT_MESSAGE',
+      senderId: p2pManager.getRoomCode(),
+      senderName: fullMessage.fromUserName,
+      payload: fullMessage,
+      timestamp: fullMessage.timestamp,
+    });
+  }
+
+  // 3. Salva no Firestore
   if (db) {
     try {
       const ref = doc(db, 'direct_messages', id);
@@ -451,10 +553,6 @@ export async function sendDirectMessage(
       console.warn('Erro ao salvar mensagem direta no Firestore:', e);
     }
   }
-
-  // Atualiza cache local
-  const current = getLocalDirectMessages();
-  saveLocalDirectMessages([...current, fullMessage]);
 
   return fullMessage;
 }
@@ -470,6 +568,8 @@ export function subscribeToDirectMessages(
     return all.filter((m) => m.toUserId === userId || m.fromUserId === userId);
   };
 
+  let firestoreUnsub: (() => void) | null = null;
+
   if (db) {
     try {
       const colRef = collection(db, 'direct_messages');
@@ -477,7 +577,7 @@ export function subscribeToDirectMessages(
         colRef,
         or(where('toUserId', '==', userId), where('fromUserId', '==', userId))
       );
-      const unsubscribe = onSnapshot(
+      firestoreUnsub = onSnapshot(
         q,
         (snapshot) => {
           const list: DirectMessage[] = [];
@@ -497,11 +597,10 @@ export function subscribeToDirectMessages(
           callback(filterForUser(merged));
         },
         (err) => {
-          console.warn('Erro na assinatura de mensagens diretas no Firestore:', err);
+          console.warn('Erro na assinatura de mensagens diretas no Firestore, usando fallback local:', err);
           callback(filterForUser(getLocalDirectMessages()));
         }
       );
-      return unsubscribe;
     } catch (e) {
       console.warn('Falha ao inicializar onSnapshot de mensagens diretas:', e);
     }
@@ -517,9 +616,14 @@ export function subscribeToDirectMessages(
     window.addEventListener('storage', handler);
     window.addEventListener('arcanasheet_direct_message', handler);
   }
+
+  // Emissão inicial imediata
   callback(filterForUser(getLocalDirectMessages()));
 
   return () => {
+    if (firestoreUnsub) {
+      firestoreUnsub();
+    }
     directMessageListeners.delete(handler);
     if (typeof window !== 'undefined') {
       window.removeEventListener('storage', handler);

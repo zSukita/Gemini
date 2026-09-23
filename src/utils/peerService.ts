@@ -20,6 +20,7 @@ export class P2PNetworkManager {
   private isHost = false;
   private roomCode = '';
   private currentUserName = '';
+  private currentUserAvatar = '';
   private messageListeners: ((msg: P2PMessage) => void)[] = [];
   private peerListListeners: ((peers: PeerUser[]) => void)[] = [];
   private activePeers: PeerUser[] = [];
@@ -43,9 +44,10 @@ export class P2PNetworkManager {
   /**
    * Inicializa uma sala como Anfitrião (Host / Mestre)
    */
-  public async createRoom(userName: string, customCode?: string): Promise<string> {
+  public async createRoom(userName: string, customCode?: string, avatarUrl?: string): Promise<string> {
     this.disconnect();
     this.currentUserName = userName;
+    this.currentUserAvatar = avatarUrl || '';
     this.isHost = true;
 
     // Gera código legível de 5 dígitos ou usa o customizado (ex: ARCANA-8492)
@@ -65,6 +67,7 @@ export class P2PNetworkManager {
             peerId: fullPeerId,
             name: this.currentUserName,
             role: 'dm',
+            avatarUrl: this.currentUserAvatar,
             joinedAt: Date.now(),
           },
         ];
@@ -93,9 +96,10 @@ export class P2PNetworkManager {
   /**
    * Conecta a uma sala existente como Jogador (Client)
    */
-  public async joinRoom(roomCode: string, userName: string): Promise<boolean> {
+  public async joinRoom(roomCode: string, userName: string, avatarUrl?: string): Promise<boolean> {
     this.disconnect();
     this.currentUserName = userName;
+    this.currentUserAvatar = avatarUrl || '';
     this.isHost = false;
 
     const cleanCode = roomCode.toUpperCase().replace(/[^A-Z0-9-]/g, '');
@@ -108,7 +112,7 @@ export class P2PNetworkManager {
       this.peer.on('open', () => {
         if (!this.peer) return;
         const conn = this.peer.connect(targetPeerId, {
-          metadata: { name: this.currentUserName, role: 'player' },
+          metadata: { name: this.currentUserName, role: 'player', avatarUrl: this.currentUserAvatar },
           reliable: true,
         });
 
@@ -121,12 +125,22 @@ export class P2PNetworkManager {
               peerId: this.peer?.id || 'player',
               name: this.currentUserName,
               role: 'player',
+              avatarUrl: this.currentUserAvatar,
               joinedAt: Date.now(),
             },
           ];
           this.notifyPeerList();
 
-          // Avisa o host sobre a entrada
+          // 1. Solicita imediatamente ao Mestre (Host) o estado atual da mesa (mapa, tokens, chat e combate)
+          this.broadcast({
+            type: 'REQUEST_ROOM_STATE',
+            senderId: this.peer?.id || 'player',
+            senderName: this.currentUserName,
+            payload: null,
+            timestamp: Date.now(),
+          });
+
+          // 2. Avisa o host e a mesa sobre a entrada
           this.broadcast({
             type: 'CHAT_MESSAGE',
             senderId: this.peer?.id || 'player',
@@ -155,14 +169,16 @@ export class P2PNetworkManager {
     this.connections.set(conn.peer, conn);
 
     const registerPeer = () => {
-      const metadata = conn.metadata as { name?: string; role?: 'dm' | 'player' } | undefined;
+      const metadata = conn.metadata as { name?: string; role?: 'dm' | 'player'; avatarUrl?: string } | undefined;
       const peerName = metadata?.name?.trim() || 'Aventureiro';
       const peerRole = metadata?.role || 'player';
+      const peerAvatar = metadata?.avatarUrl;
 
       const peerUser: PeerUser = {
         peerId: conn.peer,
         name: peerName,
         role: peerRole,
+        avatarUrl: peerAvatar,
         joinedAt: Date.now(),
       };
 
@@ -189,6 +205,17 @@ export class P2PNetworkManager {
           }
         }
         this.broadcast(peerListMsg);
+
+        // Notifica o Host para sincronizar a mesa com o novo peer
+        setTimeout(() => {
+          this.notifyMessage({
+            type: 'REQUEST_ROOM_STATE',
+            senderId: conn.peer,
+            senderName: peerName,
+            payload: { targetPeerId: conn.peer },
+            timestamp: Date.now(),
+          });
+        }, 200);
       }
     };
 
@@ -238,12 +265,30 @@ export class P2PNetworkManager {
   }
 
   /**
+   * Envia uma mensagem diretamente para um peer específico
+   */
+  public sendToPeer(peerId: string, msg: P2PMessage) {
+    const conn = this.connections.get(peerId);
+    if (conn && conn.open) {
+      try {
+        conn.send(msg);
+      } catch (e) {
+        console.warn('Erro ao enviar mensagem P2P direta:', e);
+      }
+    }
+  }
+
+  /**
    * Envia uma mensagem para todos os peers conectados (sem duplicar localmente)
    */
   public broadcast(msg: P2PMessage) {
     this.connections.forEach((conn) => {
       if (conn.open) {
-        conn.send(msg);
+        try {
+          conn.send(msg);
+        } catch (e) {
+          console.warn('Erro no broadcast P2P:', e);
+        }
       }
     });
   }

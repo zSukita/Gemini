@@ -24,6 +24,7 @@ import {
   sendDirectMessage,
   markDirectMessagesAsRead,
 } from '../../firebase/presenceAndFriends';
+import type { PeerUser } from '../../types/vtt';
 
 interface SocialSidebarProps {
   isOpen: boolean;
@@ -33,6 +34,7 @@ interface SocialSidebarProps {
   currentUserId: string;
   currentUserName: string;
   currentRoomCode?: string;
+  connectedPeers?: PeerUser[];
   directMessages?: DirectMessage[];
   onAddFriend: (identifier: string) => Promise<{ success: boolean; message: string }>;
   onRemoveFriend: (friendUserId: string) => Promise<void>;
@@ -51,6 +53,7 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
   currentUserId,
   currentUserName,
   currentRoomCode,
+  connectedPeers = [],
   directMessages,
   onAddFriend,
   onRemoveFriend,
@@ -87,19 +90,78 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
     return unsub;
   }, [currentUserId, directMessages]);
 
+  // Mescla usuários online do Firestore com peers conectados via P2P
+  const effectiveOnlineUsers = useMemo(() => {
+    const list = [...onlineUsers];
+    if (connectedPeers && connectedPeers.length > 0) {
+      connectedPeers.forEach((p) => {
+        // Se for o próprio usuário, ignora
+        if (
+          p.name.trim().toLowerCase() === currentUserName.trim().toLowerCase() ||
+          p.peerId === currentUserId
+        ) {
+          return;
+        }
+        const exists = list.some(
+          (u) =>
+            u.userId === p.peerId ||
+            (u.name && p.name && u.name.trim().toLowerCase() === p.name.trim().toLowerCase()) ||
+            (u.characterName && p.name && u.characterName.trim().toLowerCase() === p.name.trim().toLowerCase())
+        );
+        if (!exists) {
+          list.push({
+            userId: p.peerId,
+            name: p.name,
+            characterName: p.name,
+            lastSeen: Date.now(),
+            status: 'in_game',
+            currentRoomCode: currentRoomCode,
+          });
+        }
+      });
+    }
+    return list;
+  }, [onlineUsers, connectedPeers, currentUserName, currentUserId, currentRoomCode]);
+
   // Filtra outros usuários online (exceto o próprio usuário)
-  const otherOnlineUsers = onlineUsers.filter((u) => u.userId !== currentUserId);
+  const otherOnlineUsers = effectiveOnlineUsers.filter(
+    (u) =>
+      u.userId !== currentUserId &&
+      u.name.trim().toLowerCase() !== currentUserName.trim().toLowerCase()
+  );
 
   // Mapeia quem dos amigos está online no momento
   const friendsWithStatus = friends.map((f) => {
-    const isOnline = onlineUsers.some(
-      (u) => u.userId === f.userId || (f.name && u.name && u.name.toLowerCase() === f.name.toLowerCase())
+    const peerData = connectedPeers?.find(
+      (p) =>
+        p.peerId === f.userId ||
+        (f.name && p.name && (p.name.trim().toLowerCase() === f.name.trim().toLowerCase() ||
+          p.name.trim().toLowerCase().includes(f.name.trim().toLowerCase()) ||
+          f.name.trim().toLowerCase().includes(p.name.trim().toLowerCase())))
     );
-    const onlineData = onlineUsers.find(
-      (u) => u.userId === f.userId || (f.name && u.name && u.name.toLowerCase() === f.name.toLowerCase())
-    );
+
+    const onlineData = effectiveOnlineUsers.find(
+      (u) =>
+        u.userId === f.userId ||
+        (f.name && u.name && (u.name.trim().toLowerCase() === f.name.trim().toLowerCase() ||
+          u.name.trim().toLowerCase().includes(f.name.trim().toLowerCase()) ||
+          f.name.trim().toLowerCase().includes(u.name.trim().toLowerCase()))) ||
+        (f.name && u.characterName && (u.characterName.trim().toLowerCase() === f.name.trim().toLowerCase() ||
+          u.characterName.trim().toLowerCase().includes(f.name.trim().toLowerCase()) ||
+          f.name.trim().toLowerCase().includes(u.characterName.trim().toLowerCase()))) ||
+        (f.email && u.email && u.email.trim().toLowerCase() === f.email.trim().toLowerCase())
+    ) || (peerData ? {
+      userId: peerData.peerId,
+      name: peerData.name,
+      avatarUrl: peerData.avatarUrl,
+      status: 'in_game' as const,
+      currentRoomCode
+    } : undefined);
+
+    const isOnline = Boolean(onlineData);
     return {
       ...f,
+      resolvedUserId: onlineData?.userId || f.userId,
       isOnline,
       status: onlineData?.status || 'offline',
       currentRoomCode: onlineData?.currentRoomCode,
@@ -186,6 +248,19 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
     setMessageInput('');
     setIsSendingMessage(true);
 
+    // Inserção otimista imediata na interface
+    const tempMsg: DirectMessage = {
+      id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      fromUserId: currentUserId,
+      fromUserName: currentUserName,
+      toUserId: activeChatPartner.userId,
+      toUserName: activeChatPartner.name,
+      content: text,
+      timestamp: Date.now(),
+      read: false,
+    };
+    setInternalMessages((prev) => [...prev, tempMsg]);
+
     try {
       if (onSendDirectMessage) {
         await onSendDirectMessage(activeChatPartner.userId, activeChatPartner.name, text);
@@ -226,17 +301,34 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
   };
 
   const handleInviteClick = async (friendUserId: string, friendName: string, targetRoom?: string) => {
+    let resolvedId = friendUserId;
+    const match = effectiveOnlineUsers.find(
+      (u) =>
+        u.userId !== currentUserId &&
+        (u.userId === friendUserId ||
+          (u.name && friendName && (u.name.toLowerCase() === friendName.toLowerCase() ||
+            u.name.toLowerCase().includes(friendName.toLowerCase()) ||
+            friendName.toLowerCase().includes(u.name.toLowerCase()))) ||
+          (u.characterName && friendName && (u.characterName.toLowerCase() === friendName.toLowerCase() ||
+            u.characterName.toLowerCase().includes(friendName.toLowerCase()) ||
+            friendName.toLowerCase().includes(u.characterName.toLowerCase()))) ||
+          (u.email && friendName && u.email.toLowerCase() === friendName.toLowerCase()))
+    );
+    if (match) {
+      resolvedId = match.userId;
+    }
+
     const code = targetRoom || currentRoomCode;
     if (code) {
-      const res = await onSendGameInvite(friendUserId, friendName, code);
+      const res = await onSendGameInvite(resolvedId, friendName, code);
       if (res.ok) {
-        setInvitedFriends((prev) => ({ ...prev, [friendUserId]: true }));
+        setInvitedFriends((prev) => ({ ...prev, [friendUserId]: true, [resolvedId]: true }));
         setTimeout(() => {
-          setInvitedFriends((prev) => ({ ...prev, [friendUserId]: false }));
+          setInvitedFriends((prev) => ({ ...prev, [friendUserId]: false, [resolvedId]: false }));
         }, 8000);
       }
     } else if (onCreateAndInvite) {
-      await onCreateAndInvite(friendUserId, friendName);
+      await onCreateAndInvite(resolvedId, friendName);
     }
   };
 
@@ -329,12 +421,22 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
                 <span className="text-[9px] text-amber-300/80 font-mono flex items-center gap-1">
                   <span
                     className={`w-1.5 h-1.5 rounded-full ${
-                      onlineUsers.some((u) => u.userId === activeChatPartner.userId)
+                      effectiveOnlineUsers.some(
+                        (u) =>
+                          u.userId === activeChatPartner.userId ||
+                          (u.name && activeChatPartner.name && u.name.toLowerCase() === activeChatPartner.name.toLowerCase())
+                      )
                         ? 'bg-emerald-400 animate-pulse'
                         : 'bg-slate-500'
                     }`}
                   />
-                  {onlineUsers.some((u) => u.userId === activeChatPartner.userId) ? 'Online agora' : 'Offline'}
+                  {effectiveOnlineUsers.some(
+                    (u) =>
+                      u.userId === activeChatPartner.userId ||
+                      (u.name && activeChatPartner.name && u.name.toLowerCase() === activeChatPartner.name.toLowerCase())
+                  )
+                    ? 'Online agora'
+                    : 'Offline'}
                 </span>
               </div>
             </div>
@@ -692,7 +794,7 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
                                   type="button"
                                   onClick={() =>
                                     handleOpenChat({
-                                      userId: friend.userId,
+                                      userId: friend.resolvedUserId || friend.userId,
                                       name: friend.characterName || friend.name,
                                       avatarUrl: friend.avatarUrl,
                                     })
@@ -711,7 +813,7 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
 
                                 <button
                                   type="button"
-                                  onClick={() => handleInviteClick(friend.userId, friend.name, currentRoomCode)}
+                                  onClick={() => handleInviteClick(friend.resolvedUserId || friend.userId, friend.name, currentRoomCode)}
                                   disabled={isInvited}
                                   className={`text-[10px] px-2 py-0.5 rounded-lg font-bold transition flex items-center gap-1 shadow ${
                                     isInvited

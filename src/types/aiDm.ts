@@ -110,6 +110,17 @@ export interface MonsterAttackAction {
   description?: string;
 }
 
+export interface MonsterSpawnAction {
+  monsterName: string;
+  count: number;
+}
+
+export interface MapMoveAction {
+  tokenName: string;
+  actionOrTarget: string;
+  distanceSquares?: number;
+}
+
 export interface AiMessage {
   id: string;
   role: 'narrator' | 'player' | 'system';
@@ -119,6 +130,8 @@ export interface AiMessage {
   requestedRoll?: RequestedRoll;
   handoutProposal?: HandoutProposal;
   monsterAttack?: MonsterAttackAction;
+  monsterSpawns?: MonsterSpawnAction[];
+  mapMoves?: MapMoveAction[];
 }
 
 export interface AiDmConfig {

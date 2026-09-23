@@ -1,13 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { BattleMapConfig, MapToken, FogShape } from '../types/vtt';
+import type { BattleMapConfig, MapToken, FogShape, PeerUser } from '../types/vtt';
 import type { Encounter } from '../types/combat';
+import type { Character } from '../types/dnd5e';
 import { DEFAULT_MAP_PRESETS, type DefaultMapPreset } from '../data/defaultMaps';
 import { snapCoordinateToGrid } from '../utils/mapRenderer';
 
 const STORAGE_KEY_MAP = 'arcanasheet_battlemap_config';
 const STORAGE_KEY_TOKENS = 'arcanasheet_battlemap_tokens';
 
-export function useBattleMap(encounter?: Encounter) {
+export function useBattleMap(
+  encounter?: Encounter,
+  character?: Character | null,
+  connectedPeers?: PeerUser[]
+) {
   const [mapConfig, setMapConfig] = useState<BattleMapConfig>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_MAP);
@@ -66,14 +71,24 @@ export function useBattleMap(encounter?: Encounter) {
     setTokens((prevTokens) => {
       const updated = [...prevTokens];
 
-      // Atualiza HP e status dos tokens existentes com base no combatente
+      // Atualiza HP, avatar e status dos tokens existentes com base no combatente
       encounter.combatants.forEach((c, index) => {
-        const existingToken = updated.find((t) => t.combatantId === c.id);
+        const existingToken = updated.find(
+          (t) => t.combatantId === c.id || t.name.toLowerCase() === c.name.toLowerCase()
+        );
+
+        const charAvatar = c.avatarUrl || c.monsterData?.avatarUrl;
 
         if (existingToken) {
           existingToken.name = c.name;
           existingToken.currentHp = c.currentHp;
           existingToken.maxHp = c.maxHp;
+          if (!existingToken.combatantId) {
+            existingToken.combatantId = c.id;
+          }
+          if (charAvatar && (!existingToken.avatarUrl || existingToken.avatarUrl !== charAvatar)) {
+            existingToken.avatarUrl = charAvatar;
+          }
         } else {
           // Cria novo token se ainda não existir no mapa
           const isPlayer = c.type === 'player';
@@ -89,7 +104,7 @@ export function useBattleMap(encounter?: Encounter) {
             y: startY,
             size,
             color: isPlayer ? '#10b981' : c.type === 'monster' ? '#f43f5e' : '#6366f1',
-            avatarUrl: c.avatarUrl || c.monsterData?.avatarUrl,
+            avatarUrl: charAvatar,
             currentHp: c.currentHp,
             maxHp: c.maxHp,
             type: c.type,
@@ -101,6 +116,75 @@ export function useBattleMap(encounter?: Encounter) {
       return updated;
     });
   }, [encounter]);
+
+  // Sincronizar token do jogador local e de todos os participantes conectados na sala
+  useEffect(() => {
+    setTokens((prev) => {
+      const updated = [...prev];
+
+      // 1. Jogador Local
+      if (character && character.name) {
+        const localToken = updated.find(
+          (t) => t.type === 'player' && t.name.toLowerCase() === (character.name || '').toLowerCase()
+        );
+
+        if (localToken) {
+          if (character.avatarUrl && localToken.avatarUrl !== character.avatarUrl) {
+            localToken.avatarUrl = character.avatarUrl;
+          }
+          localToken.currentHp = character.currentHp ?? localToken.currentHp;
+          localToken.maxHp = character.maxHp ?? localToken.maxHp;
+        } else {
+          updated.push({
+            id: `token-player-${character.id || 'local'}`,
+            name: character.name,
+            x: 100,
+            y: 150,
+            size: 1,
+            color: '#10b981',
+            avatarUrl: character.avatarUrl,
+            currentHp: character.currentHp || 10,
+            maxHp: character.maxHp || 10,
+            type: 'player',
+            conditions: character.activeConditions || [],
+          });
+        }
+      }
+
+      // 2. Colegas conectados na sala via P2P (connectedPeers)
+      if (connectedPeers && connectedPeers.length > 0) {
+        connectedPeers.forEach((peer, pIdx) => {
+          if (character?.name && peer.name.toLowerCase() === character.name.toLowerCase()) return;
+
+          const peerToken = updated.find(
+            (t) => t.type === 'player' && t.name.toLowerCase() === peer.name.toLowerCase()
+          );
+
+          if (peerToken) {
+            if (peer.avatarUrl && peerToken.avatarUrl !== peer.avatarUrl) {
+              peerToken.avatarUrl = peer.avatarUrl;
+            }
+          } else {
+            updated.push({
+              id: `token-peer-${peer.peerId}`,
+              name: peer.name,
+              x: 100 + ((pIdx + 1) % 4) * 60,
+              y: 150 + Math.floor((pIdx + 1) / 4) * 60,
+              size: 1,
+              color: '#06b6d4',
+              avatarUrl: peer.avatarUrl,
+              currentHp: peer.currentHp || 10,
+              maxHp: peer.maxHp || 10,
+              type: 'player',
+              conditions: [],
+            });
+          }
+        });
+      }
+
+      return updated;
+    });
+  }, [character?.id, character?.name, character?.avatarUrl, character?.currentHp, character?.maxHp, connectedPeers]);
 
   // Mover Token
   const moveToken = useCallback(

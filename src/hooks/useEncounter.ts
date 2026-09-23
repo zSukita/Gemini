@@ -145,6 +145,20 @@ export function useEncounter() {
         prev.combatants.filter((c) => c.playerId).map((c) => c.playerId)
       );
 
+      const updatedExisting = prev.combatants.map((c) => {
+        if (!c.playerId) return c;
+        const matchingChar = characters.find((ch) => ch.id === c.playerId);
+        if (!matchingChar) return c;
+        return {
+          ...c,
+          name: matchingChar.name,
+          avatarUrl: matchingChar.avatarUrl || c.avatarUrl,
+          currentHp: matchingChar.currentHp,
+          maxHp: matchingChar.maxHp,
+          armorClass: matchingChar.armorClass,
+        };
+      });
+
       const toAdd: Combatant[] = characters
         .filter((char) => !existingPlayerIds.has(char.id))
         .map((char) => {
@@ -155,6 +169,7 @@ export function useEncounter() {
             id: `combatant-player-${char.id}`,
             name: char.name,
             type: 'player',
+            avatarUrl: char.avatarUrl,
             initiative: init,
             armorClass: char.armorClass,
             maxHp: char.maxHp,
@@ -167,7 +182,7 @@ export function useEncounter() {
 
       return {
         ...prev,
-        combatants: [...prev.combatants, ...toAdd],
+        combatants: [...updatedExisting, ...toAdd],
       };
     });
   };
@@ -363,6 +378,7 @@ export function useEncounter() {
 
   return {
     encounter,
+    setEncounter,
     addMonsterCombatant,
     importPlayerCharacters,
     addCustomCombatant,

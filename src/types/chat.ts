@@ -27,5 +27,7 @@ export interface ChatMessage {
   };
   monsterSpawns?: MonsterSpawnAction[];
   mapMoves?: MapMoveAction[];
+  defeatedMonsters?: string[];
+  monsterDamage?: { monsterName: string; damage: number }[];
   timestamp: number;
 }

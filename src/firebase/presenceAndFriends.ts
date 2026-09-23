@@ -65,6 +65,27 @@ const LOCAL_FRIENDS_PREFIX = 'arcanasheet_local_friends_';
 const LOCAL_INVITES_KEY = 'arcanasheet_local_game_invites';
 const LOCAL_MESSAGES_KEY = 'arcanasheet_local_direct_messages';
 
+function sanitizeFirestoreDoc<T extends Record<string, unknown>>(obj: T): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+        result[key] = sanitizeFirestoreDoc(value as Record<string, unknown>);
+      } else {
+        result[key] = value;
+      }
+    }
+  }
+  return result;
+}
+
+function isPermissionError(err: unknown): boolean {
+  if (!err) return false;
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  const code = ((err as { code?: string })?.code || '').toLowerCase();
+  return code === 'permission-denied' || msg.includes('permission') || msg.includes('permiss');
+}
+
 const directMessageListeners = new Set<() => void>();
 
 export function getLocalDirectMessages(): DirectMessage[] {
@@ -156,6 +177,17 @@ function saveLocalInvites(invites: GameInvite[]): void {
  * Atualiza a presença do usuário online no Firestore (ou localmente)
  */
 export async function updateUserPresence(presence: OnlineUserPresence): Promise<void> {
+  // Ignora gravação remota no Firestore se for usuário local/convidado
+  if (!presence.userId || presence.userId === 'local_user' || presence.userId.startsWith('local_')) {
+    const localData: OnlineUserPresence = {
+      ...presence,
+      lastSeen: Date.now(),
+    };
+    const current = getLocalPresenceUsers().filter((u) => u.userId !== presence.userId);
+    saveLocalPresenceUsers([...current, localData]);
+    return;
+  }
+
   const data: OnlineUserPresence = {
     ...presence,
     lastSeen: Date.now(),
@@ -164,9 +196,12 @@ export async function updateUserPresence(presence: OnlineUserPresence): Promise<
   if (db) {
     try {
       const userRef = doc(db, 'online_users', presence.userId);
-      await setDoc(userRef, data, { merge: true });
-    } catch (e) {
-      console.warn('Erro ao atualizar presença no Firestore, usando fallback local:', e);
+      const sanitized = sanitizeFirestoreDoc(data as unknown as Record<string, unknown>);
+      await setDoc(userRef, sanitized, { merge: true });
+    } catch (e: unknown) {
+      if (!isPermissionError(e)) {
+        console.warn('Erro ao atualizar presença no Firestore, usando fallback local:', e);
+      }
     }
   }
 
@@ -179,12 +214,14 @@ export async function updateUserPresence(presence: OnlineUserPresence): Promise<
  * Marca o usuário como offline ao sair ou deslogar
  */
 export async function setUserOffline(userId: string): Promise<void> {
-  if (db) {
+  if (db && userId && userId !== 'local_user' && !userId.startsWith('local_')) {
     try {
       const userRef = doc(db, 'online_users', userId);
       await deleteDoc(userRef);
-    } catch (e) {
-      console.warn('Erro ao remover presença no Firestore:', e);
+    } catch (e: unknown) {
+      if (!isPermissionError(e)) {
+        console.warn('Erro ao remover presença no Firestore:', e);
+      }
     }
   }
 
@@ -229,12 +266,16 @@ export function subscribeToOnlineUsers(
           callback(valid);
         },
         (err) => {
-          console.warn('Erro na assinatura de usuários online do Firestore, usando fallback local:', err);
+          if (!isPermissionError(err)) {
+            console.warn('Erro na assinatura de usuários online do Firestore, usando fallback local:', err);
+          }
           callback(getValidOnlineUsers(getLocalPresenceUsers()));
         }
       );
-    } catch (e) {
-      console.warn('Falha ao inicializar onSnapshot de usuários online:', e);
+    } catch (e: unknown) {
+      if (!isPermissionError(e)) {
+        console.warn('Falha ao inicializar onSnapshot de usuários online:', e);
+      }
     }
   }
 
@@ -356,13 +397,17 @@ export function subscribeToFriends(
           }
         },
         (err) => {
-          console.warn('Erro na assinatura de amigos:', err);
+          if (!isPermissionError(err)) {
+            console.warn('Erro na assinatura de amigos:', err);
+          }
           callback(getLocalFriends(userId));
         }
       );
       return unsubscribe;
-    } catch (e) {
-      console.warn('Falha ao inicializar onSnapshot de amigos:', e);
+    } catch (e: unknown) {
+      if (!isPermissionError(e)) {
+        console.warn('Falha ao inicializar onSnapshot de amigos:', e);
+      }
     }
   }
 
@@ -406,9 +451,12 @@ export async function sendGameInvite(
   if (db) {
     try {
       const ref = doc(db, 'game_invites', inviteId);
-      await setDoc(ref, fullInvite);
-    } catch (e) {
-      console.warn('Erro ao criar convite de jogo no Firestore:', e);
+      const sanitized = sanitizeFirestoreDoc(fullInvite as unknown as Record<string, unknown>);
+      await setDoc(ref, sanitized);
+    } catch (e: unknown) {
+      if (!isPermissionError(e)) {
+        console.warn('Erro ao criar convite de jogo no Firestore:', e);
+      }
     }
   }
 
@@ -464,12 +512,16 @@ export function subscribeToIncomingInvites(
           callback(merged);
         },
         (err) => {
-          console.warn('Erro na assinatura de convites de jogo no Firestore, usando fallback:', err);
+          if (!isPermissionError(err)) {
+            console.warn('Erro na assinatura de convites de jogo no Firestore, usando fallback:', err);
+          }
           callback(getLocalInvites().filter(isTargetForUser));
         }
       );
-    } catch (e) {
-      console.warn('Falha ao inicializar onSnapshot de convites:', e);
+    } catch (e: unknown) {
+      if (!isPermissionError(e)) {
+        console.warn('Falha ao inicializar onSnapshot de convites:', e);
+      }
     }
   }
 
@@ -506,8 +558,10 @@ export async function respondToGameInvite(inviteId: string, accept: boolean): Pr
     try {
       const ref = doc(db, 'game_invites', inviteId);
       await updateDoc(ref, { status: newStatus });
-    } catch (e) {
-      console.warn('Erro ao responder convite no Firestore:', e);
+    } catch (e: unknown) {
+      if (!isPermissionError(e)) {
+        console.warn('Erro ao responder convite no Firestore:', e);
+      }
     }
   }
 
@@ -548,9 +602,12 @@ export async function sendDirectMessage(
   if (db) {
     try {
       const ref = doc(db, 'direct_messages', id);
-      await setDoc(ref, fullMessage);
-    } catch (e) {
-      console.warn('Erro ao salvar mensagem direta no Firestore:', e);
+      const sanitized = sanitizeFirestoreDoc(fullMessage as unknown as Record<string, unknown>);
+      await setDoc(ref, sanitized);
+    } catch (e: unknown) {
+      if (!isPermissionError(e)) {
+        console.warn('Erro ao salvar mensagem direta no Firestore:', e);
+      }
     }
   }
 
@@ -597,12 +654,16 @@ export function subscribeToDirectMessages(
           callback(filterForUser(merged));
         },
         (err) => {
-          console.warn('Erro na assinatura de mensagens diretas no Firestore, usando fallback local:', err);
+          if (!isPermissionError(err)) {
+            console.warn('Erro na assinatura de mensagens diretas no Firestore, usando fallback local:', err);
+          }
           callback(filterForUser(getLocalDirectMessages()));
         }
       );
-    } catch (e) {
-      console.warn('Falha ao inicializar onSnapshot de mensagens diretas:', e);
+    } catch (e: unknown) {
+      if (!isPermissionError(e)) {
+        console.warn('Falha ao inicializar onSnapshot de mensagens diretas:', e);
+      }
     }
   }
 

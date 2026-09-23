@@ -508,7 +508,25 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                             onClick={() => {
                               const actLower = act.toLowerCase();
                               const isMoveOrAttack =
-                                /avan[çc]ar|flanquear|atacar|aproximar|investir|esgueirar|golpear|correr|bloquear/i.test(actLower);
+                                /avan[çc]ar|flanquear|atacar|aproximar|investir|esgueirar|golpear|correr|bloquear|decapitar|finalizar|miseric[oó]rdia/i.test(actLower);
+
+                              const isFinishingBlow =
+                                /miseric[oó]rdia|decapitar|finalizar|executar|abater|degolar|acabar com/i.test(actLower);
+
+                              if (isFinishingBlow && encounter && onHpDelta) {
+                                const monsterCandidates = encounter.combatants.filter(
+                                  (c) => (c.type === 'monster' || c.type === 'npc') && c.currentHp > 0
+                                );
+                                let targetMonster = monsterCandidates.find((m) =>
+                                  actLower.includes(m.name.toLowerCase().replace(/\s*\d+$/, '').trim())
+                                );
+                                if (!targetMonster && monsterCandidates.length > 0) {
+                                  targetMonster = [...monsterCandidates].sort((a, b) => a.currentHp - b.currentHp)[0];
+                                }
+                                if (targetMonster) {
+                                  onHpDelta(targetMonster.id, -targetMonster.currentHp);
+                                }
+                              }
 
                               if (isMoveOrAttack && tokens && onMoveToken) {
                                 const playerToken = tokens.find(

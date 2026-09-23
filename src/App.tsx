@@ -772,6 +772,84 @@ export function App() {
         if (aiReply.monsterAttack) {
           executeAiMonsterAttackRef.current?.(aiReply.monsterAttack);
         }
+
+        // 4. Aplicar derrota mecânica de monstros (DERROTAR_MONSTRO ou heurística de abate narrativo)
+        const defeatedNames = new Set<string>();
+        if (aiReply.defeatedMonsters && aiReply.defeatedMonsters.length > 0) {
+          aiReply.defeatedMonsters.forEach((name) => defeatedNames.add(name.toLowerCase()));
+        }
+
+        const narrativeText = aiReply.content.toLowerCase();
+        const killKeywords = [
+          'decapita',
+          'decapitada',
+          'decapitado',
+          'golpe de misericórdia',
+          'misericordia',
+          'cai morto',
+          'cai morta',
+          'cai sem vida',
+          'sucumbe ao ferimento',
+          'sucumbe ao golpe',
+          'sucumbiu',
+          'tomba sem vida',
+          'jaz sem vida',
+          'está morto',
+          'está morta',
+          'foi abatido',
+          'foi abatida',
+          'derrotado',
+          'derrotada',
+          'corpo inerte',
+          'morte certa',
+        ];
+        const narrativeHasKill = killKeywords.some((kw) => narrativeText.includes(kw));
+
+        const activeMonsters = (encounterRef.current?.combatants || []).filter(
+          (c) => (c.type === 'monster' || c.type === 'npc') && c.currentHp > 0
+        );
+
+        activeMonsters.forEach((c) => {
+          const cNameLower = c.name.toLowerCase();
+          const cBase = cNameLower.replace(/\s*\d+$/, '').trim();
+
+          const explicitlyDefeated = Array.from(defeatedNames).some(
+            (dn) => cNameLower.includes(dn) || dn.includes(cNameLower) || (cBase.length >= 3 && (cBase.includes(dn) || dn.includes(cBase)))
+          );
+
+          const narrativelyDefeated =
+            narrativeHasKill &&
+            (narrativeText.includes(cNameLower) || (cBase.length >= 3 && narrativeText.includes(cBase)));
+
+          if (explicitlyDefeated || narrativelyDefeated) {
+            handleHpDelta(c.id, -c.currentHp);
+            sendChatMessage(
+              {
+                text: `💀 **Derrota:** **${c.name}** foi abatido(a) e seus Pontos de Vida foram zerados (0 PV)!`,
+                senderName: '✨ Mestre Supremo (IA)',
+                type: 'AI_DM',
+              },
+              '✨ Mestre Supremo (IA)'
+            );
+          }
+        });
+
+        // 5. Aplicar dano mecânico a monstros (DANO_MONSTRO)
+        if (aiReply.monsterDamage && aiReply.monsterDamage.length > 0) {
+          aiReply.monsterDamage.forEach((dmg) => {
+            const dmgNameLower = dmg.monsterName.toLowerCase();
+            const targetCombatant = activeMonsters.find((c) => {
+              const cNameLower = c.name.toLowerCase();
+              const cBase = cNameLower.replace(/\s*\d+$/, '').trim();
+              return cNameLower.includes(dmgNameLower) || dmgNameLower.includes(cNameLower) || (cBase.length >= 3 && cBase.includes(dmgNameLower));
+            });
+
+            if (targetCombatant && targetCombatant.currentHp > 0) {
+              const effectiveDmg = Math.min(targetCombatant.currentHp, dmg.damage);
+              handleHpDelta(targetCombatant.id, -effectiveDmg);
+            }
+          });
+        }
       } catch (err: unknown) {
         const errText = err instanceof Error ? err.message : String(err);
         sendChatMessage({
@@ -783,7 +861,7 @@ export function App() {
         setIsAiResponding(false);
       }
     },
-    [chatLog, character, sendChatMessage, addMonsterCombatant, moveToken, isConnected, broadcastTokenMove]
+    [chatLog, character, sendChatMessage, addMonsterCombatant, moveToken, isConnected, broadcastTokenMove, handleHpDelta]
   );
 
   triggerAiDmRef.current = triggerAiDm;

@@ -333,12 +333,22 @@ export const BattleMap: React.FC<BattleMapProps> = ({
     }
   };
 
-  // Zoom pela roda do mouse
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    const zoomDelta = e.deltaY > 0 ? -0.1 : 0.1;
-    onSetZoom((prev) => Math.min(3, Math.max(0.3, prev + zoomDelta)));
-  };
+  // Zoom pela roda do mouse com ouvinte não-passivo para evitar erro de preventDefault do navegador
+  React.useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const handleWheelNative = (e: WheelEvent) => {
+      e.preventDefault();
+      const zoomDelta = e.deltaY > 0 ? -0.1 : 0.1;
+      onSetZoom((prev) => Math.min(3, Math.max(0.3, prev + zoomDelta)));
+    };
+
+    el.addEventListener('wheel', handleWheelNative, { passive: false });
+    return () => {
+      el.removeEventListener('wheel', handleWheelNative);
+    };
+  }, [onSetZoom]);
 
   // Iniciar arrasto de token
   const handleTokenDragStart = (tokenId: string, e: React.PointerEvent) => {
@@ -438,7 +448,6 @@ export const BattleMap: React.FC<BattleMapProps> = ({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        onWheel={handleWheel}
         onDoubleClick={(e) => {
           const coords = getMapCoordinates(e.clientX, e.clientY);
           emitPing(coords.x, coords.y);

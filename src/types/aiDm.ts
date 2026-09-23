@@ -132,6 +132,8 @@ export interface AiMessage {
   monsterAttack?: MonsterAttackAction;
   monsterSpawns?: MonsterSpawnAction[];
   mapMoves?: MapMoveAction[];
+  defeatedMonsters?: string[];
+  monsterDamage?: { monsterName: string; damage: number }[];
 }
 
 export interface AiDmConfig {

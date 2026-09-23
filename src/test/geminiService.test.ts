@@ -143,6 +143,19 @@ O Goblin Líder surge das sombras com um sibilo cruel!
       expect(parsed.monsterAttack?.target).toBe('Thorin');
     });
 
+    it('deve extrair tags de [DERROTAR_MONSTRO] e [DANO_MONSTRO] com sucesso', () => {
+      const rawText = `
+O golpe parte a carcaça da fera ao meio!
+[DERROTAR_MONSTRO: Fera de Carga Corrompida]
+[DANO_MONSTRO: Orc Guerreiro | 12]
+      `.trim();
+
+      const parsed = parseAiResponse(rawText);
+      expect(parsed.cleanText).toBe('O golpe parte a carcaça da fera ao meio!');
+      expect(parsed.defeatedMonsters).toEqual(['Fera de Carga Corrompida']);
+      expect(parsed.monsterDamage).toEqual([{ monsterName: 'Orc Guerreiro', damage: 12 }]);
+    });
+
     it('deve lidar graciosamente com textos simples sem tags', () => {
       const rawText = 'O guarda sorri e permite sua passagem pela ponte levadiça.';
       const parsed = parseAiResponse(rawText);
@@ -151,6 +164,8 @@ O Goblin Líder surge das sombras com um sibilo cruel!
       expect(parsed.requestedRoll).toBeUndefined();
       expect(parsed.handoutProposal).toBeUndefined();
       expect(parsed.monsterAttack).toBeUndefined();
+      expect(parsed.defeatedMonsters).toBeUndefined();
+      expect(parsed.monsterDamage).toBeUndefined();
     });
   });
 
@@ -177,7 +192,7 @@ O Goblin Líder surge das sombras com um sibilo cruel!
       expect(loaded.model).toBe(DEFAULT_MODEL);
     });
 
-    it('deve migrar modelos depreciados como gemini-1.5-flash automaticamente para gemini-2.5-flash', () => {
+    it('deve migrar modelos depreciados como gemini-1.5-flash e gemini-2.5-flash automaticamente para DEFAULT_MODEL', () => {
       localStorageMock.setItem(
         'arcanasheet_ai_dm_config',
         JSON.stringify({
@@ -187,20 +202,20 @@ O Goblin Líder surge das sombras com um sibilo cruel!
       );
 
       const config = getStoredAiConfig();
-      expect(config.model).toBe('gemini-2.5-flash');
+      expect(config.model).toBe(DEFAULT_MODEL);
     });
 
-    it('deve migrar gemini-2.5-flash-lite descontinuado para gemini-2.5-flash', () => {
+    it('deve migrar gemini-2.5-flash descontinuado para DEFAULT_MODEL', () => {
       localStorageMock.setItem(
         'arcanasheet_ai_dm_config',
         JSON.stringify({
-          model: 'gemini-2.5-flash-lite',
+          model: 'gemini-2.5-flash',
           tone: 'heroic',
         })
       );
 
       const config = getStoredAiConfig();
-      expect(config.model).toBe('gemini-2.5-flash');
+      expect(config.model).toBe(DEFAULT_MODEL);
     });
   });
 });

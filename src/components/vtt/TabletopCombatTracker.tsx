@@ -194,9 +194,29 @@ export const TabletopCombatTracker: React.FC<TabletopCombatTrackerProps> = ({
                         <span>{c.armorClass}</span>
                       </div>
                       {isDown ? (
-                        <Skull size={12} className="text-red-800 shrink-0" />
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onHpDelta(c.id, c.maxHp);
+                          }}
+                          className="p-0.5 hover:scale-125 transition cursor-pointer"
+                          title="Reviver / Restaurar Vida Máxima"
+                        >
+                          <Skull size={13} className="text-red-800 shrink-0 hover:text-emerald-700" />
+                        </button>
                       ) : (
-                        <Heart size={12} className="text-emerald-800 shrink-0" />
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onHpDelta(c.id, -c.currentHp);
+                          }}
+                          className="p-0.5 hover:scale-125 transition cursor-pointer"
+                          title="Derrotar Imediatamente (0 PV)"
+                        >
+                          <Heart size={13} className="text-emerald-800 shrink-0 hover:text-red-700" />
+                        </button>
                       )}
                       {c.type === 'monster' && !isDown && onAiMonsterAttack && (
                         <button

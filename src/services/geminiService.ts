@@ -16,7 +16,7 @@ const API_KEY_STORAGE_KEY = 'arcanasheet_gemini_api_key';
 const CONFIG_STORAGE_KEY = 'arcanasheet_ai_dm_config';
 const CHAT_HISTORY_STORAGE_KEY = 'arcanasheet_ai_dm_history';
 
-export const DEFAULT_MODEL = 'gemini-2.5-flash';
+export const DEFAULT_MODEL = 'gemini-3.6-flash';
 
 export const DEFAULT_AI_CONFIG: AiDmConfig = {
   apiKey: '',
@@ -47,13 +47,13 @@ export function getStoredAiConfig(): AiDmConfig {
       const raw = localStorage.getItem(CONFIG_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        // Migra automaticamente modelos descontinuados pelo Google (ex: 2.5-flash-lite, 2.0, 1.5, 1.0)
+        // Migra automaticamente modelos descontinuados pelo Google (ex: 2.5, 2.0, 1.5, 1.0)
         const isDeprecated =
           !parsed.model ||
+          parsed.model.includes('2.5') ||
           parsed.model.includes('2.0') ||
           parsed.model.includes('1.5') ||
-          parsed.model.includes('1.0') ||
-          parsed.model.includes('2.5-flash-lite');
+          parsed.model.includes('1.0');
         const model = isDeprecated ? DEFAULT_MODEL : parsed.model;
 
         if (isDeprecated && typeof localStorage !== 'undefined') {
@@ -220,6 +220,14 @@ REGRAS DE FORMATAÇÃO ESPECIAL (MANDATÓRIO):
   Exemplo: [ATAQUE_MONSTRO: Orc Guerreiro | Machadada Vorpal | +5 | 1d12+3 | Thorin]
   Exemplo: [ATAQUE_MONSTRO: Goblin Sentinela | Flecha Envenenada | +4 | 1d6+2 | Lyra]
   (O sistema calculará no chat a rolagem do d20 vs CA do herói, rolará o dano exato e descontará o PV!)
+- Se um monstro for derrotado, abatido, decapitado, morto ou sucumbir (seja por um golpe decisivo, golpe de misericórdia ou ataque letal), emita SEMPRE a tag de derrota:
+  [DERROTAR_MONSTRO: Nome do Monstro]
+  Exemplo: [DERROTAR_MONSTRO: Fera de Carga Corrompida]
+  Exemplo: [DERROTAR_MONSTRO: Goblin Sentinela]
+  (Isso sincroniza imediatamente o grid de combate e zera o PV do token no mapa tático!)
+- Se um monstro sofrer dano mecânico decorrente de um golpe ou magia, emita:
+  [DANO_MONSTRO: Nome do Monstro | Quantidade de Dano]
+  Exemplo: [DANO_MONSTRO: Orc Guerreiro | 8]
 - Quando o jogador realizar um ataque ou teste de combate, reaja com grande dinamismo narrativo, descreva o impacto dos ferimentos ou a esquiva, faça os monstros revidarem ou se reposicionarem e continue a história sem parar!
 - Se o personagem encontrar um pergaminho, carta, diário ou bilhete com texto legível:
   [PERGAMINHO: Título do Documento | Autor ou Origem]
@@ -239,6 +247,8 @@ export function parseAiResponse(rawText: string): {
   monsterAttack?: MonsterAttackAction;
   monsterSpawns?: MonsterSpawnAction[];
   mapMoves?: MapMoveAction[];
+  defeatedMonsters?: string[];
+  monsterDamage?: { monsterName: string; damage: number }[];
 } {
   let cleanText = rawText;
   let suggestedActions: string[] | undefined;
@@ -247,6 +257,8 @@ export function parseAiResponse(rawText: string): {
   let monsterAttack: MonsterAttackAction | undefined;
   const monsterSpawns: MonsterSpawnAction[] = [];
   const mapMoves: MapMoveAction[] = [];
+  const defeatedMonsters: string[] = [];
+  const monsterDamage: { monsterName: string; damage: number }[] = [];
 
   // 1. Extrair [AÇÕES] ... [/AÇÕES]
   const actionsRegex = /\[AÇÕES\]([\s\S]*?)\[\/AÇÕES\]/i;
@@ -338,6 +350,28 @@ export function parseAiResponse(rawText: string): {
   }
   cleanText = cleanText.replace(moveRegex, '').trim();
 
+  // 7. Extrair [DERROTAR_MONSTRO: Monstro]
+  const defeatRegex = /\[DERROTAR_MONSTRO:\s*([^\]]+)\]/gi;
+  let defeatMatch;
+  while ((defeatMatch = defeatRegex.exec(rawText)) !== null) {
+    const name = defeatMatch[1].trim();
+    if (name) defeatedMonsters.push(name);
+  }
+  cleanText = cleanText.replace(defeatRegex, '').trim();
+
+  // 8. Extrair [DANO_MONSTRO: Monstro | Dano]
+  const dmgRegex = /\[DANO_MONSTRO:\s*([^\]]+)\]/gi;
+  let dmgMatch;
+  while ((dmgMatch = dmgRegex.exec(rawText)) !== null) {
+    const parts = dmgMatch[1].split('|').map(p => p.trim());
+    const monsterName = parts[0];
+    const dmg = parseInt(parts[1], 10);
+    if (monsterName && !isNaN(dmg)) {
+      monsterDamage.push({ monsterName, damage: dmg });
+    }
+  }
+  cleanText = cleanText.replace(dmgRegex, '').trim();
+
   return {
     cleanText: cleanText.replace(/\n{3,}/g, '\n\n').trim(),
     suggestedActions,
@@ -346,6 +380,8 @@ export function parseAiResponse(rawText: string): {
     monsterAttack,
     monsterSpawns: monsterSpawns.length > 0 ? monsterSpawns : undefined,
     mapMoves: mapMoves.length > 0 ? mapMoves : undefined,
+    defeatedMonsters: defeatedMonsters.length > 0 ? defeatedMonsters : undefined,
+    monsterDamage: monsterDamage.length > 0 ? monsterDamage : undefined,
   };
 }
 
@@ -388,17 +424,16 @@ export async function sendToAiDungeonMaster(
 
   // Lista de modelos resilientes em cascata para garantir alta disponibilidade mesmo em contas gratuitas
   const preferredModel =
-    fullConfig.model && !fullConfig.model.includes('2.5-flash-lite')
+    fullConfig.model && !fullConfig.model.includes('2.5') && !fullConfig.model.includes('2.0')
       ? fullConfig.model
       : DEFAULT_MODEL;
 
   const candidateModels = Array.from(
     new Set([
       preferredModel,
-      'gemini-2.5-flash',
-      'gemini-3.5-flash-lite',
-      'gemini-3.5-flash',
       'gemini-3.6-flash',
+      'gemini-3.5-flash',
+      'gemini-3.5-flash-lite',
     ])
   );
 
@@ -433,6 +468,8 @@ export async function sendToAiDungeonMaster(
         monsterAttack: parsed.monsterAttack,
         monsterSpawns: parsed.monsterSpawns,
         mapMoves: parsed.mapMoves,
+        defeatedMonsters: parsed.defeatedMonsters,
+        monsterDamage: parsed.monsterDamage,
       };
     } catch (err: unknown) {
       lastError = err;
@@ -508,6 +545,8 @@ async function callGeminiRestFallback(
     monsterAttack: parsed.monsterAttack,
     monsterSpawns: parsed.monsterSpawns,
     mapMoves: parsed.mapMoves,
+    defeatedMonsters: parsed.defeatedMonsters,
+    monsterDamage: parsed.monsterDamage,
   };
 }
 
@@ -520,9 +559,9 @@ export async function testGeminiApiKey(apiKey: string, model: string = DEFAULT_M
   }
 
   const safeModel =
-    model && !model.includes('2.5-flash-lite') ? model : DEFAULT_MODEL;
+    model && !model.includes('2.5') && !model.includes('2.0') ? model : DEFAULT_MODEL;
   const testModels = Array.from(
-    new Set([safeModel, 'gemini-2.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.6-flash'])
+    new Set([safeModel, 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite'])
   );
   let lastErrMsg = '';
 

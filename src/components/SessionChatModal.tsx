@@ -136,14 +136,15 @@ export const SessionChatModal: React.FC<SessionChatModalProps> = ({
 
     // 1. Detectar comandos de IA (@mestre, /mestre, /ia, @ia, @dm)
     const isAiCommand =
-      raw.startsWith('@mestre') ||
-      raw.startsWith('/mestre') ||
-      raw.startsWith('/ia') ||
-      raw.startsWith('@ia') ||
-      raw.startsWith('@dm');
+      raw.toLowerCase().includes('@mestre') ||
+      raw.toLowerCase().includes('/mestre') ||
+      raw.toLowerCase().includes('/ia') ||
+      raw.toLowerCase().includes('@ia') ||
+      raw.toLowerCase().includes('@dm');
 
     if (isAiCommand) {
-      const prompt = raw.replace(/^(@mestre|\/mestre|\/ia|@ia|@dm)\s*/i, '').trim();
+      let prompt = raw.replace(/^(@mestre|\/mestre|\/ia|@ia|@dm)\s*[:,-]?\s*/i, '').trim();
+      prompt = prompt.replace(/(@mestre|\/mestre|\/ia|@ia|@dm)/gi, '').trim();
       // Publica no chat público para todos na mesa verem a pergunta/ação
       onSendMessage({
         text: raw,
@@ -216,49 +217,65 @@ export const SessionChatModal: React.FC<SessionChatModalProps> = ({
   // Jogador clica para rolar o teste solicitado pela IA
   const handleRollRequested = (req: { skillOrAbility: string; dc?: number; reason: string }) => {
     let mod = 0;
+    const target = req.skillOrAbility.toLowerCase();
+    const isAttack = target.includes('ataque') || target.includes('attack') || target.includes('golpe');
+
     if (character) {
-      const target = req.skillOrAbility.toLowerCase();
       const profBonus = Math.floor(((character.level || 1) - 1) / 4) + 2;
 
-      // 1. Tentar casar com alguma perícia (ex: Percepção, Atletismo...)
-      const skillEntry = Object.entries(SKILLS).find(
-        ([k, def]) => target.includes(k) || target.includes(def.name.toLowerCase())
-      ) as [SkillKey, { ability: AbilityKey; name: string }] | undefined;
-
-      if (skillEntry) {
-        const [skillKey, def] = skillEntry;
-        const abilityScore = character.abilities[def.ability]?.score ?? 10;
-        const abilityMod = Math.floor((abilityScore - 10) / 2);
-        const skillProf = character.skills?.[skillKey]?.proficiency ?? 'none';
-        mod = abilityMod + (skillProf === 'expertise' ? profBonus * 2 : skillProf === 'proficient' ? profBonus : 0);
+      if (isAttack) {
+        const matchingAttack = character.attacks?.find((a) => target.includes(a.name.toLowerCase()));
+        if (matchingAttack) {
+          mod = matchingAttack.attackBonus;
+        } else {
+          const isDex = target.includes('destreza') || target.includes('dex') || target.includes('arco') || target.includes('adaga') || target.includes('rapieira');
+          const abilityScore = isDex ? (character.abilities.dex?.score ?? 10) : (character.abilities.str?.score ?? 10);
+          const abilityMod = Math.floor((abilityScore - 10) / 2);
+          mod = abilityMod + profBonus;
+        }
       } else {
-        // 2. Tentar casar com algum atributo direto (ex: Força, Destreza...)
-        const abilityEntry = Object.entries(ABILITIES).find(
-          ([k, def]) =>
-            target.includes(k) ||
-            target.includes(def.name.toLowerCase()) ||
-            target.includes(def.abbr.toLowerCase())
-        );
-        if (abilityEntry) {
-          const abilityKey = abilityEntry[0] as AbilityKey;
-          const abilityScore = character.abilities[abilityKey]?.score ?? 10;
-          mod = Math.floor((abilityScore - 10) / 2);
+        // 1. Tentar casar com alguma perícia (ex: Percepção, Atletismo...)
+        const skillEntry = Object.entries(SKILLS).find(
+          ([k, def]) => target.includes(k) || target.includes(def.name.toLowerCase())
+        ) as [SkillKey, { ability: AbilityKey; name: string }] | undefined;
+
+        if (skillEntry) {
+          const [skillKey, def] = skillEntry;
+          const abilityScore = character.abilities[def.ability]?.score ?? 10;
+          const abilityMod = Math.floor((abilityScore - 10) / 2);
+          const skillProf = character.skills?.[skillKey]?.proficiency ?? 'none';
+          mod = abilityMod + (skillProf === 'expertise' ? profBonus * 2 : skillProf === 'proficient' ? profBonus : 0);
+        } else {
+          // 2. Tentar casar com algum atributo direto (ex: Força, Destreza...)
+          const abilityEntry = Object.entries(ABILITIES).find(
+            ([k, def]) =>
+              target.includes(k) ||
+              target.includes(def.name.toLowerCase()) ||
+              target.includes(def.abbr.toLowerCase())
+          );
+          if (abilityEntry) {
+            const abilityKey = abilityEntry[0] as AbilityKey;
+            const abilityScore = character.abilities[abilityKey]?.score ?? 10;
+            mod = Math.floor((abilityScore - 10) / 2);
+          }
         }
       }
     }
 
     const formula = mod === 0 ? '1d20' : mod > 0 ? `1d20+${mod}` : `1d20${mod}`;
-    const rollRes = rollFormula(formula, `Teste de ${req.skillOrAbility}`);
+    const rollRes = rollFormula(formula, isAttack ? `Ataque: ${req.skillOrAbility}` : `Teste de ${req.skillOrAbility}`);
 
     onSendMessage({
-      text: `🎲 Realizou teste de ${req.skillOrAbility} ${req.dc ? `(CD ${req.dc})` : ''}: ${rollRes.breakdown} = ${rollRes.total}`,
+      text: `${isAttack ? '⚔️' : '🎲'} Realizou ${isAttack ? 'ataque' : 'teste'} de ${req.skillOrAbility} ${req.dc ? `(${isAttack ? 'CA' : 'CD'} ${req.dc})` : ''}: ${rollRes.breakdown} = ${rollRes.total}`,
       senderName: currentUserName,
       type: 'PUBLIC',
       diceRoll: rollRes,
     });
 
     handleCallAiDm(
-      `${currentUserName} fez o teste de ${req.skillOrAbility} solicitado (CD ${req.dc || 'não especificada'}) e obteve o total de ${rollRes.total} (rolagem: ${rollRes.breakdown}). Narre o resultado dessa tentativa.`
+      isAttack
+        ? `${currentUserName} realizou o ataque com ${req.skillOrAbility} (CA ${req.dc || 'não especificada'}) obtendo ${rollRes.total} (rolagem: ${rollRes.breakdown}). Narre o resultado do golpe e continue o combate!`
+        : `${currentUserName} fez o teste de ${req.skillOrAbility} solicitado (CD ${req.dc || 'não especificada'}) e obteve o total de ${rollRes.total} (rolagem: ${rollRes.breakdown}). Narre o resultado dessa tentativa.`
     );
   };
 

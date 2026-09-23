@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import type { ChatMessage, ChatMessageType } from '../../types/chat';
 import type { Character, DiceRollResult, SkillKey, AbilityKey } from '../../types/dnd5e';
 import type { Encounter } from '../../types/combat';
+import type { MapToken } from '../../types/vtt';
 import { SKILLS, ABILITIES } from '../../types/dnd5e';
 import { rollFormula } from '../../utils/diceRoller';
 import { 
@@ -24,6 +25,8 @@ interface TabletopParchmentChatProps {
   character?: Character | null;
   isAiResponding?: boolean;
   encounter?: Encounter;
+  tokens?: MapToken[];
+  onMoveToken?: (id: string, x: number, y: number) => void;
   onHpDelta?: (combatantId: string, delta: number) => void;
   onOpenEndSessionModal?: () => void;
   onStartScenario?: (scenario: AiAdventureScenario) => void;
@@ -51,6 +54,8 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
   character,
   isAiResponding,
   encounter,
+  tokens,
+  onMoveToken,
   onHpDelta,
   onOpenEndSessionModal,
   onStartScenario,
@@ -127,7 +132,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
     const rollRes = rollFormula(formula, label);
     const dcInfo = req.dc ? ` (vs ${isAttack ? 'CA' : 'CD'} ${req.dc})` : '';
 
-    // Resolução Completa de Ataque D&D 5e com Acerto/Erro, Dano e Redução de PV
+    // Resolução Completa de Ataque D&D 5e com Acerto/Erro, Dano, Aproximação e Redução de PV
     if (isAttack && req.dc) {
       const natural = rollRes.rolls?.[0] ?? rollRes.selectedRoll;
       const isCritHit = Boolean(rollRes.isCriticalSuccess || natural === 20);
@@ -147,6 +152,47 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
       }
 
       const targetDisplayName = targetMonster?.name || 'o Inimigo';
+
+      // ─── APROXIMAÇÃO AUTOMÁTICA DO HERÓI ATÉ O MONSTRO NO MAPA ───
+      if (tokens && onMoveToken) {
+        const playerToken = tokens.find(
+          (t) =>
+            (character?.id && t.id === character.id) ||
+            t.name.toLowerCase() === (character?.name || '').toLowerCase() ||
+            t.name.toLowerCase() === currentUserName.toLowerCase() ||
+            t.type === 'player'
+        );
+
+        const targetToken = targetMonster
+          ? tokens.find(
+              (t) =>
+                t.combatantId === targetMonster.id ||
+                t.name.toLowerCase() === targetMonster.name.toLowerCase() ||
+                t.name.toLowerCase().startsWith(targetMonster.name.toLowerCase().replace(/\s*\d+$/, '')) ||
+                t.type === 'monster'
+            )
+          : tokens.find((t) => t.type === 'monster');
+
+        if (playerToken && targetToken && playerToken.id !== targetToken.id) {
+          const dx = targetToken.x - playerToken.x;
+          const dy = targetToken.y - playerToken.y;
+          const dist = Math.hypot(dx, dy);
+
+          // Se estiver a mais de 1 casa (55px) de distância, posiciona adjacente ao monstro
+          if (dist > 55) {
+            let targetX = targetToken.x;
+            let targetY = targetToken.y;
+
+            if (Math.abs(dx) >= Math.abs(dy)) {
+              targetX += dx > 0 ? -50 : 50;
+            } else {
+              targetY += dy > 0 ? -50 : 50;
+            }
+
+            onMoveToken(playerToken.id, Math.max(0, targetX), Math.max(0, targetY));
+          }
+        }
+      }
 
       if (isHit) {
         // Encontra a arma utilizada ou deduz fórmula de dano da classe
@@ -197,13 +243,13 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
           `⚔️ **Dano (${finalDamageFormula}):** [${dmgRoll.breakdown}] = **${damageVal} de dano** em **${targetDisplayName}**!\n` +
           (targetMonster ? `🩸 **${targetDisplayName}** agora possui **${newHp}/${targetMonster.maxHp} PV** ${isDefeated ? '💀 (**DERROTADO!**)' : ''}` : '');
 
-        const promptText = `@mestre Ataque realizado com ${req.skillOrAbility}: ${hitStatus} com resultado ${rollRes.total} (vs CA ${req.dc}) causando ${damageVal} de dano. ` +
-          (targetMonster ? `O monstro ${targetDisplayName} ficou com ${newHp}/${targetMonster.maxHp} PV ${isDefeated ? 'e caiu derrotado em combate!' : 'e continua em combate.'} ` : '') +
-          `Descreva cinematograficamente o impacto do golpe e a reação do monstro.`;
+        const promptText = `@mestre [RESULTADO DO ATAQUE]: ${hitStatus} com rolagem ${rollRes.total} (vs CA ${req.dc}) causando ${damageVal} de dano em ${targetDisplayName}. ` +
+          (targetMonster ? `O alvo ficou com ${newHp}/${targetMonster.maxHp} PV ${isDefeated ? 'e caiu derrotado em combate!' : 'e continua em combate.'} ` : '') +
+          `Descreva cinematograficamente o impacto do golpe em ${targetDisplayName} e como a batalha prossegue!`;
 
         onSendMessage(
           {
-            text: `${hitAnnouncement}\n\n${promptText}`,
+            text: `${promptText}\n\n${hitAnnouncement}`,
             senderName: character?.name || currentUserName || 'Aventureiro',
             type: 'PUBLIC',
             diceRoll: rollRes,
@@ -215,11 +261,11 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
         // Ataque Errou (Miss)
         const missStatus = isCritMiss ? '💨 FALHA CRÍTICA (1 natural - Erro Automático)!' : '❌ ERROU!';
         const missAnnouncement = `${missStatus} [${rollRes.breakdown}] = ${rollRes.total} (vs CA ${req.dc}). O ataque não conseguiu superar a defesa de ${targetDisplayName}.`;
-        const promptText = `@mestre Ataque realizado com ${req.skillOrAbility}: ${missStatus} com resultado ${rollRes.total} (vs CA ${req.dc}). O golpe não acertou ${targetDisplayName}. Descreva a esquiva ou defesa do adversário.`;
+        const promptText = `@mestre [RESULTADO DO ATAQUE]: ${missStatus} com rolagem ${rollRes.total} (vs CA ${req.dc}). O golpe não acertou ${targetDisplayName}. Descreva a esquiva ou defesa do adversário e como a batalha prossegue!`;
 
         onSendMessage(
           {
-            text: `${missAnnouncement}\n\n${promptText}`,
+            text: `${promptText}\n\n${missAnnouncement}`,
             senderName: character?.name || currentUserName || 'Aventureiro',
             type: 'PUBLIC',
             diceRoll: rollRes,
@@ -227,6 +273,48 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
           currentUserName
         );
         return;
+      }
+    }
+
+    // ─── APROXIMAÇÃO EM TESTES DE MOVIMENTAÇÃO, FLANCO OU FURTIVIDADE ───
+    if (!isAttack && tokens && onMoveToken) {
+      const reasonLower = req.reason.toLowerCase();
+      const skillLower = req.skillOrAbility.toLowerCase();
+      const isMovementAction =
+        /avan[çc]ar|flanquear|aproximar|investir|esgueirar|correr|combate/i.test(reasonLower) ||
+        /avan[çc]ar|flanquear|aproximar|investir|esgueirar|correr|combate/i.test(skillLower);
+
+      if (isMovementAction) {
+        const playerToken = tokens.find(
+          (t) =>
+            (character?.id && t.id === character.id) ||
+            t.name.toLowerCase() === (character?.name || '').toLowerCase() ||
+            t.name.toLowerCase() === currentUserName.toLowerCase() ||
+            t.type === 'player'
+        );
+        const targetToken =
+          tokens.find(
+            (t) =>
+              t.type === 'monster' &&
+              (reasonLower.includes(t.name.toLowerCase().replace(/\s*\d+$/, '').trim()) ||
+                skillLower.includes(t.name.toLowerCase().replace(/\s*\d+$/, '').trim()))
+          ) || tokens.find((t) => t.type === 'monster');
+
+        if (playerToken && targetToken && playerToken.id !== targetToken.id) {
+          const dx = targetToken.x - playerToken.x;
+          const dy = targetToken.y - playerToken.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist > 55) {
+            let targetX = targetToken.x;
+            let targetY = targetToken.y;
+            if (Math.abs(dx) >= Math.abs(dy)) {
+              targetX += dx > 0 ? -50 : 50;
+            } else {
+              targetY += dy > 0 ? -50 : 50;
+            }
+            onMoveToken(playerToken.id, Math.max(0, targetX), Math.max(0, targetY));
+          }
+        }
       }
     }
 
@@ -417,8 +505,45 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                           <button
                             key={i}
                             type="button"
-                            onClick={() => onSendMessage(`@mestre Escolho: ${act}`, currentUserName)}
-                            className="w-full text-left p-1.5 rounded bg-[#f0e3c5] hover:bg-[#e4d1aa] border border-[#cfb48c] text-[11px] text-amber-950 font-medium transition flex items-center gap-1.5 shadow-xs"
+                            onClick={() => {
+                              const actLower = act.toLowerCase();
+                              const isMoveOrAttack =
+                                /avan[çc]ar|flanquear|atacar|aproximar|investir|esgueirar|golpear|correr|bloquear/i.test(actLower);
+
+                              if (isMoveOrAttack && tokens && onMoveToken) {
+                                const playerToken = tokens.find(
+                                  (t) =>
+                                    (character?.id && t.id === character.id) ||
+                                    t.name.toLowerCase() === (character?.name || '').toLowerCase() ||
+                                    t.name.toLowerCase() === currentUserName.toLowerCase() ||
+                                    t.type === 'player'
+                                );
+                                const targetToken =
+                                  tokens.find(
+                                    (t) =>
+                                      t.type === 'monster' &&
+                                      actLower.includes(t.name.toLowerCase().replace(/\s*\d+$/, '').trim())
+                                  ) || tokens.find((t) => t.type === 'monster');
+
+                                if (playerToken && targetToken && playerToken.id !== targetToken.id) {
+                                  const dx = targetToken.x - playerToken.x;
+                                  const dy = targetToken.y - playerToken.y;
+                                  const dist = Math.hypot(dx, dy);
+                                  if (dist > 55) {
+                                    let targetX = targetToken.x;
+                                    let targetY = targetToken.y;
+                                    if (Math.abs(dx) >= Math.abs(dy)) {
+                                      targetX += dx > 0 ? -50 : 50;
+                                    } else {
+                                      targetY += dy > 0 ? -50 : 50;
+                                    }
+                                    onMoveToken(playerToken.id, Math.max(0, targetX), Math.max(0, targetY));
+                                  }
+                                }
+                              }
+                              onSendMessage(`@mestre Escolho: ${act}`, currentUserName);
+                            }}
+                            className="w-full text-left p-1.5 rounded bg-[#f0e3c5] hover:bg-[#e4d1aa] border border-[#cfb48c] text-[11px] text-amber-950 font-medium transition flex items-center gap-1.5 shadow-xs cursor-pointer"
                           >
                             <ArrowRight size={11} className="text-amber-800 shrink-0" />
                             <span>{act}</span>

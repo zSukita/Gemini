@@ -517,6 +517,45 @@ export function App() {
   tokensRef.current = tokens;
   chatLogRef.current = chatLog;
 
+  // Modificar PV de Combatente e Sincronizar Imediatamente os Tokens no Mapa e Rede P2P
+  const handleHpDelta = useCallback(
+    (id: string, delta: number) => {
+      applyCombatantHpDelta(id, delta);
+
+      const combatant = encounterRef.current?.combatants.find((c) => c.id === id);
+      if (combatant) {
+        const newHp = Math.max(0, Math.min(combatant.maxHp, combatant.currentHp + delta));
+        const cBase = combatant.name.toLowerCase().replace(/\s*\d+$/, '').trim();
+
+        setTokens((prev) => {
+          const updated = prev.map((t) => {
+            const tBase = t.name.toLowerCase().replace(/\s*\d+$/, '').trim();
+            const isMatch =
+              t.combatantId === id ||
+              t.name.toLowerCase() === combatant.name.toLowerCase() ||
+              (tBase === cBase && t.type === combatant.type);
+
+            if (isMatch) {
+              return {
+                ...t,
+                combatantId: id,
+                currentHp: newHp,
+                maxHp: combatant.maxHp,
+              };
+            }
+            return t;
+          });
+
+          if (isConnected) {
+            broadcastTokenMove(updated, character.name);
+          }
+          return updated;
+        });
+      }
+    },
+    [applyCombatantHpDelta, isConnected, broadcastTokenMove, character.name, setTokens]
+  );
+
   const triggerAiDm = useCallback(
     async (promptText: string) => {
       const apiKey = getStoredApiKey();
@@ -563,6 +602,17 @@ export function App() {
         // 1. Inserir novos monstros no encontro e tokens no mapa (SPAWN)
         if (aiReply.monsterSpawns && aiReply.monsterSpawns.length > 0) {
           aiReply.monsterSpawns.forEach((spawn) => {
+            const spawnBase = spawn.monsterName.toLowerCase().replace(/\s*\d+$/, '').trim();
+            // Verifica se este monstro já existe no encontro ativo para evitar duplicações a cada turno
+            const alreadyExists = encounterRef.current?.combatants.some((c) => {
+              const cBase = c.name.toLowerCase().replace(/\s*\d+$/, '').trim();
+              return c.name.toLowerCase() === spawn.monsterName.toLowerCase() || cBase === spawnBase;
+            });
+
+            if (alreadyExists) {
+              return;
+            }
+
             const foundMon = SRD_MONSTERS.find(
               (m) =>
                 m.name.toLowerCase().includes(spawn.monsterName.toLowerCase()) ||
@@ -621,11 +671,16 @@ export function App() {
         // 2. Mover tokens de monstros ou jogadores no mapa (MOVER)
         if (aiReply.mapMoves && aiReply.mapMoves.length > 0) {
           aiReply.mapMoves.forEach((move) => {
-            const tokenToMove = tokensRef.current.find(
-              (t) =>
+            const moveNameBase = move.tokenName.toLowerCase().replace(/\s*\d+$/, '').trim();
+            const tokenToMove = tokensRef.current.find((t) => {
+              const tBase = t.name.toLowerCase().replace(/\s*\d+$/, '').trim();
+              return (
+                t.name.toLowerCase() === move.tokenName.toLowerCase() ||
                 t.name.toLowerCase().includes(move.tokenName.toLowerCase()) ||
-                move.tokenName.toLowerCase().includes(t.name.toLowerCase())
-            );
+                move.tokenName.toLowerCase().includes(t.name.toLowerCase()) ||
+                tBase === moveNameBase
+              );
+            });
 
             if (tokenToMove) {
               const squares = move.distanceSquares || 4;
@@ -756,13 +811,14 @@ export function App() {
       const trimmed = text.trim();
       if (!trimmed) return;
 
+      const trimmedLower = trimmed.toLowerCase();
       const isMonsterAttackCmd =
-        trimmed === '/ia atacar' ||
-        trimmed === '@mestre atacar' ||
-        trimmed === '/mestre atacar' ||
-        trimmed === '/monstro atacar' ||
-        trimmed.startsWith('/ia atacar') ||
-        trimmed.startsWith('@mestre atacar');
+        trimmedLower === '/ia atacar' ||
+        trimmedLower === '@mestre atacar' ||
+        trimmedLower === '/mestre atacar' ||
+        trimmedLower === '/monstro atacar' ||
+        trimmedLower.startsWith('/ia atacar') ||
+        trimmedLower.startsWith('@mestre atacar');
 
       if (isMonsterAttackCmd) {
         handleTriggerAiMonsterTurnRef.current?.();
@@ -770,11 +826,11 @@ export function App() {
       }
 
       const isAiCommand =
-        trimmed.startsWith('@mestre') ||
-        trimmed.startsWith('/mestre') ||
-        trimmed.startsWith('/ia') ||
-        trimmed.startsWith('@ia') ||
-        trimmed.startsWith('@dm');
+        trimmedLower.includes('@mestre') ||
+        trimmedLower.includes('/mestre') ||
+        trimmedLower.includes('/ia') ||
+        trimmedLower.includes('@ia') ||
+        trimmedLower.includes('@dm');
 
       const apiKey = getStoredApiKey();
       const willHandleAi = isAiCommand && Boolean(apiKey);
@@ -807,9 +863,14 @@ export function App() {
       }
 
       if (isAiCommand) {
-        const cleanPrompt =
-          trimmed.replace(/^(@mestre|\/mestre|\/ia|@ia|@dm)\s*/i, '').trim() ||
-          'Os aventureiros olham ao redor aguardando suas palavras. O que acontece agora? Descreva o ambiente e sugira opções de ação.';
+        let cleanPrompt = trimmed
+          .replace(/^(@mestre|\/mestre|\/ia|@ia|@dm)\s*[:,-]?\s*/i, '')
+          .trim();
+        cleanPrompt = cleanPrompt.replace(/(@mestre|\/mestre|\/ia|@ia|@dm)/gi, '').trim();
+        if (!cleanPrompt) {
+          cleanPrompt =
+            'Os aventureiros olham ao redor aguardando suas palavras. O que acontece agora? Descreva o ambiente e sugira opções de ação.';
+        }
         triggerAiDm(cleanPrompt);
       }
     },
@@ -1975,7 +2036,7 @@ export function App() {
             onSortInitiative={sortCombatantsByInitiative}
             onImportPlayers={importPlayerCharacters}
             onResetEncounter={resetEncounter}
-            onHpDelta={applyCombatantHpDelta}
+            onHpDelta={handleHpDelta}
             onToggleCondition={toggleCombatantCondition}
             onUpdateInitiative={updateCombatantInitiative}
             onRemoveCombatant={removeCombatant}
@@ -2039,7 +2100,7 @@ export function App() {
             onPreviousTurn={previousTurn}
             onSortInitiative={sortCombatantsByInitiative}
             onResetEncounter={resetEncounter}
-            onHpDelta={applyCombatantHpDelta}
+            onHpDelta={handleHpDelta}
             onToggleCondition={toggleCombatantCondition}
             onUpdateInitiative={updateCombatantInitiative}
             onRemoveCombatant={removeCombatant}

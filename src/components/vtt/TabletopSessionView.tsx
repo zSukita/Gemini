@@ -247,9 +247,51 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
   const handleMacroClick = (slotNumber: number) => {
     const charName = character.name || currentUserName || 'Aventureiro';
     switch (slotNumber) {
-      case 1: // Ataque
-        onRollD20(`${charName}: Ataque Básico`, character.abilities?.str?.score ? Math.floor((character.abilities.str.score - 10) / 2) + 2 : 2);
+      case 1: { // Ataque
+        // Se houver um alvo selecionado, aproxima o herói no tabuleiro
+        if (activeTarget) {
+          const playerToken = tokens.find(
+            (t) =>
+              (character?.id && t.id === character.id) ||
+              t.name.toLowerCase() === (character?.name || '').toLowerCase() ||
+              t.type === 'player'
+          );
+          const targetToken = tokens.find(
+            (t) =>
+              t.combatantId === activeTarget.id ||
+              t.name.toLowerCase() === activeTarget.name.toLowerCase() ||
+              t.name.toLowerCase().startsWith(activeTarget.name.toLowerCase().replace(/\s*\d+$/, ''))
+          );
+
+          if (playerToken && targetToken && playerToken.id !== targetToken.id) {
+            const dx = targetToken.x - playerToken.x;
+            const dy = targetToken.y - playerToken.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist > 55) {
+              let targetX = targetToken.x;
+              let targetY = targetToken.y;
+              if (Math.abs(dx) >= Math.abs(dy)) {
+                targetX += dx > 0 ? -50 : 50;
+              } else {
+                targetY += dy > 0 ? -50 : 50;
+              }
+              onMoveToken(playerToken.id, Math.max(0, targetX), Math.max(0, targetY));
+            }
+          }
+        }
+
+        const strScore = character.abilities?.str?.score ?? 10;
+        const dexScore = character.abilities?.dex?.score ?? 10;
+        const profBonus = Math.floor(((character.level || 1) - 1) / 4) + 2;
+        const bestMod = Math.floor((Math.max(strScore, dexScore) - 10) / 2);
+        const atkBonus = character.attacks?.[0]?.attackBonus ?? (bestMod + profBonus);
+
+        onRollD20(
+          activeTarget ? `${charName}: Ataque em ${activeTarget.name}` : `${charName}: Ataque Básico`,
+          atkBonus
+        );
         break;
+      }
       case 2: // Esquiva
         onSendMessage(`${charName} assume postura defensiva com a ação de Esquiva! Todos os ataques contra ele têm desvantagem nesta rodada.`, charName);
         break;
@@ -448,6 +490,8 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
               character={character}
               isAiResponding={isAiResponding}
               encounter={encounter}
+              tokens={tokens}
+              onMoveToken={onMoveToken}
               onHpDelta={onHpDelta}
               onOpenEndSessionModal={onOpenEndSessionModal}
               onStartScenario={onStartScenario}

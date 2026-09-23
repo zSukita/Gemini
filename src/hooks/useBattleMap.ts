@@ -70,32 +70,50 @@ export function useBattleMap(
     if (!encounter) return;
 
     setTokens((prevTokens) => {
-      const updated = [...prevTokens];
+      // 1. Atualiza tokens existentes com referências imutáveis
+      const updated = prevTokens.map((token) => {
+        const matchingCombatant = encounter.combatants.find((c) => {
+          if (token.combatantId && token.combatantId === c.id) return true;
+          const tokBase = token.name.toLowerCase().replace(/\s*\d+$/, '').trim();
+          const comBase = c.name.toLowerCase().replace(/\s*\d+$/, '').trim();
+          return tokBase === comBase;
+        });
 
-      // Atualiza HP, avatar e status dos tokens existentes com base no combatente
-      encounter.combatants.forEach((c, index) => {
-        const existingToken = updated.find(
-          (t) => t.combatantId === c.id || t.name.toLowerCase() === c.name.toLowerCase()
-        );
-
-        let charAvatar = c.avatarUrl || c.monsterData?.avatarUrl;
-        if (!charAvatar && c.type === 'player' && character) {
-          const cls = SRD_CLASSES.find((cl) => cl.name.toLowerCase() === (character.characterClass || '').toLowerCase());
-          charAvatar = cls?.avatarUrl;
+        if (matchingCombatant) {
+          let charAvatar = matchingCombatant.avatarUrl || matchingCombatant.monsterData?.avatarUrl;
+          if (!charAvatar && matchingCombatant.type === 'player' && character) {
+            const cls = SRD_CLASSES.find((cl) => cl.name.toLowerCase() === (character.characterClass || '').toLowerCase());
+            charAvatar = cls?.avatarUrl;
+          }
+          return {
+            ...token,
+            combatantId: matchingCombatant.id,
+            name: matchingCombatant.name,
+            currentHp: matchingCombatant.currentHp,
+            maxHp: matchingCombatant.maxHp,
+            avatarUrl: charAvatar || token.avatarUrl,
+            conditions: matchingCombatant.conditions || token.conditions,
+          };
         }
+        return token;
+      });
 
-        if (existingToken) {
-          existingToken.name = c.name;
-          existingToken.currentHp = c.currentHp;
-          existingToken.maxHp = c.maxHp;
-          if (!existingToken.combatantId) {
-            existingToken.combatantId = c.id;
+      // 2. Insere novos combatentes que ainda não possuem token no mapa
+      encounter.combatants.forEach((c, index) => {
+        const exists = updated.some((t) => {
+          if (t.combatantId === c.id) return true;
+          const tokBase = t.name.toLowerCase().replace(/\s*\d+$/, '').trim();
+          const comBase = c.name.toLowerCase().replace(/\s*\d+$/, '').trim();
+          return tokBase === comBase && t.type === c.type;
+        });
+
+        if (!exists) {
+          let charAvatar = c.avatarUrl || c.monsterData?.avatarUrl;
+          if (!charAvatar && c.type === 'player' && character) {
+            const cls = SRD_CLASSES.find((cl) => cl.name.toLowerCase() === (character.characterClass || '').toLowerCase());
+            charAvatar = cls?.avatarUrl;
           }
-          if (charAvatar && (!existingToken.avatarUrl || existingToken.avatarUrl !== charAvatar)) {
-            existingToken.avatarUrl = charAvatar;
-          }
-        } else {
-          // Cria novo token se ainda não existir no mapa
+
           const isPlayer = c.type === 'player';
           const size = c.monsterData?.size === 'Grande' ? 2 : c.monsterData?.size === 'Enorme' ? 3 : 1;
           const startX = isPlayer ? 550 + (index % 4) * 65 : 450 + (index % 4) * 75;
@@ -125,7 +143,7 @@ export function useBattleMap(
   // Sincronizar token do jogador local e de todos os participantes conectados na sala
   useEffect(() => {
     setTokens((prev) => {
-      const updated = [...prev];
+      let updated = [...prev];
 
       // 1. Jogador Local
       if (character && character.name) {
@@ -134,16 +152,22 @@ export function useBattleMap(
         );
         const effectiveAvatar = character.avatarUrl || classObj?.avatarUrl;
 
-        const localToken = updated.find(
+        const hasLocal = updated.some(
           (t) => t.type === 'player' && t.name.toLowerCase() === (character.name || '').toLowerCase()
         );
 
-        if (localToken) {
-          if (effectiveAvatar && localToken.avatarUrl !== effectiveAvatar) {
-            localToken.avatarUrl = effectiveAvatar;
-          }
-          localToken.currentHp = character.currentHp ?? localToken.currentHp;
-          localToken.maxHp = character.maxHp ?? localToken.maxHp;
+        if (hasLocal) {
+          updated = updated.map((t) => {
+            if (t.type === 'player' && t.name.toLowerCase() === (character.name || '').toLowerCase()) {
+              return {
+                ...t,
+                avatarUrl: effectiveAvatar || t.avatarUrl,
+                currentHp: character.currentHp ?? t.currentHp,
+                maxHp: character.maxHp ?? t.maxHp,
+              };
+            }
+            return t;
+          });
         } else {
           updated.push({
             id: `token-player-${character.id || 'local'}`,
@@ -166,14 +190,20 @@ export function useBattleMap(
         connectedPeers.forEach((peer, pIdx) => {
           if (character?.name && peer.name.toLowerCase() === character.name.toLowerCase()) return;
 
-          const peerToken = updated.find(
+          const hasPeer = updated.some(
             (t) => t.type === 'player' && t.name.toLowerCase() === peer.name.toLowerCase()
           );
 
-          if (peerToken) {
-            if (peer.avatarUrl && peerToken.avatarUrl !== peer.avatarUrl) {
-              peerToken.avatarUrl = peer.avatarUrl;
-            }
+          if (hasPeer) {
+            updated = updated.map((t) => {
+              if (t.type === 'player' && t.name.toLowerCase() === peer.name.toLowerCase()) {
+                return {
+                  ...t,
+                  avatarUrl: peer.avatarUrl || t.avatarUrl,
+                };
+              }
+              return t;
+            });
           } else {
             updated.push({
               id: `token-peer-${peer.peerId}`,

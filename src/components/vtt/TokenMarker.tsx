@@ -108,6 +108,16 @@ export const TokenMarker: React.FC<TokenMarkerProps> = ({
           </div>
         )}
 
+        {/* Marcador de Derrotado (0 PV) */}
+        {token.currentHp <= 0 && (
+          <span 
+            className="absolute inset-0 flex items-center justify-center bg-black/60 rounded-full text-base z-30 pointer-events-none select-none"
+            title="Derrotado (0 PV)"
+          >
+            💀
+          </span>
+        )}
+
         {/* Indicador de Tocha Acesa */}
         {token.hasTorch && (
           <span 
@@ -118,19 +128,19 @@ export const TokenMarker: React.FC<TokenMarkerProps> = ({
           </span>
         )}
 
-        {/* Mini Barra de Vida no Topo com Rótulo Numérico no Hover */}
+        {/* Mini Barra de Vida no Topo com Rótulo Numérico */}
         <div className="absolute -top-2 left-1/2 -translate-x-1/2 flex flex-col items-center">
           <div className="w-10 bg-slate-950 rounded-full h-1.5 overflow-hidden border border-slate-700 shadow">
             <div
-              className={`h-full ${
+              className={`h-full transition-all duration-300 ${
                 hpPercent > 50 ? 'bg-emerald-400' : hpPercent > 20 ? 'bg-amber-400' : 'bg-rose-500'
               }`}
               style={{ width: `${hpPercent}%` }}
             />
           </div>
-          {/* Valor numérico de HP (visível no hover ou com token selecionado) */}
+          {/* Valor numérico de HP (visível se estiver ferido, selecionado ou em hover) */}
           <span className={`text-[9px] font-mono font-bold px-1 rounded bg-slate-950/95 border border-slate-700 text-slate-200 mt-0.5 whitespace-nowrap shadow transition-opacity ${
-            isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+            isSelected || token.currentHp < (token.maxHp || 1) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
           }`}>
             {token.currentHp}/{token.maxHp}
           </span>

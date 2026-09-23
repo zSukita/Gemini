@@ -210,7 +210,7 @@ REGRAS DE FORMATAÇÃO ESPECIAL (MANDATÓRIO):
   [SPAWN_MONSTRO: Nome do Monstro | Quantidade]
   Exemplo: [SPAWN_MONSTRO: Orc Guerreiro | 2]
   Exemplo: [SPAWN_MONSTRO: Goblin Sentinela | 1]
-  (O sistema adicionará instantaneamente os tokens e fichas de combate no mapa tático!)
+  (REGRA CRÍTICA: Declare [SPAWN_MONSTRO] APENAS na PRIMEIRA vez em que novos inimigos surgirem na cena. NUNCA repita o spawn de monstros que já estão no combate atual!)
 - Se personagens ou monstros se moverem no campo de batalha tático, declare a tag:
   [MOVER: Nome do Token | Ação ou Direção | Quantidade de Casas]
   Exemplo: [MOVER: Goblin Sentinela | recua para as sombras | 4]
@@ -220,6 +220,7 @@ REGRAS DE FORMATAÇÃO ESPECIAL (MANDATÓRIO):
   Exemplo: [ATAQUE_MONSTRO: Orc Guerreiro | Machadada Vorpal | +5 | 1d12+3 | Thorin]
   Exemplo: [ATAQUE_MONSTRO: Goblin Sentinela | Flecha Envenenada | +4 | 1d6+2 | Lyra]
   (O sistema calculará no chat a rolagem do d20 vs CA do herói, rolará o dano exato e descontará o PV!)
+- Quando o jogador realizar um ataque ou teste de combate, reaja com grande dinamismo narrativo, descreva o impacto dos ferimentos ou a esquiva, faça os monstros revidarem ou se reposicionarem e continue a história sem parar!
 - Se o personagem encontrar um pergaminho, carta, diário ou bilhete com texto legível:
   [PERGAMINHO: Título do Documento | Autor ou Origem]
   Texto exato do bilhete ou carta aqui...

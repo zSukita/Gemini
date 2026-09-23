@@ -19,7 +19,7 @@ const CONFIG_STORAGE_KEY = 'arcanasheet_ai_dm_config';
 const CHAT_HISTORY_STORAGE_KEY = 'arcanasheet_ai_dm_history';
 const CAMPAIGN_SUMMARY_STORAGE_KEY = 'arcanasheet_ai_campaign_summary';
 
-export const DEFAULT_MODEL = 'gemini-3.6-flash';
+export const DEFAULT_MODEL = 'gemini-2.5-flash';
 
 export const DEFAULT_AI_CONFIG: AiDmConfig = {
   apiKey: '',
@@ -72,16 +72,16 @@ export function getStoredAiConfig(): AiDmConfig {
       const raw = localStorage.getItem(CONFIG_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        // Migra automaticamente modelos descontinuados pelo Google (ex: 2.5, 2.0, 1.5, 1.0)
-        const isDeprecated =
+        // Migra automaticamente modelos inexistentes ou inválidos (ex: 3.6, 3.5, 1.0, gemini-pro)
+        const isInvalidOrDeprecated =
           !parsed.model ||
-          parsed.model.includes('2.5') ||
-          parsed.model.includes('2.0') ||
-          parsed.model.includes('1.5') ||
-          parsed.model.includes('1.0');
-        const model = isDeprecated ? DEFAULT_MODEL : parsed.model;
+          parsed.model.includes('3.6') ||
+          parsed.model.includes('3.5') ||
+          parsed.model.includes('1.0') ||
+          parsed.model === 'gemini-pro';
+        const model = isInvalidOrDeprecated ? DEFAULT_MODEL : parsed.model;
 
-        if (isDeprecated && typeof localStorage !== 'undefined') {
+        if (isInvalidOrDeprecated && typeof localStorage !== 'undefined') {
           try {
             localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify({ ...parsed, model: DEFAULT_MODEL }));
           } catch {
@@ -563,16 +563,17 @@ export async function sendToAiDungeonMaster(
 
   // Lista de modelos resilientes em cascata para garantir alta disponibilidade mesmo em contas gratuitas
   const preferredModel =
-    fullConfig.model && !fullConfig.model.includes('2.5') && !fullConfig.model.includes('2.0')
+    fullConfig.model && !fullConfig.model.includes('3.6') && !fullConfig.model.includes('3.5')
       ? fullConfig.model
       : DEFAULT_MODEL;
 
   const candidateModels = Array.from(
     new Set([
       preferredModel,
-      'gemini-3.6-flash',
-      'gemini-3.5-flash',
-      'gemini-3.5-flash-lite',
+      'gemini-2.5-flash',
+      'gemini-2.5-flash-lite',
+      'gemini-2.0-flash',
+      'gemini-1.5-flash',
     ])
   );
 
@@ -615,12 +616,16 @@ export async function sendToAiDungeonMaster(
       lastError = err;
       const errorMsg = err instanceof Error ? err.message : String(err);
       console.warn(`[Gemini] Falha temporária com modelo ${modelToTry}: ${errorMsg}. Tentando modelo reserva...`);
+      // Se for sobrecarga temporária (503 / 429), aguarda 500ms antes do próximo candidato
+      if (errorMsg.includes('503') || errorMsg.includes('429') || errorMsg.includes('UNAVAILABLE')) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
     }
   }
 
-  // Se todos os modelos pelo SDK falharem, tenta fallback REST com gemini-3.5-flash-lite
+  // Se todos os modelos pelo SDK falharem, tenta fallback REST com gemini-2.5-flash-lite
   try {
-    return await callGeminiRestFallback(apiKey, 'gemini-3.5-flash-lite', systemInstruction, conversationTurns);
+    return await callGeminiRestFallback(apiKey, 'gemini-2.5-flash-lite', systemInstruction, conversationTurns);
   } catch {
     // Tratamento amigável e legível para o usuário em caso de erro nos servidores do Google
     const rawMsg = lastError instanceof Error ? lastError.message : String(lastError);
@@ -748,9 +753,9 @@ export async function testGeminiApiKey(apiKey: string, model: string = DEFAULT_M
   }
 
   const safeModel =
-    model && !model.includes('2.5') && !model.includes('2.0') ? model : DEFAULT_MODEL;
+    model && !model.includes('3.6') && !model.includes('3.5') ? model : DEFAULT_MODEL;
   const testModels = Array.from(
-    new Set([safeModel, 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite'])
+    new Set([safeModel, 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-flash'])
   );
   let lastErrMsg = '';
 
@@ -826,7 +831,7 @@ ${contextNote ? `\nCONTEXTO ESPECÍFICO DO MESTRE:\n${contextNote}` : ''}
 Responda diretamente em português do Brasil com excelente diagramação em markdown.
   `.trim();
 
-  const oracleModels = [DEFAULT_MODEL, 'gemini-3.5-flash-lite', 'gemini-3.6-flash'];
+  const oracleModels = [DEFAULT_MODEL, 'gemini-2.5-flash-lite', 'gemini-2.0-flash'];
   let lastErr: unknown = null;
 
   for (const m of oracleModels) {

@@ -55,7 +55,14 @@ import { HandoutModal } from './components/dm/HandoutModal';
 import { HandoutViewerModal } from './components/HandoutViewerModal';
 import { AiDungeonMasterModal } from './components/ai/AiDungeonMasterModal';
 import { EndSessionModal } from './components/vtt/EndSessionModal';
-import { getStoredApiKey, sendToAiDungeonMaster, clearStoredChatHistory, saveStoredChatHistory } from './services/geminiService';
+import { 
+  getStoredApiKey, 
+  getStoredGroqApiKey, 
+  getStoredAiProvider, 
+  sendToAiDungeonMaster, 
+  clearStoredChatHistory, 
+  saveStoredChatHistory 
+} from './services/geminiService';
 import type { AiMessage, MonsterAttackAction, AiLootReward } from './types/aiDm';
 import type { Combatant, Monster, ConditionKey } from './types/combat';
 import type { ChatMessage, ChatMessageType } from './types/chat';
@@ -599,10 +606,19 @@ export function App() {
 
   const triggerAiDm = useCallback(
     async (promptText: string) => {
-      const apiKey = getStoredApiKey();
-      if (!apiKey) {
+      const provider = getStoredAiProvider();
+      const groqKey = getStoredGroqApiKey();
+      const geminiKey = getStoredApiKey();
+      const isReady =
+        provider === 'pollinations' ||
+        (provider === 'groq' && Boolean(groqKey)) ||
+        (provider === 'gemini' && Boolean(geminiKey)) ||
+        Boolean(groqKey) ||
+        Boolean(geminiKey);
+
+      if (!isReady) {
         sendChatMessage({
-          text: '⚠️ Chave de API do Google Gemini não configurada! Por favor, abra o menu do Mestre IA e adicione sua chave.',
+          text: '⚠️ O Mestre IA precisa de configuração! Por favor, abra o menu do Mestre IA para selecionar o Modo Livre (sem chave) ou informar sua chave Groq/Gemini.',
           senderName: '✨ Mestre Supremo (IA)',
           type: 'AI_DM',
         });
@@ -1019,8 +1035,17 @@ export function App() {
         trimmedLower.includes('@ia') ||
         trimmedLower.includes('@dm');
 
-      const apiKey = getStoredApiKey();
-      const willHandleAi = isAiCommand && Boolean(apiKey);
+      const provider = getStoredAiProvider();
+      const groqKey = getStoredGroqApiKey();
+      const geminiKey = getStoredApiKey();
+      const isAiReady =
+        provider === 'pollinations' ||
+        (provider === 'groq' && Boolean(groqKey)) ||
+        (provider === 'gemini' && Boolean(geminiKey)) ||
+        Boolean(groqKey) ||
+        Boolean(geminiKey);
+
+      const willHandleAi = isAiCommand && isAiReady;
 
       if (isObj) {
         if (textOrPayload.diceRoll) {

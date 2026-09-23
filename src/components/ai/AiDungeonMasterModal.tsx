@@ -6,21 +6,28 @@ import {
   type AiMessage, 
   type AiOracleAction, 
   type StartingPremise,
+  type AiProvider,
   ADVENTURE_TONES, 
-  STARTING_PREMISES 
+  STARTING_PREMISES,
+  AI_PROVIDERS
 } from '../../types/aiDm';
 import { 
   getStoredApiKey, 
   saveStoredApiKey, 
+  getStoredGroqApiKey,
+  saveStoredGroqApiKey,
+  getStoredAiProvider,
+  saveStoredAiProvider,
   getStoredAiConfig, 
   saveStoredAiConfig, 
   getStoredChatHistory, 
   saveStoredChatHistory, 
   clearStoredChatHistory,
   sendToAiDungeonMaster, 
-  testGeminiApiKey, 
+  testAiApiKey, 
   generateOracleIdea,
-  DEFAULT_MODEL 
+  DEFAULT_GEMINI_MODEL,
+  DEFAULT_GROQ_MODEL
 } from '../../services/geminiService';
 import { rollD20 } from '../../utils/diceRoller';
 import { 
@@ -81,11 +88,14 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
   const [autoBroadcastToRoom, setAutoBroadcastToRoom] = useState(false);
   
   // Configurações
+  const [provider, setProvider] = useState<AiProvider>('groq');
   const [apiKey, setApiKey] = useState('');
+  const [groqApiKey, setGroqApiKey] = useState('');
   const [tone, setTone] = useState<AdventureTone>('heroic');
   const [customInstructions, setCustomInstructions] = useState('');
   const [includeStats, setIncludeStats] = useState(true);
   const [testStatus, setTestStatus] = useState<{ loading: boolean; success?: boolean; message?: string }>({ loading: false });
+  const [saveSuccessNotice, setSaveSuccessNotice] = useState(false);
 
   // Aventura Solo
   const [history, setHistory] = useState<AiMessage[]>([]);
@@ -106,7 +116,9 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       const config = getStoredAiConfig();
+      setProvider(config.provider || getStoredAiProvider());
       setApiKey(config.apiKey || getStoredApiKey());
+      setGroqApiKey(config.groqApiKey || getStoredGroqApiKey());
       setTone(config.tone);
       setCustomInstructions(config.customInstructions);
       setIncludeStats(config.includeCharacterStats);
@@ -132,28 +144,43 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
 
   // Salvar configurações
   const handleSaveSettings = () => {
+    saveStoredAiProvider(provider);
     saveStoredApiKey(apiKey);
+    saveStoredGroqApiKey(groqApiKey);
     saveStoredAiConfig({
+      provider,
       apiKey,
-      model: DEFAULT_MODEL,
+      groqApiKey,
+      model: provider === 'groq' ? DEFAULT_GROQ_MODEL : DEFAULT_GEMINI_MODEL,
       tone,
       customInstructions,
       includeCharacterStats: includeStats,
     });
+    setSaveSuccessNotice(true);
+    setTimeout(() => setSaveSuccessNotice(false), 2500);
   };
 
-  // Testar chave de API
+  // Testar chave de API / Conexão
   const handleTestKey = async () => {
-    if (!apiKey.trim()) {
-      setTestStatus({ loading: false, success: false, message: 'Digite uma chave primeiro.' });
+    const keyToTest = provider === 'groq' ? groqApiKey : apiKey;
+    if (provider !== 'pollinations' && !keyToTest.trim()) {
+      setTestStatus({ 
+        loading: false, 
+        success: false, 
+        message: provider === 'groq' 
+          ? 'Digite sua chave do Groq primeiro (crie grátis em console.groq.com/keys).' 
+          : 'Digite sua chave do Google Gemini primeiro.' 
+      });
       return;
     }
     setTestStatus({ loading: true });
     try {
-      const res = await testGeminiApiKey(apiKey.trim());
+      const res = await testAiApiKey(provider, keyToTest.trim());
       setTestStatus({ loading: false, success: res.success, message: res.message });
       if (res.success) {
-        saveStoredApiKey(apiKey.trim());
+        if (provider === 'groq') saveStoredGroqApiKey(keyToTest.trim());
+        if (provider === 'gemini') saveStoredApiKey(keyToTest.trim());
+        saveStoredAiProvider(provider);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -231,12 +258,19 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
     const trimmed = actionText.trim();
     if (!trimmed || isAiLoading) return;
 
-    if (!apiKey.trim()) {
+    const isConfigured =
+      provider === 'pollinations' ||
+      (provider === 'groq' && groqApiKey.trim().length > 0) ||
+      (provider === 'gemini' && apiKey.trim().length > 0) ||
+      groqApiKey.trim().length > 0 ||
+      apiKey.trim().length > 0;
+
+    if (!isConfigured) {
       setActiveTab('settings');
       setTestStatus({ 
         loading: false, 
         success: false, 
-        message: 'Para começar a jogar com a IA, adicione sua chave gratuita do Google Gemini nas configurações.' 
+        message: 'Para começar a jogar com a IA, selecione o Modo Livre (sem chave) ou configure sua chave gratuita do Groq/Gemini nas configurações.' 
       });
       return;
     }
@@ -258,7 +292,7 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
         trimmed,
         updatedHistory,
         activeCharacter,
-        { apiKey, tone, customInstructions, includeCharacterStats: includeStats }
+        { provider, apiKey, groqApiKey, tone, customInstructions, includeCharacterStats: includeStats }
       );
 
       const finalHistory = [...updatedHistory, response];
@@ -330,7 +364,14 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
 
   // Consultar Oráculo Co-DM
   const handleConsultOracle = async () => {
-    if (!apiKey.trim()) {
+    const isConfigured =
+      provider === 'pollinations' ||
+      (provider === 'groq' && groqApiKey.trim().length > 0) ||
+      (provider === 'gemini' && apiKey.trim().length > 0) ||
+      groqApiKey.trim().length > 0 ||
+      apiKey.trim().length > 0;
+
+    if (!isConfigured) {
       setActiveTab('settings');
       return;
     }
@@ -392,6 +433,17 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
                 </h2>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold uppercase tracking-wider">
                   Mestre Supremo
+                </span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 ${
+                  provider === 'groq'
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                    : provider === 'pollinations'
+                    ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                    : 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+                }`}>
+                  {provider === 'groq' && '⚡ Groq (Llama 3.3)'}
+                  {provider === 'pollinations' && '🌸 Modo Livre (Sem Chave)'}
+                  {provider === 'gemini' && '✨ Google Gemini'}
                 </span>
               </div>
               <p className="text-xs text-slate-400 flex items-center gap-2">
@@ -1009,58 +1061,202 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
                 </p>
               </div>
 
-              {/* Box da Chave de API */}
-              <div className="p-4 rounded-xl bg-slate-900 border border-amber-500/30 space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                    <Key size={14} /> Chave da API do Google Gemini
-                  </label>
-                  <a
-                    href="https://aistudio.google.com/app/apikey"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[11px] text-amber-400 hover:underline flex items-center gap-1 font-bold"
-                  >
-                    <span>Obter chave gratuita no Google AI Studio</span>
-                    <ExternalLink size={11} />
-                  </a>
+              {/* Seletor de Provedor de IA */}
+              <div className="space-y-2.5">
+                <label className="text-xs font-bold text-amber-300 block">
+                  Selecione o Motor de IA:
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  {AI_PROVIDERS.map((p) => {
+                    const isSelected = provider === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          setProvider(p.id);
+                          setTestStatus({ loading: false });
+                        }}
+                        className={`p-3 rounded-xl border text-left transition relative flex flex-col justify-between ${
+                          isSelected
+                            ? 'bg-amber-500/20 border-amber-500 text-amber-200 shadow-md shadow-amber-500/10 ring-1 ring-amber-500/50'
+                            : 'bg-slate-900/80 border-slate-800 hover:border-slate-700 text-slate-300'
+                        }`}
+                      >
+                        {p.badge && (
+                          <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md inline-block w-fit mb-1.5 ${
+                            p.id === 'groq'
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              : p.id === 'pollinations'
+                              ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                              : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          }`}>
+                            {p.badge}
+                          </span>
+                        )}
+                        <div>
+                          <p className="text-xs font-bold text-white">{p.name}</p>
+                          <p className="text-[10px] text-slate-400 font-mono mt-0.5">{p.model}</p>
+                        </div>
+                        <p className="text-[11px] text-slate-300 mt-2 leading-tight">{p.description}</p>
+                      </button>
+                    );
+                  })}
                 </div>
-
-                <div className="flex gap-2">
-                  <input
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="Cole sua chave aqui (ex: AIzaSy...)"
-                    className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-hidden focus:border-amber-500 font-mono"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleTestKey}
-                    disabled={testStatus.loading}
-                    className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-xs rounded-xl border border-amber-500/30 transition shrink-0"
-                  >
-                    {testStatus.loading ? 'Testando...' : 'Testar Conexão'}
-                  </button>
-                </div>
-
-                {testStatus.message && (
-                  <div
-                    className={`text-xs p-2.5 rounded-lg flex items-center gap-2 ${
-                      testStatus.success
-                        ? 'bg-emerald-950/40 border border-emerald-500/40 text-emerald-300'
-                        : 'bg-red-950/40 border border-red-500/40 text-red-300'
-                    }`}
-                  >
-                    {testStatus.success ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
-                    <span>{testStatus.message}</span>
-                  </div>
-                )}
-
-                <p className="text-[11px] text-slate-400 leading-normal">
-                  🔒 <strong>Privacidade Total</strong>: Sua chave é armazenada com segurança apenas no seu navegador local (<code className="text-amber-300">localStorage</code>) e nunca é enviada para nenhum servidor intermediário.
-                </p>
               </div>
+
+              {/* Box de Configuração do Provedor Selecionado */}
+              {provider === 'groq' && (
+                <div className="p-4 rounded-xl bg-slate-900 border border-emerald-500/40 space-y-3 shadow-lg shadow-emerald-950/20">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                      <Key size={14} /> Chave da API da Groq (Gratuita)
+                    </label>
+                    <a
+                      href="https://console.groq.com/keys"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[11px] text-emerald-400 hover:underline flex items-center gap-1 font-bold"
+                    >
+                      <span>Criar chave gratuita no Groq Console</span>
+                      <ExternalLink size={11} />
+                    </a>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      value={groqApiKey}
+                      onChange={(e) => setGroqApiKey(e.target.value)}
+                      placeholder="Cole sua chave da Groq aqui (ex: gsk_...)"
+                      className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-hidden focus:border-emerald-500 font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleTestKey}
+                      disabled={testStatus.loading}
+                      className="px-3.5 py-2 bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 font-bold text-xs rounded-xl border border-emerald-500/40 transition shrink-0 flex items-center gap-1.5"
+                    >
+                      {testStatus.loading ? <RefreshCw size={13} className="animate-spin" /> : <Wifi size={13} />}
+                      <span>{testStatus.loading ? 'Testando...' : 'Testar Conexão'}</span>
+                    </button>
+                  </div>
+
+                  {testStatus.message && (
+                    <div
+                      className={`text-xs p-2.5 rounded-lg flex items-center gap-2 ${
+                        testStatus.success
+                          ? 'bg-emerald-950/40 border border-emerald-500/40 text-emerald-300'
+                          : 'bg-red-950/40 border border-red-500/40 text-red-300'
+                      }`}
+                    >
+                      {testStatus.success ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+                      <span>{testStatus.message}</span>
+                    </div>
+                  )}
+
+                  <div className="text-[11px] text-emerald-200/90 leading-relaxed bg-emerald-950/20 p-2.5 rounded-lg border border-emerald-500/20">
+                    ⚡ <strong>Recomendado:</strong> A Groq processa o modelo Llama 3.3 70B com resposta instantânea (&lt;1s), sem limites de cota chatos e 100% gratuita.
+                  </div>
+                </div>
+              )}
+
+              {provider === 'pollinations' && (
+                <div className="p-4 rounded-xl bg-slate-900 border border-purple-500/40 space-y-3 shadow-lg shadow-purple-950/20">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
+                      🌸 Modo Livre (Pollinations.ai)
+                    </label>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 font-bold uppercase">
+                      Sem Chave / 100% Livre
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Você pode jogar imediatamente sem criar nenhuma conta ou chave de API! Este modo utiliza os servidores comunitários abertos do Pollinations.
+                  </p>
+
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={handleTestKey}
+                      disabled={testStatus.loading}
+                      className="px-3.5 py-2 bg-purple-950/60 hover:bg-purple-900/60 text-purple-300 font-bold text-xs rounded-xl border border-purple-500/40 transition shrink-0 flex items-center gap-1.5"
+                    >
+                      {testStatus.loading ? <RefreshCw size={13} className="animate-spin" /> : <Wifi size={13} />}
+                      <span>{testStatus.loading ? 'Testando...' : 'Testar Modo Livre'}</span>
+                    </button>
+                  </div>
+
+                  {testStatus.message && (
+                    <div
+                      className={`text-xs p-2.5 rounded-lg flex items-center gap-2 ${
+                        testStatus.success
+                          ? 'bg-purple-950/40 border border-purple-500/40 text-purple-300'
+                          : 'bg-red-950/40 border border-red-500/40 text-red-300'
+                      }`}
+                    >
+                      {testStatus.success ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+                      <span>{testStatus.message}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {provider === 'gemini' && (
+                <div className="p-4 rounded-xl bg-slate-900 border border-amber-500/30 space-y-3 shadow-lg">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                      <Key size={14} /> Chave da API do Google Gemini (gemini-3.5-flash-lite)
+                    </label>
+                    <a
+                      href="https://aistudio.google.com/app/apikey"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[11px] text-amber-400 hover:underline flex items-center gap-1 font-bold"
+                    >
+                      <span>Obter chave no Google AI Studio</span>
+                      <ExternalLink size={11} />
+                    </a>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      placeholder="Cole sua chave Gemini aqui (ex: AIzaSy...)"
+                      className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-hidden focus:border-amber-500 font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleTestKey}
+                      disabled={testStatus.loading}
+                      className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-xs rounded-xl border border-amber-500/30 transition shrink-0 flex items-center gap-1.5"
+                    >
+                      {testStatus.loading ? <RefreshCw size={13} className="animate-spin" /> : <Wifi size={13} />}
+                      <span>{testStatus.loading ? 'Testando...' : 'Testar Conexão'}</span>
+                    </button>
+                  </div>
+
+                  {testStatus.message && (
+                    <div
+                      className={`text-xs p-2.5 rounded-lg flex items-center gap-2 ${
+                        testStatus.success
+                          ? 'bg-emerald-950/40 border border-emerald-500/40 text-emerald-300'
+                          : 'bg-red-950/40 border border-red-500/40 text-red-300'
+                      }`}
+                    >
+                      {testStatus.success ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+                      <span>{testStatus.message}</span>
+                    </div>
+                  )}
+
+                  <p className="text-[11px] text-slate-400 leading-normal">
+                    🔒 <strong>Privacidade Total</strong>: Sua chave é armazenada com segurança apenas no seu navegador local (<code className="text-amber-300">localStorage</code>) e nunca é enviada para nenhum servidor intermediário.
+                  </p>
+                </div>
+              )}
 
               {/* Seletor de Tom Narrativo */}
               <div className="space-y-3">
@@ -1118,7 +1314,12 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
               </div>
 
               {/* Salvar */}
-              <div className="flex justify-end">
+              <div className="flex items-center justify-between pt-2">
+                {saveSuccessNotice ? (
+                  <span className="text-xs text-emerald-400 font-bold flex items-center gap-1.5 animate-in fade-in">
+                    <CheckCircle2 size={16} /> Preferências salvas com sucesso!
+                  </span>
+                ) : <span />}
                 <button
                   type="button"
                   onClick={handleSaveSettings}

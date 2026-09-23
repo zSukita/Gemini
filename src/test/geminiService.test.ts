@@ -4,11 +4,16 @@ import {
   parseAiResponse, 
   getStoredApiKey, 
   saveStoredApiKey,
+  getStoredGroqApiKey,
+  saveStoredGroqApiKey,
+  getStoredAiProvider,
+  saveStoredAiProvider,
   getStoredAiConfig,
   saveStoredAiConfig,
   getStoredCampaignSummary,
   saveStoredCampaignSummary,
-  DEFAULT_MODEL
+  DEFAULT_MODEL,
+  DEFAULT_GROQ_MODEL
 } from '../services/geminiService';
 import type { Character } from '../types/dnd5e';
 
@@ -248,6 +253,36 @@ Vocês vasculham os restos do acampamento e encontram um baú com reforços de l
       const prompt = buildSystemPrompt(null, 'heroic', undefined, 'Os heróis derrotaram o Orc Líder na mina.');
       expect(prompt).toContain('MEMÓRIA DE LONGO PRAZO DA CAMPANHA');
       expect(prompt).toContain('Os heróis derrotaram o Orc Líder na mina.');
+    });
+
+    it('deve gerenciar o provedor de IA e a chave Groq corretamente', () => {
+      expect(getStoredAiProvider()).toBe('groq');
+      expect(getStoredGroqApiKey()).toBe('');
+
+      saveStoredAiProvider('pollinations');
+      expect(getStoredAiProvider()).toBe('pollinations');
+
+      saveStoredGroqApiKey('gsk_test123456');
+      expect(getStoredGroqApiKey()).toBe('gsk_test123456');
+
+      saveStoredAiProvider('gemini');
+      expect(getStoredAiProvider()).toBe('gemini');
+    });
+
+    it('deve carregar configuração multi-provedor com modelo apropriado', () => {
+      saveStoredAiConfig({
+        provider: 'groq',
+        groqApiKey: 'gsk_sample',
+        model: DEFAULT_GROQ_MODEL,
+        tone: 'heroic',
+        customInstructions: '',
+        includeCharacterStats: true,
+      });
+
+      const config = getStoredAiConfig();
+      expect(config.provider).toBe('groq');
+      expect(config.groqApiKey).toBe('gsk_sample');
+      expect(config.model).toBe(DEFAULT_GROQ_MODEL);
     });
   });
 });

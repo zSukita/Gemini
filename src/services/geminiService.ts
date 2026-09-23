@@ -11,19 +11,63 @@ import type {
   MonsterSpawnAction,
   MapMoveAction,
   AiLootReward,
-  AiLootItem
+  AiLootItem,
+  AiProvider
 } from '../types/aiDm';
 
 const API_KEY_STORAGE_KEY = 'arcanasheet_gemini_api_key';
+const GROQ_API_KEY_STORAGE_KEY = 'arcanasheet_groq_api_key';
+const PROVIDER_STORAGE_KEY = 'arcanasheet_ai_provider';
 const CONFIG_STORAGE_KEY = 'arcanasheet_ai_dm_config';
 const CHAT_HISTORY_STORAGE_KEY = 'arcanasheet_ai_dm_history';
 const CAMPAIGN_SUMMARY_STORAGE_KEY = 'arcanasheet_ai_campaign_summary';
 
-export const DEFAULT_MODEL = 'gemini-3.5-flash-lite';
+export const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash-lite';
+export const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile';
+export const DEFAULT_POLLINATIONS_MODEL = 'openai';
+
+export const DEFAULT_MODEL = DEFAULT_GEMINI_MODEL;
+
+export function getStoredAiProvider(): AiProvider {
+  if (typeof localStorage !== 'undefined') {
+    const stored = localStorage.getItem(PROVIDER_STORAGE_KEY) as AiProvider;
+    if (stored && (stored === 'groq' || stored === 'gemini' || stored === 'pollinations')) {
+      return stored;
+    }
+    // Se tiver chave Groq salva, default para groq
+    if (localStorage.getItem(GROQ_API_KEY_STORAGE_KEY)?.trim()) {
+      return 'groq';
+    }
+  }
+  return 'groq'; // Recomenda Groq como primeira opção padrão
+}
+
+export function saveStoredAiProvider(provider: AiProvider): void {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(PROVIDER_STORAGE_KEY, provider);
+  }
+}
+
+export function getStoredGroqApiKey(): string {
+  if (typeof localStorage !== 'undefined') {
+    const stored = localStorage.getItem(GROQ_API_KEY_STORAGE_KEY);
+    if (stored && stored.trim()) return stored.trim();
+  }
+  const envKey = (import.meta as unknown as { env?: { VITE_GROQ_API_KEY?: string } }).env?.VITE_GROQ_API_KEY;
+  return envKey?.trim() || '';
+}
+
+export function saveStoredGroqApiKey(key: string): void {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(GROQ_API_KEY_STORAGE_KEY, key.trim());
+  }
+}
 
 export const DEFAULT_AI_CONFIG: AiDmConfig = {
+  provider: 'groq',
   apiKey: '',
-  model: DEFAULT_MODEL,
+  groqApiKey: '',
+  model: DEFAULT_GROQ_MODEL,
   tone: 'heroic',
   customInstructions: '',
   includeCharacterStats: true,
@@ -70,20 +114,33 @@ export function getStoredAiConfig(): AiDmConfig {
   try {
     if (typeof localStorage !== 'undefined') {
       const raw = localStorage.getItem(CONFIG_STORAGE_KEY);
+      const provider = getStoredAiProvider();
+      const groqKey = getStoredGroqApiKey();
+      const geminiKey = getStoredApiKey();
+
       if (raw) {
         const parsed = JSON.parse(raw);
-        // Migra automaticamente modelos descontinuados pelo Google (2.5, 2.0, 1.5, 1.0) para os modelos oficiais atuais (3.5-flash-lite / 3.6-flash)
+        // Migra automaticamente modelos descontinuados pelo Google (2.5, 2.0, 1.5, 1.0)
         const isInvalidOrDeprecated =
           !parsed.model ||
           parsed.model.includes('2.5') ||
           parsed.model.includes('2.0') ||
           parsed.model.includes('1.5') ||
           parsed.model.includes('1.0');
-        const model = isInvalidOrDeprecated ? DEFAULT_MODEL : parsed.model;
+        
+        const isGeminiModel = typeof parsed.model === 'string' && parsed.model.startsWith('gemini');
+        const activeProvider: AiProvider = parsed.provider || (isGeminiModel ? 'gemini' : provider);
+        let model = parsed.model;
+        if (isInvalidOrDeprecated && (activeProvider === 'gemini' || isGeminiModel)) {
+          model = DEFAULT_GEMINI_MODEL;
+        }
+        if (!model) {
+          model = activeProvider === 'groq' ? DEFAULT_GROQ_MODEL : DEFAULT_GEMINI_MODEL;
+        }
 
-        if (isInvalidOrDeprecated && typeof localStorage !== 'undefined') {
+        if (isInvalidOrDeprecated && (activeProvider === 'gemini' || isGeminiModel) && typeof localStorage !== 'undefined') {
           try {
-            localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify({ ...parsed, model: DEFAULT_MODEL }));
+            localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify({ ...parsed, model: DEFAULT_GEMINI_MODEL }));
           } catch {
             // ignore
           }
@@ -92,33 +149,42 @@ export function getStoredAiConfig(): AiDmConfig {
         return {
           ...DEFAULT_AI_CONFIG,
           ...parsed,
+          provider: activeProvider,
+          apiKey: geminiKey,
+          groqApiKey: groqKey,
           model,
-          apiKey: getStoredApiKey(),
           campaignSummary: parsed.campaignSummary ?? getStoredCampaignSummary(),
         };
       }
     }
-  } catch {
-    // fallback
+  } catch (err) {
+    console.error('Falha ao ler configuração da IA', err);
   }
   return {
     ...DEFAULT_AI_CONFIG,
+    provider: getStoredAiProvider(),
     apiKey: getStoredApiKey(),
-    campaignSummary: getStoredCampaignSummary(),
+    groqApiKey: getStoredGroqApiKey(),
   };
 }
 
 export function saveStoredAiConfig(config: AiDmConfig): void {
   try {
-    const { apiKey, ...rest } = config;
+    const { apiKey, groqApiKey, provider, ...rest } = config;
     if (apiKey !== undefined) {
       saveStoredApiKey(apiKey);
+    }
+    if (groqApiKey !== undefined) {
+      saveStoredGroqApiKey(groqApiKey);
+    }
+    if (provider !== undefined) {
+      saveStoredAiProvider(provider);
     }
     if (config.campaignSummary !== undefined) {
       saveStoredCampaignSummary(config.campaignSummary);
     }
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(rest));
+      localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify({ ...rest, provider }));
     }
   } catch (err) {
     console.error('Falha ao salvar configurações do Mestre IA', err);
@@ -523,49 +589,218 @@ export function parseAiResponse(rawText: string): {
 }
 
 /**
- * Envia uma mensagem ou ação para o Mestre IA e retorna a resposta estruturada
+ * Chamada à API ultra-rápida do Groq (LPU, Llama 3.3 70B & 3.1 8B)
  */
-export async function sendToAiDungeonMaster(
-  userAction: string,
+async function callGroqChat(
+  apiKey: string,
+  model: string = DEFAULT_GROQ_MODEL,
+  systemInstruction: string,
   history: AiMessage[],
-  character?: Character | null,
-  config?: Partial<AiDmConfig>
+  userAction: string
 ): Promise<AiMessage> {
-  const fullConfig = { ...getStoredAiConfig(), ...config };
-  const apiKey = fullConfig.apiKey;
-
-  if (!apiKey) {
-    throw new Error('Chave de API do Google Gemini não encontrada. Por favor, adicione sua chave nas configurações do Mestre IA.');
-  }
-
-  const campaignSummary = fullConfig.campaignSummary || getStoredCampaignSummary();
-  const systemInstruction = buildSystemPrompt(
-    fullConfig.includeCharacterStats ? character : null,
-    fullConfig.tone,
-    fullConfig.customInstructions,
-    campaignSummary
+  const groqCandidateModels = Array.from(
+    new Set([model, 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant'])
   );
 
-  // Formatar histórico para o formato do Gemini
+  const messages = [
+    { role: 'system', content: systemInstruction },
+    ...history
+      .filter((m) => m.role === 'narrator' || m.role === 'player')
+      .slice(-10)
+      .map((m) => ({
+        role: m.role === 'narrator' ? 'assistant' : 'user',
+        content: m.content,
+      })),
+    { role: 'user', content: userAction },
+  ];
+
+  let lastErr: unknown = null;
+
+  for (const m of groqCandidateModels) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
+
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey.trim()}`,
+        },
+        body: JSON.stringify({
+          model: m,
+          messages,
+          temperature: 0.85,
+          max_completion_tokens: 1500,
+          top_p: 0.95,
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Groq HTTP ${response.status}: ${errText}`);
+      }
+
+      const data = await response.json();
+      const rawText = data.choices?.[0]?.message?.content || 'O Mestre aguarda em silêncio...';
+      const parsed = parseAiResponse(rawText);
+
+      return {
+        id: `ai_groq_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        role: 'narrator',
+        content: parsed.cleanText,
+        timestamp: Date.now(),
+        suggestedActions: parsed.suggestedActions,
+        requestedRoll: parsed.requestedRoll,
+        handoutProposal: parsed.handoutProposal,
+        monsterAttack: parsed.monsterAttack,
+        monsterSpawns: parsed.monsterSpawns,
+        mapMoves: parsed.mapMoves,
+        defeatedMonsters: parsed.defeatedMonsters,
+        monsterDamage: parsed.monsterDamage,
+        lootReward: parsed.lootReward,
+      };
+    } catch (err: unknown) {
+      lastErr = err;
+      console.warn(`[Groq] Erro com modelo ${m}:`, err);
+    }
+  }
+
+  const rawMsg = lastErr instanceof Error ? lastErr.message : String(lastErr);
+  if (rawMsg.includes('401') || rawMsg.includes('Invalid API Key')) {
+    throw new Error('Chave do Groq inválida. Verifique sua chave gratuita em console.groq.com/keys.');
+  }
+  if (rawMsg.includes('429') || rawMsg.includes('rate_limit_exceeded')) {
+    throw new Error('Limite momentâneo de requisições do Groq atingido. Aguarde alguns segundos.');
+  }
+  throw new Error(`Falha ao conectar com o Groq: ${rawMsg}`);
+}
+
+/**
+ * Chamada à API pública e gratuita do Pollinations (Sem necessidade de chave de API)
+ */
+async function callPollinationsChat(
+  systemInstruction: string,
+  history: AiMessage[],
+  userAction: string
+): Promise<AiMessage> {
+  const messages = [
+    { role: 'system', content: systemInstruction },
+    ...history
+      .filter((m) => m.role === 'narrator' || m.role === 'player')
+      .slice(-10)
+      .map((m) => ({
+        role: m.role === 'narrator' ? 'assistant' : 'user',
+        content: m.content,
+      })),
+    { role: 'user', content: userAction },
+  ];
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
+
+    const response = await fetch('https://text.pollinations.ai/openai/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messages,
+        model: 'openai',
+        seed: Math.floor(Math.random() * 100000),
+        temperature: 0.85,
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      const data = await response.json();
+      const rawText = data.choices?.[0]?.message?.content || 'O Mestre aguarda em silêncio...';
+      const parsed = parseAiResponse(rawText);
+
+      return {
+        id: `ai_poll_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        role: 'narrator',
+        content: parsed.cleanText,
+        timestamp: Date.now(),
+        suggestedActions: parsed.suggestedActions,
+        requestedRoll: parsed.requestedRoll,
+        handoutProposal: parsed.handoutProposal,
+        monsterAttack: parsed.monsterAttack,
+        monsterSpawns: parsed.monsterSpawns,
+        mapMoves: parsed.mapMoves,
+        defeatedMonsters: parsed.defeatedMonsters,
+        monsterDamage: parsed.monsterDamage,
+        lootReward: parsed.lootReward,
+      };
+    }
+  } catch (err) {
+    console.warn('[Pollinations] Erro no endpoint OpenAI, tentando endpoint direto...', err);
+  }
+
+  // Fallback para endpoint direto de texto
+  const combinedHistory = messages
+    .map((m) => `${m.role === 'system' ? 'Instruções' : m.role === 'assistant' ? 'Mestre' : 'Jogador'}: ${m.content}`)
+    .join('\n');
+
+  const fallbackRes = await fetch(`https://text.pollinations.ai/${encodeURIComponent(combinedHistory)}`);
+  if (!fallbackRes.ok) {
+    throw new Error('Falha no Modo Livre (Pollinations). Tente novamente em instantes.');
+  }
+
+  const textReply = await fallbackRes.text();
+  const parsed = parseAiResponse(textReply);
+
+  return {
+    id: `ai_poll_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    role: 'narrator',
+    content: parsed.cleanText,
+    timestamp: Date.now(),
+    suggestedActions: parsed.suggestedActions,
+    requestedRoll: parsed.requestedRoll,
+    handoutProposal: parsed.handoutProposal,
+    monsterAttack: parsed.monsterAttack,
+    monsterSpawns: parsed.monsterSpawns,
+    mapMoves: parsed.mapMoves,
+    defeatedMonsters: parsed.defeatedMonsters,
+    monsterDamage: parsed.monsterDamage,
+    lootReward: parsed.lootReward,
+  };
+}
+
+/**
+ * Chamada à API do Google Gemini com modelos oficiais e fallback resiliente
+ */
+async function callGeminiEngine(
+  apiKey: string,
+  preferredModelInput: string = DEFAULT_GEMINI_MODEL,
+  systemInstruction: string,
+  history: AiMessage[],
+  userAction: string
+): Promise<AiMessage> {
   const conversationTurns = history
     .filter(m => m.role === 'narrator' || m.role === 'player')
-    .slice(-10) // manter os últimos 10 turnos para agilidade e economia de tokens
+    .slice(-10)
     .map(m => ({
       role: m.role === 'narrator' ? 'model' : 'user',
       parts: [{ text: m.content }],
     }));
 
-  // Adicionar o turno atual do jogador
   conversationTurns.push({
     role: 'user',
     parts: [{ text: userAction }],
   });
 
-  // Lista de modelos resilientes em cascata para garantir alta disponibilidade mesmo em contas gratuitas
   const preferredModel =
-    fullConfig.model && !fullConfig.model.includes('2.5') && !fullConfig.model.includes('2.0')
-      ? fullConfig.model
-      : DEFAULT_MODEL;
+    preferredModelInput && !preferredModelInput.includes('2.5') && !preferredModelInput.includes('2.0')
+      ? preferredModelInput
+      : DEFAULT_GEMINI_MODEL;
 
   const candidateModels = Array.from(
     new Set([
@@ -577,11 +812,9 @@ export async function sendToAiDungeonMaster(
 
   let lastError: unknown = null;
 
-  // Tenta cada modelo em ordem se houver sobrecarga temporária do Google (503 / 429)
   for (const modelToTry of candidateModels) {
     try {
       const client = new GoogleGenAI({ apiKey });
-      
       const response = await client.models.generateContent({
         model: modelToTry,
         contents: conversationTurns,
@@ -596,7 +829,7 @@ export async function sendToAiDungeonMaster(
       const parsed = parseAiResponse(rawReply);
 
       return {
-        id: `ai_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        id: `ai_gemini_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         role: 'narrator',
         content: parsed.cleanText,
         timestamp: Date.now(),
@@ -614,29 +847,106 @@ export async function sendToAiDungeonMaster(
       lastError = err;
       const errorMsg = err instanceof Error ? err.message : String(err);
       console.warn(`[Gemini] Falha temporária com modelo ${modelToTry}: ${errorMsg}. Tentando modelo reserva...`);
-      // Se for sobrecarga temporária (503 / 429), aguarda 500ms antes do próximo candidato
       if (errorMsg.includes('503') || errorMsg.includes('429') || errorMsg.includes('UNAVAILABLE')) {
         await new Promise((resolve) => setTimeout(resolve, 500));
       }
     }
   }
 
-  // Se todos os modelos pelo SDK falharem, tenta fallback REST com gemini-3.5-flash-lite
+  // Fallback REST com gemini-3.5-flash-lite
   try {
     return await callGeminiRestFallback(apiKey, 'gemini-3.5-flash-lite', systemInstruction, conversationTurns);
   } catch {
-    // Tratamento amigável e legível para o usuário em caso de erro nos servidores do Google
     const rawMsg = lastError instanceof Error ? lastError.message : String(lastError);
     if (rawMsg.includes('503') || rawMsg.includes('overload') || rawMsg.includes('UNAVAILABLE') || rawMsg.includes('demand')) {
-      throw new Error('Os servidores de IA do Google estão com alta demanda temporária (Erro 503). Por favor, aguarde alguns segundos e envie novamente sua ação.');
+      throw new Error('Os servidores de IA do Google estão com alta demanda temporária (Erro 503). Por favor, aguarde alguns segundos ou alterne para o Groq (Llama 3.3).');
     }
     if (rawMsg.includes('429') || rawMsg.includes('RESOURCE_EXHAUSTED') || rawMsg.includes('quota')) {
-      throw new Error('Limite de mensagens por minuto da chave gratuita atingido (Erro 429). Por favor, aguarde 30 segundos.');
+      throw new Error('Limite de mensagens da chave gratuita do Gemini atingido (Erro 429). Alterne para o Groq ou aguarde 30 segundos.');
     }
     if (rawMsg.includes('403') || rawMsg.includes('API_KEY_INVALID') || rawMsg.includes('API key not valid')) {
-      throw new Error('Chave de API do Gemini inválida ou não autorizada. Verifique sua chave nas configurações do Mestre IA.');
+      throw new Error('Chave de API do Gemini inválida ou não autorizada. Verifique sua chave no Google AI Studio.');
     }
-    throw new Error(`Falha ao conectar com o Mestre IA: ${rawMsg}`);
+    throw new Error(`Falha ao conectar com o Mestre IA (Gemini): ${rawMsg}`);
+  }
+}
+
+/**
+ * Envia uma mensagem ou ação para o Mestre IA e retorna a resposta estruturada
+ */
+export async function sendToAiDungeonMaster(
+  userAction: string,
+  history: AiMessage[],
+  character?: Character | null,
+  config?: Partial<AiDmConfig>
+): Promise<AiMessage> {
+  const fullConfig: AiDmConfig = {
+    ...getStoredAiConfig(),
+    ...config,
+  };
+
+  const provider: AiProvider = fullConfig.provider || getStoredAiProvider();
+  const groqKey = fullConfig.groqApiKey || getStoredGroqApiKey();
+  const geminiKey = fullConfig.apiKey || getStoredApiKey();
+
+  const campaignSummary = fullConfig.campaignSummary || getStoredCampaignSummary();
+  const systemInstruction = buildSystemPrompt(
+    fullConfig.includeCharacterStats ? character : null,
+    fullConfig.tone,
+    fullConfig.customInstructions,
+    campaignSummary
+  );
+
+  // 1. Provedor GROQ (Llama 3.3 70B - Ultra Rápido)
+  if (provider === 'groq') {
+    if (!groqKey) {
+      throw new Error('Chave de API do Groq não configurada. Por favor, adicione sua chave gratuita do console.groq.com nas configurações do Mestre IA.');
+    }
+    try {
+      return await callGroqChat(groqKey, fullConfig.model || DEFAULT_GROQ_MODEL, systemInstruction, history, userAction);
+    } catch (err: unknown) {
+      console.warn('[Groq] Falha na chamada principal:', err);
+      // Se houver chave Gemini como fallback secundário, tenta Gemini
+      if (geminiKey) {
+        console.info('[Groq Fallback] Acionando Google Gemini como reserva...');
+        return await callGeminiEngine(geminiKey, DEFAULT_GEMINI_MODEL, systemInstruction, history, userAction);
+      }
+      throw err;
+    }
+  }
+
+  // 2. Provedor MODO LIVRE (Pollinations - Sem Chave)
+  if (provider === 'pollinations') {
+    try {
+      return await callPollinationsChat(systemInstruction, history, userAction);
+    } catch (err: unknown) {
+      console.warn('[Pollinations] Falha na chamada:', err);
+      if (groqKey) {
+        return await callGroqChat(groqKey, DEFAULT_GROQ_MODEL, systemInstruction, history, userAction);
+      }
+      if (geminiKey) {
+        return await callGeminiEngine(geminiKey, DEFAULT_GEMINI_MODEL, systemInstruction, history, userAction);
+      }
+      throw new Error('Falha ao conectar com o serviço público do Modo Livre. Tente novamente em instantes.');
+    }
+  }
+
+  // 3. Provedor GOOGLE GEMINI (Nativo)
+  if (!geminiKey) {
+    if (groqKey) {
+      return await callGroqChat(groqKey, DEFAULT_GROQ_MODEL, systemInstruction, history, userAction);
+    }
+    throw new Error('Chave de API do Google Gemini não encontrada. Adicione sua chave nas configurações do Mestre IA ou use o Modo Livre.');
+  }
+
+  try {
+    return await callGeminiEngine(geminiKey, fullConfig.model, systemInstruction, history, userAction);
+  } catch (err: unknown) {
+    if (groqKey) {
+      console.info('[Gemini Fallback] Google indisponível, acionando Groq como backup transparente...');
+      return await callGroqChat(groqKey, DEFAULT_GROQ_MODEL, systemInstruction, history, userAction);
+    }
+    throw err;
   }
 }
 
@@ -701,11 +1011,9 @@ export async function generateCampaignSummaryUpdate(
   recentHistory: AiMessage[],
   currentSummary = ''
 ): Promise<string> {
-  const apiKey = getStoredApiKey();
-  if (!apiKey) return currentSummary;
-
-  const aiConfig = getStoredAiConfig();
-  const ai = new GoogleGenAI({ apiKey });
+  const provider = getStoredAiProvider();
+  const groqKey = getStoredGroqApiKey();
+  const geminiKey = getStoredApiKey();
 
   const historyExcerpt = recentHistory
     .slice(-14)
@@ -726,32 +1034,149 @@ INSTRUÇÕES:
 - Destaque: locais explorados, inimigos e chefes enfrentados ou derrotados, itens e segredos descobertos, e o objetivo atual imediato do grupo.
 - Responda APENAS com o texto do resumo atualizado, sem introduções, notas ou cumprimentos.`;
 
-  try {
-    const response = await ai.models.generateContent({
-      model: aiConfig.model || DEFAULT_MODEL,
-      contents: prompt,
-    });
-    const updated = response.text?.trim();
-    if (updated) {
-      saveStoredCampaignSummary(updated);
-      return updated;
+  // Tenta Groq se ativo ou configurado
+  if (provider === 'groq' && groqKey) {
+    try {
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${groqKey}`,
+        },
+        body: JSON.stringify({
+          model: DEFAULT_GROQ_MODEL,
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.7,
+          max_tokens: 600,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const text = data.choices?.[0]?.message?.content?.trim();
+        if (text) {
+          saveStoredCampaignSummary(text);
+          return text;
+        }
+      }
+    } catch (err) {
+      console.warn('[Summary] Falha ao resumir via Groq:', err);
     }
-  } catch (err) {
-    console.error('Erro ao gerar resumo da campanha:', err);
   }
+
+  // Tenta Gemini se configurado
+  if (geminiKey) {
+    try {
+      const aiConfig = getStoredAiConfig();
+      const ai = new GoogleGenAI({ apiKey: geminiKey });
+      const response = await ai.models.generateContent({
+        model: aiConfig.model || DEFAULT_GEMINI_MODEL,
+        contents: prompt,
+      });
+      const updated = response.text?.trim();
+      if (updated) {
+        saveStoredCampaignSummary(updated);
+        return updated;
+      }
+    } catch (err) {
+      console.error('Erro ao gerar resumo da campanha via Gemini:', err);
+    }
+  }
+
   return currentSummary;
 }
 
 /**
- * Testa a validade de uma chave de API do Gemini
+ * Testa a validade de uma conexão com a IA (Groq, Pollinations ou Google Gemini)
  */
-export async function testGeminiApiKey(apiKey: string, model: string = DEFAULT_MODEL): Promise<{ success: boolean; message: string }> {
+export async function testAiApiKey(
+  provider: AiProvider,
+  apiKey: string,
+  model?: string
+): Promise<{ success: boolean; message: string }> {
+  // Provedor Groq
+  if (provider === 'groq') {
+    if (!apiKey || !apiKey.trim()) {
+      return { success: false, message: 'A chave da API Groq está vazia. Obtenha sua chave gratuita em console.groq.com/keys' };
+    }
+    try {
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey.trim()}`,
+        },
+        body: JSON.stringify({
+          model: model || DEFAULT_GROQ_MODEL,
+          messages: [{ role: 'user', content: 'Diga apenas: "ArcanaSheet conectado!".' }],
+          max_tokens: 25,
+        }),
+      });
+
+      if (!res.ok) {
+        if (res.status === 401) {
+          return { success: false, message: 'Chave de API do Groq inválida. Crie uma chave gratuita em console.groq.com/keys.' };
+        }
+        if (res.status === 429) {
+          return { success: false, message: 'Limite temporário da Groq atingido. Aguarde alguns segundos e tente novamente.' };
+        }
+        const txt = await res.text();
+        return { success: false, message: `Erro ao testar Groq (${res.status}): ${txt}` };
+      }
+
+      const data = await res.json();
+      const reply = data.choices?.[0]?.message?.content || 'OK';
+      return { 
+        success: true, 
+        message: `⚡ Conectado ao Groq (${model || DEFAULT_GROQ_MODEL}) com sucesso! Velocidade ultrarrápida ativa. Resposta: "${reply.trim()}"` 
+      };
+    } catch (err: unknown) {
+      return { success: false, message: `Falha de rede ao conectar com a Groq: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  }
+
+  // Provedor Pollinations (Modo Livre - Sem Chave)
+  if (provider === 'pollinations') {
+    try {
+      const res = await fetch('https://text.pollinations.ai/openai/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'openai',
+          messages: [{ role: 'user', content: 'Diga apenas: "ArcanaSheet conectado!".' }],
+          max_tokens: 20,
+        }),
+      });
+      if (res.ok) {
+        return { 
+          success: true, 
+          message: '🌸 Modo Livre (Pollinations) conectado com sucesso! 100% gratuito e sem necessidade de chave de API.' 
+        };
+      }
+      // Teste fallback
+      const ping = await fetch('https://text.pollinations.ai/ping');
+      if (ping.ok) {
+        return { success: true, message: '🌸 Modo Livre (Pollinations) disponível e pronto para uso!' };
+      }
+      return { success: false, message: 'Serviço público do Modo Livre temporariamente instável. Tente novamente em instantes.' };
+    } catch (err: unknown) {
+      return { success: false, message: `Falha ao testar Modo Livre: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  }
+
+  // Provedor Google Gemini
+  return testGeminiApiKey(apiKey, model);
+}
+
+/**
+ * Testa a validade de uma chave de API do Gemini (Retrocompatibilidade)
+ */
+export async function testGeminiApiKey(apiKey: string, model: string = DEFAULT_GEMINI_MODEL): Promise<{ success: boolean; message: string }> {
   if (!apiKey || !apiKey.trim()) {
     return { success: false, message: 'A chave da API está vazia.' };
   }
 
   const safeModel =
-    model && !model.includes('2.5') && !model.includes('2.0') ? model : DEFAULT_MODEL;
+    model && !model.includes('2.5') && !model.includes('2.0') && !model.includes('1.5') ? model : DEFAULT_GEMINI_MODEL;
   const testModels = Array.from(
     new Set([safeModel, 'gemini-3.5-flash-lite', 'gemini-3.6-flash'])
   );
@@ -766,7 +1191,7 @@ export async function testGeminiApiKey(apiKey: string, model: string = DEFAULT_M
       });
 
       if (res.text) {
-        return { success: true, message: `Conexão estabelecida com sucesso! (${modelToTest})` };
+        return { success: true, message: `✨ Conexão com Google Gemini (${modelToTest}) estabelecida com sucesso!` };
       }
     } catch (err: unknown) {
       lastErrMsg = err instanceof Error ? err.message : String(err);
@@ -778,7 +1203,7 @@ export async function testGeminiApiKey(apiKey: string, model: string = DEFAULT_M
   }
 
   if (lastErrMsg.includes('503') || lastErrMsg.includes('overload') || lastErrMsg.includes('UNAVAILABLE')) {
-    return { success: false, message: 'Chave aceita, porém os servidores do Google estão temporariamente com alta demanda (Erro 503). Tente novamente em instantes.' };
+    return { success: false, message: 'Chave aceita, porém os servidores do Google estão temporariamente com alta demanda (Erro 503). Recomendamos selecionar a opção "Groq" no menu de IA.' };
   }
   return { success: false, message: `Erro ao testar chave: ${lastErrMsg}` };
 }
@@ -791,10 +1216,9 @@ export async function generateOracleIdea(
   contextNote?: string,
   tone: AdventureTone = 'heroic'
 ): Promise<string> {
-  const apiKey = getStoredApiKey();
-  if (!apiKey) {
-    throw new Error('Chave de API do Gemini necessária para consultar o Oráculo.');
-  }
+  const provider = getStoredAiProvider();
+  const groqKey = getStoredGroqApiKey();
+  const geminiKey = getStoredApiKey();
 
   const prompts: Record<AiOracleAction, string> = {
     twist: `Gere uma reviravolta dramática e surpreendente (Plot Twist / Complicação) para uma sessão de D&D 5e no estilo ${tone}. Pode ser uma mudança repentina no ambiente, uma traição inesperada, o surgimento de um terceiro inimigo ou um efeito mágico descontrolado. Seja criativo, direto e empolgante em 2 parágrafos.`,
@@ -829,22 +1253,71 @@ ${contextNote ? `\nCONTEXTO ESPECÍFICO DO MESTRE:\n${contextNote}` : ''}
 Responda diretamente em português do Brasil com excelente diagramação em markdown.
   `.trim();
 
-  const oracleModels = [DEFAULT_MODEL, 'gemini-3.5-flash-lite', 'gemini-3.6-flash'];
-  let lastErr: unknown = null;
-
-  for (const m of oracleModels) {
+  // 1. Tenta Groq se ativo ou com chave
+  if ((provider === 'groq' || !geminiKey) && groqKey) {
     try {
-      const client = new GoogleGenAI({ apiKey });
-      const response = await client.models.generateContent({
-        model: m,
-        contents: finalPrompt,
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${groqKey}`,
+        },
+        body: JSON.stringify({
+          model: DEFAULT_GROQ_MODEL,
+          messages: [{ role: 'user', content: finalPrompt }],
+          temperature: 0.85,
+          max_tokens: 1000,
+        }),
       });
-      if (response.text) return response.text;
+      if (res.ok) {
+        const data = await res.json();
+        const text = data.choices?.[0]?.message?.content?.trim();
+        if (text) return text;
+      }
     } catch (err) {
-      lastErr = err;
-      continue;
+      console.warn('[Oráculo Groq] Erro:', err);
     }
   }
 
-  throw new Error(`Erro ao consultar o Oráculo: ${lastErr instanceof Error ? lastErr.message : 'Serviço temporariamente indisponível'}`);
+  // 2. Tenta Pollinations se Modo Livre
+  if (provider === 'pollinations') {
+    try {
+      const res = await fetch('https://text.pollinations.ai/openai/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'openai',
+          messages: [{ role: 'user', content: finalPrompt }],
+          temperature: 0.85,
+          max_tokens: 1000,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const text = data.choices?.[0]?.message?.content?.trim();
+        if (text) return text;
+      }
+    } catch (err) {
+      console.warn('[Oráculo Pollinations] Erro:', err);
+    }
+  }
+
+  // 3. Tenta Google Gemini
+  if (geminiKey) {
+    const oracleModels = [DEFAULT_GEMINI_MODEL, 'gemini-3.5-flash-lite', 'gemini-3.6-flash'];
+    for (const m of oracleModels) {
+      try {
+        const client = new GoogleGenAI({ apiKey: geminiKey });
+        const response = await client.models.generateContent({
+          model: m,
+          contents: finalPrompt,
+        });
+        if (response.text) return response.text;
+      } catch {
+        continue;
+      }
+    }
+  }
+
+  throw new Error('Não foi possível consultar o Oráculo. Verifique sua conexão e chave de API do provedor selecionado.');
 }

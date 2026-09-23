@@ -154,8 +154,62 @@ export interface AiMessage {
   lootReward?: AiLootReward;
 }
 
+export type AiProvider = 'groq' | 'gemini' | 'pollinations';
+
+export interface AiProviderOption {
+  id: AiProvider;
+  name: string;
+  badge?: string;
+  icon: string;
+  description: string;
+  model: string;
+  recommendedModel: string;
+  requiresKey: boolean;
+  keyUrl?: string;
+  keyLabel?: string;
+}
+
+export const AI_PROVIDERS: AiProviderOption[] = [
+  {
+    id: 'groq',
+    name: 'Groq (Llama 3.3 70B)',
+    badge: 'Recomendado (Ultra-rápido < 1s)',
+    icon: '⚡',
+    description: 'Respostas em menos de 1 segundo com o modelo Llama 3.3 70B. 100% gratuito sem pedir cartão.',
+    model: 'llama-3.3-70b-versatile',
+    recommendedModel: 'llama-3.3-70b-versatile',
+    requiresKey: true,
+    keyUrl: 'https://console.groq.com/keys',
+    keyLabel: 'Obter Chave Gratuita no console.groq.com',
+  },
+  {
+    id: 'gemini',
+    name: 'Google Gemini',
+    badge: 'Oficial Google AI',
+    icon: '✨',
+    description: 'Modelos Gemini 3.5 Flash-Lite e 3.6 Flash da Google AI Studio.',
+    model: 'gemini-3.5-flash-lite',
+    recommendedModel: 'gemini-3.5-flash-lite',
+    requiresKey: true,
+    keyUrl: 'https://aistudio.google.com/app/apikey',
+    keyLabel: 'Obter Chave no Google AI Studio',
+  },
+  {
+    id: 'pollinations',
+    name: 'Modo Livre (Pollinations)',
+    badge: 'Sem Chave / Grátis',
+    icon: '🌸',
+    description: 'Funciona imediatamente sem necessidade de criar conta ou chave de API.',
+    model: 'openai',
+    recommendedModel: 'openai',
+    requiresKey: false,
+  },
+];
+
 export interface AiDmConfig {
-  apiKey: string;
+  provider?: AiProvider;
+  apiKey?: string;
+  groqApiKey?: string;
   model: string;
   tone: AdventureTone;
   customInstructions: string;

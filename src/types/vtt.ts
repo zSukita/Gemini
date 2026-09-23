@@ -60,6 +60,16 @@ export interface MapPing {
   senderName?: string;
 }
 
+export interface FloatingCombatText {
+  id: string;
+  tokenId?: string;
+  x: number;
+  y: number;
+  text: string;
+  type: 'damage' | 'heal' | 'crit' | 'miss';
+  timestamp: number;
+}
+
 export interface BattleMapConfig {
   id: string;
   title: string;

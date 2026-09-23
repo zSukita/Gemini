@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { ChatMessage, ChatMessageType } from '../../types/chat';
-import type { Character, DiceRollResult, SkillKey, AbilityKey } from '../../types/dnd5e';
+import type { Character, DiceRollResult, SkillKey, AbilityKey, AdvantageMode } from '../../types/dnd5e';
 import type { Encounter } from '../../types/combat';
 import type { MapToken } from '../../types/vtt';
+import type { AiLootReward } from '../../types/aiDm';
 import { SKILLS, ABILITIES } from '../../types/dnd5e';
-import { rollFormula } from '../../utils/diceRoller';
+import { rollFormula, rollD20 } from '../../utils/diceRoller';
 import { 
   Sparkles, 
   Dices, 
@@ -15,9 +16,19 @@ import {
   Loader2,
   ShieldAlert,
   RotateCcw,
-  Swords
+  Swords,
+  Skull,
+  Coins,
+  PackagePlus,
+  CheckCircle2,
+  BookOpen
 } from 'lucide-react';
 import { AI_ADVENTURE_SCENARIOS, type AiAdventureScenario } from '../../data/aiAdventureScenarios';
+import {
+  getStoredCampaignSummary,
+  saveStoredCampaignSummary,
+  generateCampaignSummaryUpdate,
+} from '../../services/geminiService';
 
 interface TabletopParchmentChatProps {
   chatLog: ChatMessage[];
@@ -30,6 +41,8 @@ interface TabletopParchmentChatProps {
   onHpDelta?: (combatantId: string, delta: number) => void;
   onOpenEndSessionModal?: () => void;
   onStartScenario?: (scenario: AiAdventureScenario) => void;
+  onCollectLoot?: (reward: AiLootReward, messageId?: string) => void;
+  onUpdateCharacter?: (updates: Partial<Character>) => void;
   onSendMessage: (
     textOrPayload:
       | string
@@ -59,15 +72,103 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
   onHpDelta,
   onOpenEndSessionModal,
   onStartScenario,
+  onCollectLoot,
+  onUpdateCharacter,
   onSendMessage,
 }) => {
   const [inputText, setInputText] = useState('');
   const [isSecretMode, setIsSecretMode] = useState(false);
+  const [advantageMode, setAdvantageMode] = useState<AdvantageMode>('normal');
+  const [collectedLootIds, setCollectedLootIds] = useState<Set<string>>(new Set());
+  const [isCampaignMemoryOpen, setIsCampaignMemoryOpen] = useState(false);
+  const [campaignSummaryText, setCampaignSummaryText] = useState(() => getStoredCampaignSummary());
+  const [isSynthesizingMemory, setIsSynthesizingMemory] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatLog, isAiResponding]);
+
+  const handleSynthesizeMemory = async () => {
+    setIsSynthesizingMemory(true);
+    try {
+      const recentAiMessages = chatLog.map((m) => ({
+        id: m.id,
+        role: (m.type === 'AI_DM' ? 'narrator' : 'player') as 'narrator' | 'player',
+        content: `${m.senderName}: ${m.text}`,
+        timestamp: m.timestamp,
+      }));
+      const updated = await generateCampaignSummaryUpdate(recentAiMessages, campaignSummaryText);
+      setCampaignSummaryText(updated);
+    } finally {
+      setIsSynthesizingMemory(false);
+    }
+  };
+
+  const handleRollDeathSave = () => {
+    if (!character) return;
+    const roll = rollD20('Salvaguarda contra a Morte', 0, advantageMode);
+    const natural = roll.rolls?.[0] ?? roll.selectedRoll;
+    const currentSuccesses = character.deathSaves?.successes || 0;
+    const currentFailures = character.deathSaves?.failures || 0;
+
+    let newSuccesses = currentSuccesses;
+    let newFailures = currentFailures;
+    let announcement = '';
+    let promptText = '';
+
+    if (natural === 20) {
+      newSuccesses = 0;
+      newFailures = 0;
+      if (onHpDelta) {
+        onHpDelta(character.id, 1);
+      }
+      onUpdateCharacter?.({
+        currentHp: 1,
+        deathSaves: { successes: 0, failures: 0 },
+      });
+      announcement = `✨ **20 NATURAL NA SALVAGUARDA CONTRA A MORTE!** [${roll.breakdown}]\n` +
+        `Um milagre de pura resiliência desperta **${character.name}**! Ele recupera **1 PV** e se ergue consciente!`;
+      promptText = `@mestre [SALVAGUARDA CONTRA A MORTE]: ${character.name} tirou um 20 NATURAL! O herói recuperou 1 PV e despertou da beira da morte! Descreva este momento heroico e dramático!`;
+    } else if (natural === 1) {
+      newFailures = Math.min(3, currentFailures + 2);
+      onUpdateCharacter?.({
+        deathSaves: { successes: newSuccesses, failures: newFailures },
+      });
+      const isDead = newFailures >= 3;
+      announcement = `💀 **FALHA CRÍTICA (1 NATURAL) NA SALVAGUARDA!** [${roll.breakdown}]\n` +
+        `O herói sofre **2 FALHAS** simultâneas (${newFailures}/3 falhas)! ${isDead ? '💀 **O PERSONAGEM FALECEU!**' : ''}`;
+      promptText = `@mestre [SALVAGUARDA CONTRA A MORTE]: ${character.name} rolou 1 NATURAL sofrendo 2 falhas (${newFailures}/3). ${isDead ? 'O herói sucumbiu à morte!' : 'Ele está a um passo da morte.'} Narre o agravamento crítico dos ferimentos!`;
+    } else if (roll.total >= 10) {
+      newSuccesses = Math.min(3, currentSuccesses + 1);
+      onUpdateCharacter?.({
+        deathSaves: { successes: newSuccesses, failures: newFailures },
+      });
+      const isStable = newSuccesses >= 3;
+      announcement = `🛡️ **SUCESSO NA SALVAGUARDA!** [${roll.breakdown}] = ${roll.total} (vs CD 10)\n` +
+        `Sucesso registrado (${newSuccesses}/3 sucessos)! ${isStable ? '✨ **O PERSONAGEM ESTABILIZOU!**' : ''}`;
+      promptText = `@mestre [SALVAGUARDA CONTRA A MORTE]: ${character.name} obteve sucesso (${roll.total} vs CD 10), acumulando ${newSuccesses}/3 sucessos. ${isStable ? 'O herói estabilizou seu estado vital!' : ''} Narre sua respiração voltando ao ritmo constante.`;
+    } else {
+      newFailures = Math.min(3, currentFailures + 1);
+      onUpdateCharacter?.({
+        deathSaves: { successes: newSuccesses, failures: newFailures },
+      });
+      const isDead = newFailures >= 3;
+      announcement = `🩸 **FALHA NA SALVAGUARDA!** [${roll.breakdown}] = ${roll.total} (vs CD 10)\n` +
+        `Falha registrada (${newFailures}/3 falhas)! ${isDead ? '💀 **O PERSONAGEM FALECEU!**' : ''}`;
+      promptText = `@mestre [SALVAGUARDA CONTRA A MORTE]: ${character.name} falhou (${roll.total} vs CD 10), acumulando ${newFailures}/3 falhas. ${isDead ? 'O herói sucumbiu à morte!' : ''} Narre a escuridão que avança sobre ele.`;
+    }
+
+    onSendMessage(
+      {
+        text: `${promptText}\n\n${announcement}`,
+        senderName: character.name || currentUserName,
+        type: 'PUBLIC',
+        diceRoll: roll,
+      },
+      currentUserName
+    );
+  };
 
   const handleRollRequested = (req: { skillOrAbility: string; dc?: number; reason: string }) => {
     let mod = 0;
@@ -129,14 +230,16 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
       formula = mod === 0 ? '1d20' : mod > 0 ? `1d20+${mod}` : `1d20${mod}`;
     }
 
-    const rollRes = rollFormula(formula, label);
+    const rollRes = isDamage
+      ? rollFormula(formula, label)
+      : rollD20(label, mod, advantageMode);
     const dcInfo = req.dc ? ` (vs ${isAttack ? 'CA' : 'CD'} ${req.dc})` : '';
 
     // Resolução Completa de Ataque D&D 5e com Acerto/Erro, Dano, Aproximação e Redução de PV
     if (isAttack && req.dc) {
       const natural = rollRes.rolls?.[0] ?? rollRes.selectedRoll;
-      const isCritHit = Boolean(rollRes.isCriticalSuccess || natural === 20);
-      const isCritMiss = Boolean(rollRes.isCriticalFailure || natural === 1);
+      const isCritHit = Boolean(rollRes.isCriticalSuccess || rollRes.selectedRoll === 20 || natural === 20);
+      const isCritMiss = Boolean(rollRes.isCriticalFailure || (advantageMode === 'normal' && natural === 1));
       const isHit = isCritHit || (!isCritMiss && rollRes.total >= req.dc);
 
       // Localiza o monstro alvo nos combatentes ativos
@@ -235,6 +338,26 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
           onHpDelta(targetMonster.id, -damageVal);
         }
 
+        if (typeof window !== 'undefined' && targetMonster && isCritHit) {
+          const targetTok = tokens?.find(
+            (t) =>
+              t.combatantId === targetMonster?.id ||
+              t.name.toLowerCase() === targetMonster?.name.toLowerCase() ||
+              t.name.toLowerCase().startsWith(targetMonster?.name.toLowerCase().replace(/\s*\d+$/, ''))
+          );
+          if (targetTok) {
+            window.dispatchEvent(
+              new CustomEvent('arcanasheet_floating_text', {
+                detail: {
+                  tokenId: targetTok.id,
+                  text: 'CRÍTICO!',
+                  type: 'crit',
+                },
+              })
+            );
+          }
+        }
+
         const newHp = targetMonster ? Math.max(0, targetMonster.currentHp - damageVal) : undefined;
         const isDefeated = newHp !== undefined && newHp <= 0;
         const hitStatus = isCritHit ? '💥 ACERTO CRÍTICO!' : '🎯 ACERTOU!';
@@ -259,6 +382,26 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
         return;
       } else {
         // Ataque Errou (Miss)
+        if (typeof window !== 'undefined' && targetMonster) {
+          const targetTok = tokens?.find(
+            (t) =>
+              t.combatantId === targetMonster?.id ||
+              t.name.toLowerCase() === targetMonster?.name.toLowerCase() ||
+              t.name.toLowerCase().startsWith(targetMonster?.name.toLowerCase().replace(/\s*\d+$/, ''))
+          );
+          if (targetTok) {
+            window.dispatchEvent(
+              new CustomEvent('arcanasheet_floating_text', {
+                detail: {
+                  tokenId: targetTok.id,
+                  text: isCritMiss ? 'ERRO CRÍTICO!' : 'ERROU!',
+                  type: 'miss',
+                },
+              })
+            );
+          }
+        }
+
         const missStatus = isCritMiss ? '💨 FALHA CRÍTICA (1 natural - Erro Automático)!' : '❌ ERROU!';
         const missAnnouncement = `${missStatus} [${rollRes.breakdown}] = ${rollRes.total} (vs CA ${req.dc}). O ataque não conseguiu superar a defesa de ${targetDisplayName}.`;
         const promptText = `@mestre [RESULTADO DO ATAQUE]: ${missStatus} com rolagem ${rollRes.total} (vs CA ${req.dc}). O golpe não acertou ${targetDisplayName}. Descreva a esquiva ou defesa do adversário e como a batalha prossegue!`;
@@ -368,6 +511,107 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
     setInputText('');
   };
 
+  const renderLootCard = (msg: ChatMessage) => {
+    if (!msg.lootReward) return null;
+    const isCollected = collectedLootIds.has(msg.id);
+    const coins = msg.lootReward.coins;
+    const items = msg.lootReward.items;
+
+    return (
+      <div className="mt-2 p-2.5 rounded-lg bg-gradient-to-r from-[#2c1d11] via-[#3d2716] to-[#2c1d11] border-2 border-amber-500/70 text-amber-100 shadow-md animate-in fade-in">
+        <div className="flex items-center justify-between border-b border-amber-600/40 pb-1.5 mb-1.5">
+          <div className="flex items-center gap-1.5">
+            <Coins className="text-yellow-400" size={16} />
+            <span className="font-serif font-black text-xs uppercase tracking-wider text-yellow-300">
+              Tesouro Descoberto!
+            </span>
+          </div>
+          <span className="text-[10px] text-amber-300/80 font-mono italic">
+            Recompensa
+          </span>
+        </div>
+
+        {coins && Object.values(coins).some(Boolean) && (
+          <div className="flex flex-wrap items-center gap-1.5 text-xs py-1 px-2 bg-black/30 rounded border border-amber-800/40 mb-1.5 font-bold">
+            <span className="text-amber-400 text-[10px] uppercase">Moedas:</span>
+            {Boolean(coins.gp) && (
+              <span className="text-yellow-400 bg-yellow-950/60 px-1.5 py-0.5 rounded border border-yellow-600/50 text-[11px]">
+                🪙 {coins.gp} PO
+              </span>
+            )}
+            {Boolean(coins.sp) && (
+              <span className="text-slate-300 bg-slate-900/60 px-1.5 py-0.5 rounded border border-slate-500/50 text-[11px]">
+                🥈 {coins.sp} PP
+              </span>
+            )}
+            {Boolean(coins.cp) && (
+              <span className="text-amber-600 bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-700/50 text-[11px]">
+                🥉 {coins.cp} PC
+              </span>
+            )}
+            {Boolean(coins.ep) && (
+              <span className="text-cyan-400 bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-600/50 text-[11px]">
+                ⚡ {coins.ep} PE
+              </span>
+            )}
+            {Boolean(coins.pp) && (
+              <span className="text-emerald-300 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-500/50 text-[11px]">
+                💎 {coins.pp} PL
+              </span>
+            )}
+          </div>
+        )}
+
+        {items && items.length > 0 && (
+          <div className="space-y-1 mb-2">
+            <span className="text-[10px] uppercase font-bold text-amber-300 tracking-wider block">
+              Itens & Relíquias:
+            </span>
+            <div className="grid grid-cols-1 gap-1">
+              {items.map((it, idx) => (
+                <div
+                  key={idx}
+                  className="text-[11px] bg-black/25 px-2 py-1 rounded border border-amber-800/30 flex items-center justify-between text-amber-200"
+                >
+                  <span>{it.name}</span>
+                  <span className="font-mono font-bold text-amber-400 text-[10px]">
+                    x{it.quantity}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <button
+          type="button"
+          disabled={isCollected}
+          onClick={() => {
+            onCollectLoot?.(msg.lootReward!, msg.id);
+            setCollectedLootIds((prev) => new Set(prev).add(msg.id));
+          }}
+          className={`w-full py-1.5 px-3 rounded font-serif font-bold text-xs flex items-center justify-center gap-1.5 transition shadow cursor-pointer ${
+            isCollected
+              ? 'bg-stone-800 text-stone-400 cursor-not-allowed border border-stone-600'
+              : 'bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 text-slate-950 border border-amber-400'
+          }`}
+        >
+          {isCollected ? (
+            <>
+              <CheckCircle2 size={13} className="text-emerald-400" />
+              <span>Tesouro Guardado na Mochila</span>
+            </>
+          ) : (
+            <>
+              <PackagePlus size={13} />
+              <span>Coletar Tesouro para a Ficha</span>
+            </>
+          )}
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className="tabletop-parchment flex flex-col h-full rounded-xl overflow-hidden shadow-2xl">
       {/* Cabeçalho de Pergaminho */}
@@ -379,6 +623,15 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
           </h2>
         </div>
         <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setIsCampaignMemoryOpen(true)}
+            className="text-[10px] font-serif font-bold text-amber-950 hover:text-amber-900 bg-amber-900/10 hover:bg-amber-900/20 px-2 py-0.5 rounded border border-amber-900/30 flex items-center gap-1 transition shadow-xs cursor-pointer"
+            title="Visualizar e gerenciar a Memória de Longo Prazo da Campanha"
+          >
+            <BookOpen size={10} />
+            <span>Memória IA</span>
+          </button>
           <span className="text-[10px] font-serif font-bold text-amber-900/80 bg-amber-900/10 px-2 py-0.5 rounded border border-amber-900/20">
             Mestre IA Ativo
           </span>
@@ -386,7 +639,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
             <button
               type="button"
               onClick={onOpenEndSessionModal}
-              className="text-[10px] font-serif font-bold text-red-950 hover:text-red-900 bg-red-900/10 hover:bg-red-900/20 px-2 py-0.5 rounded border border-red-900/30 flex items-center gap-1 transition shadow-xs"
+              className="text-[10px] font-serif font-bold text-red-950 hover:text-red-900 bg-red-900/10 hover:bg-red-900/20 px-2 py-0.5 rounded border border-red-900/30 flex items-center gap-1 transition shadow-xs cursor-pointer"
               title="Finalizar esta mesa ou iniciar outra aventura"
             >
               <RotateCcw size={10} />
@@ -395,6 +648,98 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
           )}
         </div>
       </div>
+
+      {/* ─── CARD DE SALVAGUARDA CONTRA A MORTE (0 PV) ─── */}
+      {character && character.currentHp <= 0 && (
+        <div className="mx-3 mt-2 p-3 bg-red-950/95 border-2 border-red-600 rounded-xl text-red-100 shadow-xl select-none animate-in fade-in">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Skull className="text-red-400 animate-pulse" size={18} />
+              <span className="font-serif font-black text-xs uppercase tracking-wider text-red-200">
+                Salvaguardas contra a Morte (0 PV)
+              </span>
+            </div>
+            <span className="text-[10px] text-red-300 font-serif font-bold italic">
+              {(character.deathSaves?.failures || 0) >= 3
+                ? '💀 Morto'
+                : (character.deathSaves?.successes || 0) >= 3
+                ? '✨ Estabilizado'
+                : 'Inconsciente & Agonizando'}
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between text-xs py-1.5 px-2.5 bg-black/50 rounded-lg border border-red-800/60 mb-2.5">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-bold text-emerald-400">Sucessos:</span>
+              {[0, 1, 2].map((idx) => {
+                const filled = idx < (character.deathSaves?.successes || 0);
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      const curr = character.deathSaves?.successes || 0;
+                      const next = idx < curr ? idx : idx + 1;
+                      onUpdateCharacter?.({
+                        deathSaves: {
+                          successes: next,
+                          failures: character.deathSaves?.failures || 0,
+                        },
+                      });
+                    }}
+                    className={`w-4 h-4 rounded-full border transition cursor-pointer ${
+                      filled
+                        ? 'bg-emerald-500 border-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.8)]'
+                        : 'border-emerald-700/60 bg-emerald-950/40'
+                    }`}
+                    title={`Sucesso ${idx + 1}`}
+                  />
+                );
+              })}
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-bold text-rose-400">Falhas:</span>
+              {[0, 1, 2].map((idx) => {
+                const filled = idx < (character.deathSaves?.failures || 0);
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      const curr = character.deathSaves?.failures || 0;
+                      const next = idx < curr ? idx : idx + 1;
+                      onUpdateCharacter?.({
+                        deathSaves: {
+                          successes: character.deathSaves?.successes || 0,
+                          failures: next,
+                        },
+                      });
+                    }}
+                    className={`w-4 h-4 rounded-full border transition cursor-pointer ${
+                      filled
+                        ? 'bg-rose-600 border-rose-400 shadow-[0_0_8px_rgba(244,63,94,0.8)]'
+                        : 'border-rose-700/60 bg-rose-950/40'
+                    }`}
+                    title={`Falha ${idx + 1}`}
+                  />
+                );
+              })}
+            </div>
+          </div>
+
+          {(character.deathSaves?.failures || 0) < 3 && (character.deathSaves?.successes || 0) < 3 && (
+            <button
+              type="button"
+              onClick={handleRollDeathSave}
+              className="w-full py-1.5 px-3 rounded bg-red-800 hover:bg-red-700 border border-red-500 font-serif font-bold text-xs text-white flex items-center justify-center gap-2 transition shadow-md cursor-pointer"
+            >
+              <Dices size={14} />
+              <span>Rolar Salvaguarda contra a Morte (1d20)</span>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Corpo do Log de Chat */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3 font-serif text-xs select-text">
@@ -570,6 +915,9 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                       </div>
                     </div>
                   )}
+
+                  {/* Baú de Loot / Tesouro Interativo */}
+                  {renderLootCard(msg)}
                 </div>
               );
             }
@@ -604,6 +952,9 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                     </span>
                   </div>
                 )}
+
+                {/* Baú de Loot / Tesouro Interativo */}
+                {renderLootCard(msg)}
               </div>
             );
           })
@@ -626,10 +977,50 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
       <form onSubmit={handleSubmit} className="p-2.5 bg-[#dfd0b5] border-t-2 border-[#8a6840] space-y-1.5">
         {/* Barra de Atalhos */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 text-[10px]">
+          {/* Seletor de Vantagem / Normal / Desvantagem */}
+          <div className="flex items-center bg-[#cbbb9e] p-0.5 rounded border border-[#9b784f] shrink-0">
+            <button
+              type="button"
+              onClick={() => setAdvantageMode('advantage')}
+              className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                advantageMode === 'advantage'
+                  ? 'bg-emerald-700 text-white shadow-xs'
+                  : 'text-amber-950 hover:bg-[#bfa987]'
+              }`}
+              title="Rolar com Vantagem (2d20 - escolhe o maior)"
+            >
+              Vantagem
+            </button>
+            <button
+              type="button"
+              onClick={() => setAdvantageMode('normal')}
+              className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                advantageMode === 'normal'
+                  ? 'bg-amber-800 text-white shadow-xs'
+                  : 'text-amber-950 hover:bg-[#bfa987]'
+              }`}
+              title="Rolagem Normal (1d20)"
+            >
+              Normal
+            </button>
+            <button
+              type="button"
+              onClick={() => setAdvantageMode('disadvantage')}
+              className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                advantageMode === 'disadvantage'
+                  ? 'bg-rose-800 text-white shadow-xs'
+                  : 'text-amber-950 hover:bg-[#bfa987]'
+              }`}
+              title="Rolar com Desvantagem (2d20 - escolhe o menor)"
+            >
+              Desvantagem
+            </button>
+          </div>
+
           <button
             type="button"
             onClick={() => setInputText((prev) => (prev.startsWith('@mestre ') ? prev : `@mestre ${prev}`))}
-            className="px-2 py-0.5 rounded bg-amber-800 hover:bg-amber-900 text-amber-100 font-bold flex items-center gap-1 shrink-0 shadow-xs"
+            className="px-2 py-0.5 rounded bg-amber-800 hover:bg-amber-900 text-amber-100 font-bold flex items-center gap-1 shrink-0 shadow-xs cursor-pointer"
           >
             <Sparkles size={10} />
             <span>@mestre (IA)</span>
@@ -638,7 +1029,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
           <button
             type="button"
             onClick={() => setIsSecretMode(!isSecretMode)}
-            className={`px-2 py-0.5 rounded font-bold flex items-center gap-1 shrink-0 transition shadow-xs ${
+            className={`px-2 py-0.5 rounded font-bold flex items-center gap-1 shrink-0 transition shadow-xs cursor-pointer ${
               isSecretMode
                 ? 'bg-red-800 text-white'
                 : 'bg-[#cbbb9e] text-amber-950 hover:bg-[#b8a584]'
@@ -665,13 +1056,82 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
           <button
             type="submit"
             disabled={isAiResponding}
-            className="rpg-button bg-amber-800 hover:bg-amber-900 text-amber-100 px-3 py-1.5 font-bold disabled:opacity-50 shadow"
+            className="rpg-button bg-amber-800 hover:bg-amber-900 text-amber-100 px-3 py-1.5 font-bold disabled:opacity-50 shadow cursor-pointer"
             title="Enviar mensagem"
           >
             <Send size={13} />
           </button>
         </div>
       </form>
+
+      {/* Modal de Memória da Campanha */}
+      {isCampaignMemoryOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in">
+          <div className="tabletop-parchment w-full max-w-lg rounded-xl overflow-hidden shadow-2xl border-2 border-amber-700 p-4 space-y-3">
+            <div className="flex items-center justify-between border-b border-amber-900/30 pb-2">
+              <div className="flex items-center gap-2">
+                <BookOpen className="text-amber-900" size={18} />
+                <h3 className="font-serif font-black text-sm uppercase text-amber-950">
+                  Memória de Longo Prazo da Campanha
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCampaignMemoryOpen(false)}
+                className="text-amber-900 hover:text-amber-950 font-bold text-sm px-2 py-0.5 rounded cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-[11px] text-amber-900/80 leading-relaxed font-serif">
+              Este resumo é injetado diretamente no cérebro do Mestre IA a cada turno para manter coerência contínua entre sessões, lembrando de inimigos abatidos, aliados, itens conquistados e objetivos imediatos.
+            </p>
+
+            <textarea
+              value={campaignSummaryText}
+              onChange={(e) => setCampaignSummaryText(e.target.value)}
+              rows={6}
+              placeholder="Nenhum resumo da campanha registrado ainda. Clique em 'Sintetizar com IA' ou digite os fatos marcantes da aventura..."
+              className="w-full text-xs p-2.5 rounded bg-[#f8f2e2] text-[#2c1c0d] placeholder-[#8c7457] border border-[#9b784f] font-serif focus:ring-1 focus:ring-amber-700"
+            />
+
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isSynthesizingMemory}
+                onClick={handleSynthesizeMemory}
+                className="px-3 py-1.5 rounded bg-amber-900 hover:bg-amber-950 text-amber-100 text-xs font-bold flex items-center gap-1.5 transition shadow cursor-pointer disabled:opacity-50"
+              >
+                {isSynthesizingMemory ? (
+                  <>
+                    <Loader2 size={13} className="animate-spin text-amber-300" />
+                    <span>Sintetizando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={13} className="text-yellow-300" />
+                    <span>Sintetizar com IA</span>
+                  </>
+                )}
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    saveStoredCampaignSummary(campaignSummaryText);
+                    setIsCampaignMemoryOpen(false);
+                  }}
+                  className="px-4 py-1.5 rounded bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold transition shadow cursor-pointer"
+                >
+                  Salvar Memória
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

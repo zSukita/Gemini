@@ -6,6 +6,8 @@ import {
   saveStoredApiKey,
   getStoredAiConfig,
   saveStoredAiConfig,
+  getStoredCampaignSummary,
+  saveStoredCampaignSummary,
   DEFAULT_MODEL
 } from '../services/geminiService';
 import type { Character } from '../types/dnd5e';
@@ -156,6 +158,23 @@ O golpe parte a carcaça da fera ao meio!
       expect(parsed.monsterDamage).toEqual([{ monsterName: 'Orc Guerreiro', damage: 12 }]);
     });
 
+    it('deve extrair tag de [LOOT] com moedas e itens com sucesso', () => {
+      const rawText = `
+Vocês vasculham os restos do acampamento e encontram um baú com reforços de latão!
+[LOOT: 25 PO, 50 PP | 2x Poção de Cura, 1x Adaga de Prata]
+      `.trim();
+
+      const parsed = parseAiResponse(rawText);
+      expect(parsed.cleanText).toBe('Vocês vasculham os restos do acampamento e encontram um baú com reforços de latão!');
+      expect(parsed.lootReward).toBeDefined();
+      expect(parsed.lootReward?.coins?.gp).toBe(25);
+      expect(parsed.lootReward?.coins?.sp).toBe(50);
+      expect(parsed.lootReward?.items).toEqual([
+        { name: 'Poção de Cura', quantity: 2 },
+        { name: 'Adaga de Prata', quantity: 1 },
+      ]);
+    });
+
     it('deve lidar graciosamente com textos simples sem tags', () => {
       const rawText = 'O guarda sorri e permite sua passagem pela ponte levadiça.';
       const parsed = parseAiResponse(rawText);
@@ -166,6 +185,7 @@ O golpe parte a carcaça da fera ao meio!
       expect(parsed.monsterAttack).toBeUndefined();
       expect(parsed.defeatedMonsters).toBeUndefined();
       expect(parsed.monsterDamage).toBeUndefined();
+      expect(parsed.lootReward).toBeUndefined();
     });
   });
 
@@ -216,6 +236,18 @@ O golpe parte a carcaça da fera ao meio!
 
       const config = getStoredAiConfig();
       expect(config.model).toBe(DEFAULT_MODEL);
+    });
+
+    it('deve salvar e carregar a memória da campanha (campaignSummary)', () => {
+      expect(getStoredCampaignSummary()).toBe('');
+      saveStoredCampaignSummary('O grupo resgatou a princesa e encontrou a espada de prata.');
+      expect(getStoredCampaignSummary()).toBe('O grupo resgatou a princesa e encontrou a espada de prata.');
+    });
+
+    it('deve incluir o resumo da campanha no system prompt quando fornecido', () => {
+      const prompt = buildSystemPrompt(null, 'heroic', undefined, 'Os heróis derrotaram o Orc Líder na mina.');
+      expect(prompt).toContain('MEMÓRIA DE LONGO PRAZO DA CAMPANHA');
+      expect(prompt).toContain('Os heróis derrotaram o Orc Líder na mina.');
     });
   });
 });

@@ -12,19 +12,35 @@ interface TokenMarkerProps {
 
 const CONDITION_ICONS: Record<string, string> = {
   blinded: '👁️',
+  cego: '👁️',
   charmed: '💖',
+  enfeitiçado: '💖',
   deafened: '🔇',
+  surdo: '🔇',
   frightened: '😱',
+  amedrontado: '😱',
   grappled: '✊',
+  agarrado: '✊',
   incapacitated: '😵',
+  incapacitado: '😵',
   invisible: '👻',
+  invisível: '👻',
   paralyzed: '⚡',
+  paralisado: '⚡',
   petrified: '🗿',
+  petrificado: '🗿',
   poisoned: '🧪',
+  envenenado: '🧪',
   prone: '🛡️',
+  caído: '🛡️',
   restrained: '🕸️',
+  impedido: '🕸️',
   stunned: '💫',
+  atordoado: '💫',
   unconscious: '💀',
+  inconsciente: '💀',
+  exhaustion: '💤',
+  exaustão: '💤',
 };
 
 export const TokenMarker: React.FC<TokenMarkerProps> = ({
@@ -42,7 +58,11 @@ export const TokenMarker: React.FC<TokenMarkerProps> = ({
   }, [token.avatarUrl]);
 
   const pixelSize = token.size * gridSize;
+  const tokenDiameter = pixelSize * 0.9;
+  const ringRadius = Math.max(10, tokenDiameter / 2 - 2);
+  const ringCircumference = 2 * Math.PI * ringRadius;
   const hpPercent = Math.max(0, Math.min(100, (token.currentHp / (token.maxHp || 1)) * 100));
+  const strokeOffset = ringCircumference - (hpPercent / 100) * ringCircumference;
   const activeConditions = token.conditions || [];
 
   return (
@@ -74,6 +94,34 @@ export const TokenMarker: React.FC<TokenMarkerProps> = ({
           backgroundColor: token.color,
         }}
       >
+        {/* Anel de Vida Circular SVG (Health Ring) */}
+        <svg
+          className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none select-none z-10"
+          viewBox={`0 0 ${tokenDiameter} ${tokenDiameter}`}
+        >
+          <circle
+            cx={tokenDiameter / 2}
+            cy={tokenDiameter / 2}
+            r={ringRadius}
+            fill="none"
+            stroke="#090d16"
+            strokeWidth="3"
+            strokeOpacity="0.65"
+          />
+          <circle
+            cx={tokenDiameter / 2}
+            cy={tokenDiameter / 2}
+            r={ringRadius}
+            fill="none"
+            stroke={hpPercent > 50 ? '#10b981' : hpPercent > 20 ? '#f59e0b' : '#ef4444'}
+            strokeWidth="3"
+            strokeDasharray={ringCircumference}
+            strokeDashoffset={strokeOffset}
+            strokeLinecap="round"
+            className="transition-all duration-500"
+          />
+        </svg>
+
         {/* Imagem do Avatar ou Iniciais */}
         {token.avatarUrl && !imgError ? (
           <img
@@ -90,16 +138,19 @@ export const TokenMarker: React.FC<TokenMarkerProps> = ({
 
         {/* Badges de Condições Ativas (Órbitas ao redor do token) */}
         {activeConditions.length > 0 && (
-          <div className="absolute -top-1 -right-1 flex flex-wrap gap-0.5 max-w-[40px] pointer-events-none z-30">
-            {activeConditions.slice(0, 3).map((cond) => (
-              <span
-                key={cond}
-                className="w-4 h-4 rounded-full bg-slate-950/95 border border-amber-400/80 text-[10px] flex items-center justify-center shadow-lg leading-none"
-                title={`Condição: ${cond}`}
-              >
-                {CONDITION_ICONS[cond] || '⚠️'}
-              </span>
-            ))}
+          <div className="absolute -top-1 -right-1 flex flex-wrap gap-0.5 max-w-[44px] pointer-events-none z-30">
+            {activeConditions.slice(0, 3).map((cond) => {
+              const lower = cond.toLowerCase();
+              return (
+                <span
+                  key={cond}
+                  className="w-4 h-4 rounded-full bg-slate-950/95 border border-amber-400/80 text-[10px] flex items-center justify-center shadow-lg leading-none"
+                  title={`Condição: ${cond}`}
+                >
+                  {CONDITION_ICONS[lower] || '⚠️'}
+                </span>
+              );
+            })}
             {activeConditions.length > 3 && (
               <span className="w-4 h-4 rounded-full bg-slate-950/95 border border-slate-700 text-[9px] font-bold text-amber-300 flex items-center justify-center shadow">
                 +{activeConditions.length - 3}

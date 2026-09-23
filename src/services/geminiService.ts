@@ -9,12 +9,15 @@ import type {
   HandoutProposal,
   MonsterAttackAction,
   MonsterSpawnAction,
-  MapMoveAction
+  MapMoveAction,
+  AiLootReward,
+  AiLootItem
 } from '../types/aiDm';
 
 const API_KEY_STORAGE_KEY = 'arcanasheet_gemini_api_key';
 const CONFIG_STORAGE_KEY = 'arcanasheet_ai_dm_config';
 const CHAT_HISTORY_STORAGE_KEY = 'arcanasheet_ai_dm_history';
+const CAMPAIGN_SUMMARY_STORAGE_KEY = 'arcanasheet_ai_campaign_summary';
 
 export const DEFAULT_MODEL = 'gemini-3.6-flash';
 
@@ -24,6 +27,7 @@ export const DEFAULT_AI_CONFIG: AiDmConfig = {
   tone: 'heroic',
   customInstructions: '',
   includeCharacterStats: true,
+  campaignSummary: '',
 };
 
 export function getStoredApiKey(): string {
@@ -38,6 +42,27 @@ export function getStoredApiKey(): string {
 export function saveStoredApiKey(key: string): void {
   if (typeof localStorage !== 'undefined') {
     localStorage.setItem(API_KEY_STORAGE_KEY, key.trim());
+  }
+}
+
+export function getStoredCampaignSummary(): string {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      return localStorage.getItem(CAMPAIGN_SUMMARY_STORAGE_KEY) || '';
+    }
+  } catch {
+    // fallback
+  }
+  return '';
+}
+
+export function saveStoredCampaignSummary(summary: string): void {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(CAMPAIGN_SUMMARY_STORAGE_KEY, summary.trim());
+    }
+  } catch (err) {
+    console.error('Falha ao salvar resumo da campanha', err);
   }
 }
 
@@ -69,6 +94,7 @@ export function getStoredAiConfig(): AiDmConfig {
           ...parsed,
           model,
           apiKey: getStoredApiKey(),
+          campaignSummary: parsed.campaignSummary ?? getStoredCampaignSummary(),
         };
       }
     }
@@ -78,6 +104,7 @@ export function getStoredAiConfig(): AiDmConfig {
   return {
     ...DEFAULT_AI_CONFIG,
     apiKey: getStoredApiKey(),
+    campaignSummary: getStoredCampaignSummary(),
   };
 }
 
@@ -86,6 +113,9 @@ export function saveStoredAiConfig(config: AiDmConfig): void {
     const { apiKey, ...rest } = config;
     if (apiKey !== undefined) {
       saveStoredApiKey(apiKey);
+    }
+    if (config.campaignSummary !== undefined) {
+      saveStoredCampaignSummary(config.campaignSummary);
     }
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(rest));
@@ -128,7 +158,12 @@ export function clearStoredChatHistory(): void {
 /**
  * Cria o prompt de sistema especializado para o Mestre de RPG D&D 5e
  */
-export function buildSystemPrompt(character?: Character | null, tone: AdventureTone = 'heroic', customInstructions?: string): string {
+export function buildSystemPrompt(
+  character?: Character | null,
+  tone: AdventureTone = 'heroic',
+  customInstructions?: string,
+  campaignSummary?: string
+): string {
   let charContext = 'Nenhum personagem selecionado (Aventureiro Desconhecido).';
 
   if (character) {
@@ -193,6 +228,8 @@ DIRETRIZES FUNDAMENTAIS DE REGRAS E COMBATE D&D 5e:
 
 ${charContext}
 
+${campaignSummary ? `\nMEMÓRIA DE LONGO PRAZO DA CAMPANHA (RESUMO DOS FATOS ANTERIORES):\n${campaignSummary}\n` : ''}
+
 ${customInstructions ? `INSTRUÇÕES ADICIONAIS DO USUÁRIO:\n${customInstructions}\n` : ''}
 
 REGRAS DE FORMATAÇÃO ESPECIAL (MANDATÓRIO):
@@ -228,6 +265,11 @@ REGRAS DE FORMATAÇÃO ESPECIAL (MANDATÓRIO):
 - Se um monstro sofrer dano mecânico decorrente de um golpe ou magia, emita:
   [DANO_MONSTRO: Nome do Monstro | Quantidade de Dano]
   Exemplo: [DANO_MONSTRO: Orc Guerreiro | 8]
+- Ao recompensar os aventureiros após derrotar monstros, abrir arcas, saquear cadáveres ou receber tesouros, declare a tag:
+  [LOOT: Moedas | Itens]
+  Exemplo: [LOOT: 25 PO, 50 PP | 2x Poção de Cura, 1x Adaga de Prata]
+  Exemplo: [LOOT: 80 PO | 1x Anel de Proteção, 2x Ração de Viagem]
+  (Isso gera automaticamente um baú interativo no chat com botão de depósito direto na ficha do aventureiro!)
 - Quando o jogador realizar um ataque ou teste de combate, reaja com grande dinamismo narrativo, descreva o impacto dos ferimentos ou a esquiva, faça os monstros revidarem ou se reposicionarem e continue a história sem parar!
 - Se o personagem encontrar um pergaminho, carta, diário ou bilhete com texto legível:
   [PERGAMINHO: Título do Documento | Autor ou Origem]
@@ -249,6 +291,7 @@ export function parseAiResponse(rawText: string): {
   mapMoves?: MapMoveAction[];
   defeatedMonsters?: string[];
   monsterDamage?: { monsterName: string; damage: number }[];
+  lootReward?: AiLootReward;
 } {
   let cleanText = rawText;
   let suggestedActions: string[] | undefined;
@@ -259,6 +302,7 @@ export function parseAiResponse(rawText: string): {
   const mapMoves: MapMoveAction[] = [];
   const defeatedMonsters: string[] = [];
   const monsterDamage: { monsterName: string; damage: number }[] = [];
+  let lootReward: AiLootReward | undefined;
 
   // 1. Extrair [AÇÕES] ... [/AÇÕES]
   const actionsRegex = /\[AÇÕES\]([\s\S]*?)\[\/AÇÕES\]/i;
@@ -372,6 +416,98 @@ export function parseAiResponse(rawText: string): {
   }
   cleanText = cleanText.replace(dmgRegex, '').trim();
 
+  // 9. Extrair [LOOT: Moedas | Itens] ou [LOOT: ...]
+  const lootRegex = /\[LOOT:\s*([^\]]+)\]/i;
+  const lootMatch = rawText.match(lootRegex);
+  if (lootMatch) {
+    const rawLoot = lootMatch[1].trim();
+    const parts = rawLoot.split('|').map((p) => p.trim());
+    const coins: NonNullable<AiLootReward['coins']> = {};
+    const items: AiLootItem[] = [];
+
+    const isCoinOnly = (chunk: string) => {
+      return (
+        /^\s*\d+\s*(?:po|gp|pp|sp|pc|cp|pe|ep|pl)\b/i.test(chunk) ||
+        /^\s*\d+\s*(?:peças?|moedas?)\s+de\s+(?:ouro|prata|cobre|electro|platina)\b/i.test(chunk)
+      );
+    };
+
+    const parseCoinStr = (str: string) => {
+      const gpMatch = str.match(/(\d+)\s*(?:po|gp|\bpeças?\s+de\s+ouro|\bmoedas?\s+de\s+ouro)/i);
+      if (gpMatch) coins.gp = (coins.gp || 0) + parseInt(gpMatch[1], 10);
+
+      const spMatch = str.match(/(\d+)\s*(?:pp|sp|\bpeças?\s+de\s+prata|\bmoedas?\s+de\s+prata)/i);
+      if (spMatch) coins.sp = (coins.sp || 0) + parseInt(spMatch[1], 10);
+
+      const cpMatch = str.match(/(\d+)\s*(?:pc|cp|\bpeças?\s+de\s+cobre|\bmoedas?\s+de\s+cobre)/i);
+      if (cpMatch) coins.cp = (coins.cp || 0) + parseInt(cpMatch[1], 10);
+
+      const epMatch = str.match(/(\d+)\s*(?:pe|ep|\bpeças?\s+de\s+electro|\bmoedas?\s+de\s+electro)/i);
+      if (epMatch) coins.ep = (coins.ep || 0) + parseInt(epMatch[1], 10);
+
+      const plMatch = str.match(/(\d+)\s*(?:pl|\bpeças?\s+de\s+platina|\bmoedas?\s+de\s+platina)/i);
+      if (plMatch) coins.pp = (coins.pp || 0) + parseInt(plMatch[1], 10);
+    };
+
+    const parseItemStr = (str: string) => {
+      const itemChunks = str.split(',').map((c) => c.trim()).filter(Boolean);
+      itemChunks.forEach((chunk) => {
+        if (isCoinOnly(chunk)) {
+          parseCoinStr(chunk);
+          return;
+        }
+        const qtyMatch = chunk.match(/^(\d+)x?\s*(.+)$/i);
+        if (qtyMatch) {
+          items.push({
+            quantity: parseInt(qtyMatch[1], 10) || 1,
+            name: qtyMatch[2].trim(),
+          });
+        } else {
+          items.push({
+            quantity: 1,
+            name: chunk.trim(),
+          });
+        }
+      });
+    };
+
+    if (parts.length >= 2) {
+      if (isCoinOnly(parts[0]) || /\b(?:po|gp|pp|sp|pc|cp|pe|ep|pl)\b/i.test(parts[0])) {
+        parseCoinStr(parts[0]);
+      } else {
+        parseItemStr(parts[0]);
+      }
+      parseItemStr(parts[1]);
+    } else {
+      const chunks = parts[0].split(',').map((c) => c.trim()).filter(Boolean);
+      chunks.forEach((chunk) => {
+        if (isCoinOnly(chunk)) {
+          parseCoinStr(chunk);
+        } else {
+          const qtyMatch = chunk.match(/^(\d+)x?\s*(.+)$/i);
+          if (qtyMatch) {
+            items.push({
+              quantity: parseInt(qtyMatch[1], 10) || 1,
+              name: qtyMatch[2].trim(),
+            });
+          } else {
+            items.push({
+              quantity: 1,
+              name: chunk.trim(),
+            });
+          }
+        }
+      });
+    }
+
+    lootReward = {
+      coins: Object.keys(coins).length > 0 ? coins : undefined,
+      items: items.length > 0 ? items : undefined,
+      rawText: rawLoot,
+    };
+    cleanText = cleanText.replace(lootRegex, '').trim();
+  }
+
   return {
     cleanText: cleanText.replace(/\n{3,}/g, '\n\n').trim(),
     suggestedActions,
@@ -382,6 +518,7 @@ export function parseAiResponse(rawText: string): {
     mapMoves: mapMoves.length > 0 ? mapMoves : undefined,
     defeatedMonsters: defeatedMonsters.length > 0 ? defeatedMonsters : undefined,
     monsterDamage: monsterDamage.length > 0 ? monsterDamage : undefined,
+    lootReward,
   };
 }
 
@@ -401,10 +538,12 @@ export async function sendToAiDungeonMaster(
     throw new Error('Chave de API do Google Gemini não encontrada. Por favor, adicione sua chave nas configurações do Mestre IA.');
   }
 
+  const campaignSummary = fullConfig.campaignSummary || getStoredCampaignSummary();
   const systemInstruction = buildSystemPrompt(
     fullConfig.includeCharacterStats ? character : null,
     fullConfig.tone,
-    fullConfig.customInstructions
+    fullConfig.customInstructions,
+    campaignSummary
   );
 
   // Formatar histórico para o formato do Gemini
@@ -470,6 +609,7 @@ export async function sendToAiDungeonMaster(
         mapMoves: parsed.mapMoves,
         defeatedMonsters: parsed.defeatedMonsters,
         monsterDamage: parsed.monsterDamage,
+        lootReward: parsed.lootReward,
       };
     } catch (err: unknown) {
       lastError = err;
@@ -547,7 +687,56 @@ async function callGeminiRestFallback(
     mapMoves: parsed.mapMoves,
     defeatedMonsters: parsed.defeatedMonsters,
     monsterDamage: parsed.monsterDamage,
+    lootReward: parsed.lootReward,
   };
+}
+
+/**
+ * Sintetiza o histórico recente e o resumo anterior em um resumo conciso e atualizado da campanha (Memória de Longo Prazo)
+ */
+export async function generateCampaignSummaryUpdate(
+  recentHistory: AiMessage[],
+  currentSummary = ''
+): Promise<string> {
+  const apiKey = getStoredApiKey();
+  if (!apiKey) return currentSummary;
+
+  const aiConfig = getStoredAiConfig();
+  const ai = new GoogleGenAI({ apiKey });
+
+  const historyExcerpt = recentHistory
+    .slice(-14)
+    .map((m) => `${m.role === 'narrator' ? 'Mestre' : 'Jogador'}: ${m.content}`)
+    .join('\n');
+
+  const prompt = `Você é o Arquivista e Mestre de Crônicas de RPG D&D 5e.
+Sua missão é resumir e consolidar os eventos mais importantes da história para servir de memória viva contínua aos próximos episódios da mesa.
+
+RESUMO ANTERIOR:
+${currentSummary || 'Início da aventura.'}
+
+ACONTECIMENTOS RECENTES:
+${historyExcerpt}
+
+INSTRUÇÕES:
+- Escreva um resumo conciso e imersivo em português do Brasil (máximo de 3 parágrafos objetivos).
+- Destaque: locais explorados, inimigos e chefes enfrentados ou derrotados, itens e segredos descobertos, e o objetivo atual imediato do grupo.
+- Responda APENAS com o texto do resumo atualizado, sem introduções, notas ou cumprimentos.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: aiConfig.model || DEFAULT_MODEL,
+      contents: prompt,
+    });
+    const updated = response.text?.trim();
+    if (updated) {
+      saveStoredCampaignSummary(updated);
+      return updated;
+    }
+  } catch (err) {
+    console.error('Erro ao gerar resumo da campanha:', err);
+  }
+  return currentSummary;
 }
 
 /**

@@ -26,6 +26,7 @@ import {
   Flag
 } from 'lucide-react';
 import type { AiAdventureScenario } from '../../data/aiAdventureScenarios';
+import type { AiLootReward } from '../../types/aiDm';
 
 interface TabletopSessionViewProps {
   character: Character;
@@ -107,6 +108,8 @@ interface TabletopSessionViewProps {
   onOpenMusicPlayer?: () => void;
   onOpenEndSessionModal?: () => void;
   onStartScenario?: (scenario: AiAdventureScenario) => void;
+  onCollectLoot?: (reward: AiLootReward, messageId?: string) => void;
+  onUpdateCharacter?: (updates: Partial<Character>) => void;
 }
 
 export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
@@ -164,6 +167,8 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
   onOpenMusicPlayer,
   onOpenEndSessionModal,
   onStartScenario,
+  onCollectLoot,
+  onUpdateCharacter,
 }) => {
   // Alternância entre Visão Completa da Mesa e Modo Foco no Mapa
   const [isMapFocusOnly, setIsMapFocusOnly] = useState(false);
@@ -496,6 +501,8 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
               onOpenEndSessionModal={onOpenEndSessionModal}
               onStartScenario={onStartScenario}
               onSendMessage={onSendMessage}
+              onCollectLoot={onCollectLoot}
+              onUpdateCharacter={onUpdateCharacter}
             />
           </div>
         )}

@@ -121,6 +121,23 @@ export interface MapMoveAction {
   distanceSquares?: number;
 }
 
+export interface AiLootItem {
+  name: string;
+  quantity: number;
+}
+
+export interface AiLootReward {
+  coins?: {
+    cp?: number;
+    sp?: number;
+    ep?: number;
+    gp?: number;
+    pp?: number;
+  };
+  items?: AiLootItem[];
+  rawText?: string;
+}
+
 export interface AiMessage {
   id: string;
   role: 'narrator' | 'player' | 'system';
@@ -134,6 +151,7 @@ export interface AiMessage {
   mapMoves?: MapMoveAction[];
   defeatedMonsters?: string[];
   monsterDamage?: { monsterName: string; damage: number }[];
+  lootReward?: AiLootReward;
 }
 
 export interface AiDmConfig {
@@ -142,6 +160,7 @@ export interface AiDmConfig {
   tone: AdventureTone;
   customInstructions: string;
   includeCharacterStats: boolean;
+  campaignSummary?: string;
 }
 
 export type AiOracleAction = 

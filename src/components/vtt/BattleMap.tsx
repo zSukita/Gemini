@@ -1,5 +1,5 @@
-import React, { useState, useRef, useCallback } from 'react';
-import type { BattleMapConfig, MapToken, FogShape, DrawingStroke, MapPing } from '../../types/vtt';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import type { BattleMapConfig, MapToken, FogShape, DrawingStroke, MapPing, FloatingCombatText } from '../../types/vtt';
 import type { Encounter } from '../../types/combat';
 import { TokenMarker } from './TokenMarker';
 import { MapControls } from './MapControls';
@@ -101,6 +101,54 @@ export const BattleMap: React.FC<BattleMapProps> = ({
   const [drawColor, setDrawColor] = useState('#f59e0b');
   const [drawWidth, setDrawWidth] = useState(4);
   const [pings, setPings] = useState<MapPing[]>([]);
+
+  // Estados de Floating Combat Text (Números flutuantes de dano e cura)
+  const [floatingTexts, setFloatingTexts] = useState<FloatingCombatText[]>([]);
+  const prevHpsRef = useRef<Map<string, number>>(new Map());
+
+  // Detecta automaticamente alterações de PV em qualquer token
+  useEffect(() => {
+    const prevMap = prevHpsRef.current;
+    tokens.forEach((t) => {
+      if (prevMap.has(t.id)) {
+        const prevHp = prevMap.get(t.id)!;
+        const delta = t.currentHp - prevHp;
+        if (delta !== 0) {
+          const pixelSize = t.size * mapConfig.gridSize;
+          const isCrit = delta <= -12;
+          const newFt: FloatingCombatText = {
+            id: `fct-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            tokenId: t.id,
+            x: t.x + pixelSize / 2,
+            y: t.y,
+            text: delta > 0 ? `+${delta}` : `${delta}`,
+            type: delta > 0 ? 'heal' : isCrit ? 'crit' : 'damage',
+            timestamp: Date.now(),
+          };
+          setFloatingTexts((prev) => [...prev, newFt]);
+          setTimeout(() => {
+            setFloatingTexts((prev) => prev.filter((item) => item.id !== newFt.id));
+          }, 1400);
+        }
+      }
+      prevMap.set(t.id, t.currentHp);
+    });
+  }, [tokens, mapConfig.gridSize]);
+
+  // Listener para eventos customizados de floating text (ex: ERROU / MISS)
+  useEffect(() => {
+    const handleCustomFt = (e: Event) => {
+      const detail = (e as CustomEvent<FloatingCombatText>).detail;
+      if (detail) {
+        setFloatingTexts((prev) => [...prev, detail]);
+        setTimeout(() => {
+          setFloatingTexts((prev) => prev.filter((item) => item.id !== detail.id));
+        }, 1400);
+      }
+    };
+    window.addEventListener('arcanasheet_floating_text', handleCustomFt);
+    return () => window.removeEventListener('arcanasheet_floating_text', handleCustomFt);
+  }, []);
 
   const playPingSound = useCallback(() => {
     try {
@@ -817,6 +865,31 @@ export const BattleMap: React.FC<BattleMapProps> = ({
               onSelect={() => onSelectToken(token.id)}
               onDragStart={(e) => handleTokenDragStart(token.id, e)}
             />
+          ))}
+
+          {/* 8. Camada de Números Flutuantes de Dano e Cura (Floating Combat Text) */}
+          {floatingTexts.map((ft) => (
+            <div
+              key={ft.id}
+              style={{
+                position: 'absolute',
+                left: `${ft.x}px`,
+                top: `${ft.y}px`,
+                pointerEvents: 'none',
+                zIndex: 45,
+              }}
+              className={`floating-combat-number select-none pointer-events-none font-serif font-black ${
+                ft.type === 'crit'
+                  ? 'text-yellow-300 text-lg sm:text-xl tracking-wider drop-shadow-[0_0_12px_rgba(234,179,8,1)]'
+                  : ft.type === 'damage'
+                  ? 'text-rose-400 text-base sm:text-lg drop-shadow-[0_2px_6px_rgba(0,0,0,1)]'
+                  : ft.type === 'heal'
+                  ? 'text-emerald-400 text-base sm:text-lg drop-shadow-[0_2px_6px_rgba(0,0,0,1)]'
+                  : 'text-slate-300 text-xs sm:text-sm italic drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]'
+              }`}
+            >
+              {ft.type === 'crit' ? `💥 CRÍTICO! ${ft.text}` : ft.text}
+            </div>
           ))}
 
           {/* Barra Flutuante de Ações para o Token Selecionado */}

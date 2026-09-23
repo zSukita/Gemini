@@ -56,8 +56,8 @@ import { HandoutViewerModal } from './components/HandoutViewerModal';
 import { AiDungeonMasterModal } from './components/ai/AiDungeonMasterModal';
 import { EndSessionModal } from './components/vtt/EndSessionModal';
 import { getStoredApiKey, sendToAiDungeonMaster, clearStoredChatHistory, saveStoredChatHistory } from './services/geminiService';
-import type { AiMessage, MonsterAttackAction } from './types/aiDm';
-import type { Combatant, Monster } from './types/combat';
+import type { AiMessage, MonsterAttackAction, AiLootReward } from './types/aiDm';
+import type { Combatant, Monster, ConditionKey } from './types/combat';
 import type { ChatMessage, ChatMessageType } from './types/chat';
 import {
   type CampaignHandout,
@@ -556,6 +556,47 @@ export function App() {
     [applyCombatantHpDelta, isConnected, broadcastTokenMove, character.name, setTokens]
   );
 
+  // Alternar Condição de Combatente e Sincronizar Imediatamente os Tokens no Mapa e Rede P2P
+  const handleToggleCombatantCondition = useCallback(
+    (id: string, condition: ConditionKey) => {
+      toggleCombatantCondition(id, condition);
+
+      const combatant = encounterRef.current?.combatants.find((c) => c.id === id);
+      const cBase = combatant?.name.toLowerCase().replace(/\s*\d+$/, '').trim();
+
+      setTokens((prev) => {
+        const updated = prev.map((t) => {
+          const tBase = t.name.toLowerCase().replace(/\s*\d+$/, '').trim();
+          const isMatch =
+            t.combatantId === id ||
+            t.id === id ||
+            (combatant &&
+              (t.name.toLowerCase() === combatant.name.toLowerCase() ||
+                (cBase && tBase === cBase && t.type === combatant.type)));
+
+          if (isMatch) {
+            const exists = t.conditions.includes(condition);
+            const nextConditions = exists
+              ? t.conditions.filter((cond) => cond !== condition)
+              : [...t.conditions, condition];
+            return {
+              ...t,
+              combatantId: id,
+              conditions: nextConditions,
+            };
+          }
+          return t;
+        });
+
+        if (isConnected) {
+          broadcastTokenMove(updated, character.name);
+        }
+        return updated;
+      });
+    },
+    [toggleCombatantCondition, isConnected, broadcastTokenMove, character.name, setTokens]
+  );
+
   const triggerAiDm = useCallback(
     async (promptText: string) => {
       const apiKey = getStoredApiKey();
@@ -597,6 +638,7 @@ export function App() {
           monsterAttack: aiReply.monsterAttack,
           monsterSpawns: aiReply.monsterSpawns,
           mapMoves: aiReply.mapMoves,
+          lootReward: aiReply.lootReward,
         });
 
         // 1. Inserir novos monstros no encontro e tokens no mapa (SPAWN)
@@ -865,6 +907,73 @@ export function App() {
   );
 
   triggerAiDmRef.current = triggerAiDm;
+
+  // Coletar Tesouro do Mestre IA diretamente para a Ficha e Mochila do Personagem
+  const handleCollectLoot = useCallback(
+    (loot: AiLootReward) => {
+      const currentCoins = character.currency || { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 };
+      const newCoins = {
+        cp: (currentCoins.cp || 0) + (loot.coins?.cp || 0),
+        sp: (currentCoins.sp || 0) + (loot.coins?.sp || 0),
+        ep: (currentCoins.ep || 0) + (loot.coins?.ep || 0),
+        gp: (currentCoins.gp || 0) + (loot.coins?.gp || 0),
+        pp: (currentCoins.pp || 0) + (loot.coins?.pp || 0),
+      };
+
+      const currentInventory = [...(character.inventory || [])];
+      if (loot.items && loot.items.length > 0) {
+        loot.items.forEach((item) => {
+          const existingIndex = currentInventory.findIndex(
+            (inv) => inv.name.toLowerCase().trim() === item.name.toLowerCase().trim()
+          );
+          if (existingIndex >= 0) {
+            currentInventory[existingIndex] = {
+              ...currentInventory[existingIndex],
+              quantity: (currentInventory[existingIndex].quantity || 1) + item.quantity,
+            };
+          } else {
+            currentInventory.push({
+              id: `loot-item-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+              name: item.name,
+              quantity: item.quantity,
+              weight: 0.5,
+              notes: 'Tesouro obtido em aventura',
+              equipped: false,
+            });
+          }
+        });
+      }
+
+      updateCharacter({
+        currency: newCoins,
+        inventory: currentInventory,
+      });
+
+      const parts: string[] = [];
+      if (loot.coins) {
+        const coinParts: string[] = [];
+        if (loot.coins.gp) coinParts.push(`${loot.coins.gp} PO`);
+        if (loot.coins.sp) coinParts.push(`${loot.coins.sp} PP`);
+        if (loot.coins.cp) coinParts.push(`${loot.coins.cp} PC`);
+        if (loot.coins.ep) coinParts.push(`${loot.coins.ep} PE`);
+        if (loot.coins.pp) coinParts.push(`${loot.coins.pp} PL`);
+        if (coinParts.length > 0) parts.push(coinParts.join(', '));
+      }
+      if (loot.items && loot.items.length > 0) {
+        parts.push(loot.items.map((i) => `${i.quantity}x ${i.name}`).join(', '));
+      }
+
+      const summary = parts.join(' | ') || 'Tesouro';
+      showNotification(`💰 Tesouro adicionado à sua ficha: ${summary}!`);
+
+      sendChatMessage({
+        text: `💰 **${character.name || 'O herói'}** coletou o tesouro para sua mochila: ${summary}`,
+        senderName: character.name || 'Aventureiro',
+        type: 'PUBLIC',
+      });
+    },
+    [character, updateCharacter, showNotification, sendChatMessage]
+  );
 
   const handleUserChatMessage = useCallback(
     (
@@ -2115,7 +2224,7 @@ export function App() {
             onImportPlayers={importPlayerCharacters}
             onResetEncounter={resetEncounter}
             onHpDelta={handleHpDelta}
-            onToggleCondition={toggleCombatantCondition}
+            onToggleCondition={handleToggleCombatantCondition}
             onUpdateInitiative={updateCombatantInitiative}
             onRemoveCombatant={removeCombatant}
             onAddMonster={addMonsterCombatant}
@@ -2179,7 +2288,7 @@ export function App() {
             onSortInitiative={sortCombatantsByInitiative}
             onResetEncounter={resetEncounter}
             onHpDelta={handleHpDelta}
-            onToggleCondition={toggleCombatantCondition}
+            onToggleCondition={handleToggleCombatantCondition}
             onUpdateInitiative={updateCombatantInitiative}
             onRemoveCombatant={removeCombatant}
             onRollMonsterAttack={(monName, actName, bonus) =>
@@ -2197,6 +2306,8 @@ export function App() {
             onOpenMusicPlayer={() => setIsMusicPlayerOpen(true)}
             onOpenEndSessionModal={() => setIsEndSessionOpen(true)}
             onStartScenario={handleStartSoloAdventureOnMap}
+            onCollectLoot={handleCollectLoot}
+            onUpdateCharacter={updateCharacter}
           />
         </div>
       )}

@@ -3,7 +3,7 @@ import { p2pManager } from '../utils/peerService';
 import type { P2PMessage, PeerUser, MapToken, FogShape, BattleMapConfig } from '../types/vtt';
 import type { DiceRollResult } from '../types/dnd5e';
 import type { ChatMessage, ChatMessageType } from '../types/chat';
-import type { MonsterSpawnAction, MapMoveAction } from '../types/aiDm';
+import type { MonsterSpawnAction, MapMoveAction, AiLootReward } from '../types/aiDm';
 import { getLocalDirectMessages, saveLocalDirectMessages } from '../firebase/presenceAndFriends';
 
 export interface UseMultiplayerOptions {
@@ -106,6 +106,7 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
           suggestedActions: isObj ? payload.suggestedActions : undefined,
           requestedRoll: isObj ? payload.requestedRoll : undefined,
           monsterAttack: isObj ? payload.monsterAttack : undefined,
+          lootReward: isObj ? payload.lootReward : undefined,
           timestamp: msg.timestamp || Date.now(),
         };
         setChatLog((prev) => {
@@ -241,6 +242,7 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
             };
             monsterSpawns?: MonsterSpawnAction[];
             mapMoves?: MapMoveAction[];
+            lootReward?: AiLootReward;
             aiHandledBySender?: boolean;
           },
       playerNameFallback?: string
@@ -256,6 +258,7 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
       const monsterAttack = isObj ? textOrPayload.monsterAttack : undefined;
       const monsterSpawns = isObj ? textOrPayload.monsterSpawns : undefined;
       const mapMoves = isObj ? textOrPayload.mapMoves : undefined;
+      const lootReward = isObj ? textOrPayload.lootReward : undefined;
       const aiHandledBySender = isObj ? textOrPayload.aiHandledBySender : undefined;
       const msgId = isObj && textOrPayload.id ? textOrPayload.id : `chat-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
       const timestamp = Date.now();
@@ -271,6 +274,7 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
         monsterAttack,
         monsterSpawns,
         mapMoves,
+        lootReward,
         aiHandledBySender,
       };
 
@@ -298,6 +302,7 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
         monsterAttack,
         monsterSpawns,
         mapMoves,
+        lootReward,
         timestamp,
       };
       setChatLog((prev) => {

@@ -1,5 +1,5 @@
 import type { DiceRollResult } from './dnd5e';
-import type { MonsterSpawnAction, MapMoveAction } from './aiDm';
+import type { MonsterSpawnAction, MapMoveAction, AiLootReward } from './aiDm';
 
 export type ChatMessageType = 'PUBLIC' | 'WHISPER' | 'GM_ROLL' | 'SYSTEM' | 'AI_DM';
 
@@ -29,5 +29,6 @@ export interface ChatMessage {
   mapMoves?: MapMoveAction[];
   defeatedMonsters?: string[];
   monsterDamage?: { monsterName: string; damage: number }[];
+  lootReward?: AiLootReward;
   timestamp: number;
 }

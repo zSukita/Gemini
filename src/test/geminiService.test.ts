@@ -212,11 +212,11 @@ Vocês vasculham os restos do acampamento e encontram um baú com reforços de l
       expect(loaded.model).toBe(DEFAULT_MODEL);
     });
 
-    it('deve migrar modelos inexistentes ou inválidos como gemini-3.6-flash e gemini-3.5-flash automaticamente para DEFAULT_MODEL', () => {
+    it('deve migrar modelos descontinuados como gemini-2.5-flash e gemini-2.0-flash automaticamente para DEFAULT_MODEL', () => {
       localStorageMock.setItem(
         'arcanasheet_ai_dm_config',
         JSON.stringify({
-          model: 'gemini-3.6-flash',
+          model: 'gemini-2.5-flash',
           tone: 'heroic',
         })
       );
@@ -225,11 +225,11 @@ Vocês vasculham os restos do acampamento e encontram um baú com reforços de l
       expect(config.model).toBe(DEFAULT_MODEL);
     });
 
-    it('deve migrar gemini-3.5-flash para DEFAULT_MODEL', () => {
+    it('deve migrar gemini-2.0-flash para DEFAULT_MODEL', () => {
       localStorageMock.setItem(
         'arcanasheet_ai_dm_config',
         JSON.stringify({
-          model: 'gemini-3.5-flash',
+          model: 'gemini-2.0-flash',
           tone: 'heroic',
         })
       );

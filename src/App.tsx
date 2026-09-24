@@ -1905,6 +1905,44 @@ export function App() {
   );
   handleTriggerAiMonsterTurnRef.current = handleTriggerAiMonsterTurn;
 
+  // Automação: O Mestre IA assume e joga o turno dos monstros automaticamente
+  const isAiMonsterTurnExecutingRef = useRef(false);
+
+  useEffect(() => {
+    if (!encounter.isRunning) {
+      isAiMonsterTurnExecutingRef.current = false;
+      return;
+    }
+
+    // Apenas na sessão local/solo ou no Host da sala multiplayer
+    if (isConnected && !isHost) return;
+
+    const activeCombatant = encounter.combatants[encounter.activeCombatantIndex];
+    if (!activeCombatant) return;
+
+    // Se o combatente da vez for um monstro vivo
+    if (activeCombatant.type === 'monster' && activeCombatant.currentHp > 0) {
+      if (isAiMonsterTurnExecutingRef.current) return;
+      isAiMonsterTurnExecutingRef.current = true;
+
+      // Delay tático suave (1500ms) para criar expectativa e permitir ao jogador acompanhar a iniciativa
+      const timer = setTimeout(() => {
+        handleTriggerAiMonsterTurnRef.current?.(activeCombatant);
+        // Libera a trava após o ataque e passagem para o próximo turno
+        setTimeout(() => {
+          isAiMonsterTurnExecutingRef.current = false;
+        }, 3200);
+      }, 1500);
+
+      return () => {
+        clearTimeout(timer);
+        isAiMonsterTurnExecutingRef.current = false;
+      };
+    } else {
+      isAiMonsterTurnExecutingRef.current = false;
+    }
+  }, [encounter.isRunning, encounter.activeCombatantIndex, encounter.combatants, isConnected, isHost]);
+
   // Avança o turno D&D 5e e sincroniza entre Host e jogadores
   const handleNextTurn = useCallback(() => {
     nextTurn();

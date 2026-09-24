@@ -66,11 +66,11 @@ export const TabletopCombatTracker: React.FC<TabletopCombatTrackerProps> = ({
                 <button
                   type="button"
                   onClick={() => onAiMonsterAttack(activeCombatant)}
-                  className="rpg-button bg-rose-900 hover:bg-rose-800 text-rose-100 text-[10px] py-0.5 px-2 rounded shadow-xs flex items-center gap-1 font-bold animate-pulse border border-rose-700"
-                  title={`Fazer o Mestre IA rolar o ataque de ${activeCombatant.name}`}
+                  className="rpg-button bg-rose-900 hover:bg-rose-800 text-rose-100 text-[10px] py-0.5 px-2 rounded shadow-xs flex items-center gap-1 font-bold animate-pulse border border-rose-700 cursor-pointer"
+                  title={`O Mestre IA atacará automaticamente com ${activeCombatant.name}. Clique para disparar imediatamente.`}
                 >
                   <Swords size={11} />
-                  <span>Ação IA</span>
+                  <span>IA Agindo...</span>
                 </button>
               )}
             </div>
@@ -268,11 +268,11 @@ export const TabletopCombatTracker: React.FC<TabletopCombatTrackerProps> = ({
             <button
               type="button"
               onClick={() => onAiMonsterAttack(activeCombatant)}
-              className="rpg-button bg-rose-900 hover:bg-rose-800 text-rose-100 font-bold text-[10px] py-1 px-2 rounded shadow flex items-center gap-1 border border-rose-700 animate-pulse ml-1"
-              title={`Mestre IA rola o ataque de ${activeCombatant.name} com dados 3D`}
+              className="rpg-button bg-rose-900 hover:bg-rose-800 text-rose-100 font-bold text-[10px] py-1 px-2 rounded shadow flex items-center gap-1 border border-rose-700 animate-pulse ml-1 cursor-pointer"
+              title={`Mestre IA atacando automaticamente com ${activeCombatant.name}. Clique para disparar imediatamente.`}
             >
               <Swords size={11} />
-              <span>IA Atacar</span>
+              <span>IA Atacando...</span>
             </button>
           )}
         </div>

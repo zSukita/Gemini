@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, lazy, Suspense } from 'react';
 import { Scroll, Sparkles } from 'lucide-react';
 import { useCharacter } from './hooks/useCharacter';
 import { useEncounter } from './hooks/useEncounter';
@@ -13,9 +13,13 @@ import { broadcastSyncMessage } from './utils/syncChannel';
 import { Navbar, type AppMode } from './components/Navbar';
 import { DiceRollerBar } from './components/DiceRollerBar';
 import { PlayerSheetPage } from './pages/PlayerSheetPage';
-import { DmScreenPage } from './pages/DmScreenPage';
-import { VttSessionPage } from './pages/VttSessionPage';
+
+const DmScreenPage = lazy(() => import('./pages/DmScreenPage').then((m) => ({ default: m.DmScreenPage })));
+const VttSessionPage = lazy(() => import('./pages/VttSessionPage').then((m) => ({ default: m.VttSessionPage })));
 import { AppModals } from './components/modals/AppModals';
+import { useModalManager } from './hooks/useModalManager';
+import { useNotification } from './hooks/useNotification';
+import { useGlobalShortcuts } from './hooks/useGlobalShortcuts';
 import { useSocialPresence } from './hooks/useSocialPresence';
 import {
   type GameInvite,
@@ -48,6 +52,15 @@ import { SRD_MONSTERS } from './data/srdMonsters';
 import { SRD_CLASSES } from './data/srdClasses';
 import { type AiAdventureScenario } from './data/aiAdventureScenarios';
 import { getXpForCr } from './utils/encounterDifficulty';
+
+function PageFallback() {
+  return (
+    <div className="flex flex-col items-center justify-center p-16 space-y-4" role="status" aria-label="Carregando">
+      <Scroll className="w-10 h-10 animate-bounce text-amber-400 drop-shadow-[0_0_12px_rgba(212,175,55,0.5)]" />
+      <p className="text-sm font-cinzel text-amber-200/80 animate-pulse tracking-wider">Carregando Grimório...</p>
+    </div>
+  );
+}
 
 export function App() {
   const {
@@ -86,7 +99,7 @@ export function App() {
     addResource,
     updateResource,
     deleteResource,
-    useResourceCharge,
+    consumeResourceCharge,
     addAttack,
     deleteAttack,
     addInventoryItem,
@@ -137,16 +150,47 @@ export function App() {
       return true;
     }
   });
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [isShortRestOpen, setIsShortRestOpen] = useState(false);
-  const [isManagerOpen, setIsManagerOpen] = useState(false);
-  const [isWizardOpen, setIsWizardOpen] = useState(false);
-  const [isMultiplayerOpen, setIsMultiplayerOpen] = useState(false);
-  const [isEndSessionOpen, setIsEndSessionOpen] = useState(false);
-  const [isCampaignModalOpen, setIsCampaignModalOpen] = useState(false);
-  const [isHandoutModalOpen, setIsHandoutModalOpen] = useState(false);
-  const [activeHandout, setActiveHandout] = useState<CampaignHandout | null>(null);
-  const [isHandoutViewerOpen, setIsHandoutViewerOpen] = useState(false);
+  const {
+    isHistoryOpen,
+    setIsHistoryOpen,
+    isShortRestOpen,
+    setIsShortRestOpen,
+    isManagerOpen,
+    setIsManagerOpen,
+    isWizardOpen,
+    setIsWizardOpen,
+    isMultiplayerOpen,
+    setIsMultiplayerOpen,
+    isEndSessionOpen,
+    setIsEndSessionOpen,
+    isCampaignModalOpen,
+    setIsCampaignModalOpen,
+    isHandoutModalOpen,
+    setIsHandoutModalOpen,
+    activeHandout,
+    setActiveHandout,
+    isHandoutViewerOpen,
+    setIsHandoutViewerOpen,
+    isPrintOpen,
+    setIsPrintOpen,
+    isChatOpen,
+    setIsChatOpen,
+    isLevelUpOpen,
+    setIsLevelUpOpen,
+    isMusicPlayerOpen,
+    setIsMusicPlayerOpen,
+    isAiDmOpen,
+    setIsAiDmOpen,
+    isBestiaryOpen,
+    setIsBestiaryOpen,
+    isSpellCompendiumOpen,
+    setIsSpellCompendiumOpen,
+    isOnlineListPinned,
+    setIsOnlineListPinned,
+    closeAllModals,
+  } = useModalManager();
+
+  const { notification, showNotification } = useNotification();
   const [isSecretRoll, setIsSecretRoll] = useState(false);
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(() => {
     try {
@@ -155,13 +199,6 @@ export function App() {
       return null;
     }
   });
-  const [isPrintOpen, setIsPrintOpen] = useState(false);
-  const [isChatOpen, setIsChatOpen] = useState(false);
-  const [isLevelUpOpen, setIsLevelUpOpen] = useState(false);
-  const [isMusicPlayerOpen, setIsMusicPlayerOpen] = useState(false);
-  const [isAiDmOpen, setIsAiDmOpen] = useState(false);
-  const [isBestiaryOpen, setIsBestiaryOpen] = useState(false);
-  const [isSpellCompendiumOpen, setIsSpellCompendiumOpen] = useState(false);
   const [currentTheme, setCurrentTheme] = useState<ThemeId>(() => {
     try {
       return (localStorage.getItem('arcanasheet_theme') as ThemeId) || 'default';
@@ -169,13 +206,12 @@ export function App() {
       return 'default';
     }
   });
-  const [notification, setNotification] = useState<string | null>(null);
-  const [isOnlineListPinned, setIsOnlineListPinned] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('arcanasheet_online_list_pinned') === 'true';
-    } catch {
-      return false;
-    }
+
+  // Atalho global ESC para fechar modais e M para alternar tocador de música
+  useGlobalShortcuts({
+    onEscape: closeAllModals,
+    onToggleMusic: () => setIsMusicPlayerOpen((prev) => !prev),
+    onToggleDiceHistory: () => setIsHistoryOpen((prev) => !prev),
   });
 
   const handleSetActiveCampaignId = (id: string | null) => {
@@ -238,25 +274,10 @@ export function App() {
     }
   }, [isAuthenticated, isCloudLoaded, charactersList, user?.uid]);
 
-  const showNotification = useCallback((msg: string) => {
-    setNotification(msg);
-    setTimeout(() => {
-      setNotification((curr) => (curr === msg ? null : curr));
-    }, 4000);
-  }, []);
-
   const handleTogglePinOnlineList = useCallback(() => {
-    setIsOnlineListPinned((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem('arcanasheet_online_list_pinned', String(next));
-      } catch {
-        // ignore
-      }
-      showNotification(`Lista de pessoas online: ${next ? 'Fixada na tela' : 'Desafixada'}`);
-      return next;
-    });
-  }, [showNotification]);
+    setIsOnlineListPinned(!isOnlineListPinned);
+    showNotification(`Lista de pessoas online: ${!isOnlineListPinned ? 'Fixada na tela' : 'Desafixada'}`);
+  }, [isOnlineListPinned, setIsOnlineListPinned, showNotification]);
 
   const [isSocialSidebarOpen, setIsSocialSidebarOpen] = useState<boolean>(() => {
     try {
@@ -2366,7 +2387,7 @@ export function App() {
           addResource={addResource}
           updateResource={updateResource}
           deleteResource={deleteResource}
-          useResourceCharge={(id, delta) => useResourceCharge(id, delta ?? 1)}
+          consumeResourceCharge={(id, delta) => consumeResourceCharge(id, delta ?? 1)}
           addAttack={addAttack}
           deleteAttack={deleteAttack}
           toggleSpellSlotUsed={toggleSpellSlotUsed}
@@ -2390,99 +2411,103 @@ export function App() {
 
       {/* MODO 2: PAINEL DO MESTRE (DM SCREEN) */}
       {currentMode === 'dm' && (
-        <DmScreenPage
-          encounter={encounter}
-          charactersList={charactersList}
-          onStartEncounter={handleStartEncounter}
-          onNextTurn={handleNextTurn}
-          onPreviousTurn={previousTurn}
-          onRollAllMonsters={rollAllMonstersInitiative}
-          onSortInitiative={sortCombatantsByInitiative}
-          onImportPlayers={importPlayerCharacters}
-          onResetEncounter={resetEncounter}
-          onHpDelta={handleHpDelta}
-          onToggleCondition={handleToggleCombatantCondition}
-          onUpdateInitiative={updateCombatantInitiative}
-          onRemoveCombatant={removeCombatant}
-          onAddMonster={addMonsterCombatant}
-          onAddCustomCombatant={addCustomCombatant}
-          onRollMonsterAttack={(monName, actName, bonus) =>
-            handleRollD20(`${monName}: ${actName}`, bonus)
-          }
-          onRollMonsterDamage={(monName, actName, formula) =>
-            handleRollFormula(formula, `${monName}: ${actName}`)
-          }
-          onAddTokenToMap={handleAddTokenFromMonster}
-          onAddCoinsToCharacter={handleAddCoinsToCharacter}
-          onAddToSharedLoot={handleAddToSharedLoot}
-          onSaveNpcToJournal={handleSaveNpcToJournal}
-          onOpenAiDm={() => setIsAiDmOpen(true)}
-        />
+        <Suspense fallback={<PageFallback />}>
+          <DmScreenPage
+            encounter={encounter}
+            charactersList={charactersList}
+            onStartEncounter={handleStartEncounter}
+            onNextTurn={handleNextTurn}
+            onPreviousTurn={previousTurn}
+            onRollAllMonsters={rollAllMonstersInitiative}
+            onSortInitiative={sortCombatantsByInitiative}
+            onImportPlayers={importPlayerCharacters}
+            onResetEncounter={resetEncounter}
+            onHpDelta={handleHpDelta}
+            onToggleCondition={handleToggleCombatantCondition}
+            onUpdateInitiative={updateCombatantInitiative}
+            onRemoveCombatant={removeCombatant}
+            onAddMonster={addMonsterCombatant}
+            onAddCustomCombatant={addCustomCombatant}
+            onRollMonsterAttack={(monName, actName, bonus) =>
+              handleRollD20(`${monName}: ${actName}`, bonus)
+            }
+            onRollMonsterDamage={(monName, actName, formula) =>
+              handleRollFormula(formula, `${monName}: ${actName}`)
+            }
+            onAddTokenToMap={handleAddTokenFromMonster}
+            onAddCoinsToCharacter={handleAddCoinsToCharacter}
+            onAddToSharedLoot={handleAddToSharedLoot}
+            onSaveNpcToJournal={handleSaveNpcToJournal}
+            onOpenAiDm={() => setIsAiDmOpen(true)}
+          />
+        </Suspense>
       )}
 
       {/* MODO 3: MESA VIRTUAL ONLINE COMPLETA (MODELO FANTASY GROUNDS) */}
       {currentMode === 'vtt' && (
-        <VttSessionPage
-          character={character}
-          charactersList={charactersList}
-          encounter={encounter}
-          mapConfig={mapConfig}
-          tokens={tokens}
-          selectedTokenId={selectedTokenId}
-          zoom={zoom}
-          pan={pan}
-          activeTool={activeTool}
-          chatLog={chatLog}
-          isHost={isHost}
-          isConnected={isConnected}
-          connectedPeers={connectedPeers}
-          isAiResponding={isAiResponding}
-          onSelectToken={setSelectedTokenId}
-          onMoveToken={handleMoveToken}
-          onSetZoom={setZoom}
-          onSetPan={setPan}
-          onSetActiveTool={setActiveTool}
-          onUpdateMapConfig={handleUpdateMapConfig}
-          onSelectMapPreset={handleSelectMapPreset}
-          onUploadMap={handleUploadCustomMap}
-          onAddFogShape={handleAddFogShape}
-          onResetFog={handleResetFog}
-          onRevealAllFog={handleRevealAllFog}
-          onUpdateToken={handleUpdateToken}
-          onRemoveToken={handleRemoveToken}
-          onAddToken={handleAddToken}
-          onApplyCharacterAvatar={(dataUrl) => updateCharacter({ avatarUrl: dataUrl } as any)}
-          onSendMessage={handleUserChatMessage}
-          onRollDie={handleRollDie}
-          onRollFormula={(formula, label) => handleRollFormula(formula, label || '')}
-          onRollD20={handleRollD20}
-          onStartEncounter={handleStartEncounter}
-          onNextTurn={handleNextTurn}
-          onPreviousTurn={previousTurn}
-          onSortInitiative={sortCombatantsByInitiative}
-          onResetEncounter={resetEncounter}
-          onHpDelta={handleHpDelta}
-          onToggleCondition={handleToggleCombatantCondition}
-          onUpdateInitiative={updateCombatantInitiative}
-          onRemoveCombatant={removeCombatant}
-          onRollMonsterAttack={(monName, actName, bonus) =>
-            handleRollD20(`${monName}: ${actName}`, bonus)
-          }
-          onRollMonsterDamage={(monName, actName, formula) =>
-            handleRollFormula(formula, `${monName}: ${actName}`)
-          }
-          onAiMonsterAttack={handleTriggerAiMonsterTurn}
-          onOpenMultiplayerModal={() => setIsMultiplayerOpen(true)}
-          onOpenAiDmModal={() => setIsAiDmOpen(true)}
-          onOpenCompendium={() => setIsSpellCompendiumOpen(true)}
-          onOpenBestiary={() => setIsBestiaryOpen(true)}
-          onOpenCharacterSheet={() => setCurrentMode('player')}
-          onOpenMusicPlayer={() => setIsMusicPlayerOpen(true)}
-          onOpenEndSessionModal={() => setIsEndSessionOpen(true)}
-          onStartScenario={handleStartSoloAdventureOnMap}
-          onCollectLoot={handleCollectLoot}
-          onUpdateCharacter={updateCharacter}
-        />
+        <Suspense fallback={<PageFallback />}>
+          <VttSessionPage
+            character={character}
+            charactersList={charactersList}
+            encounter={encounter}
+            mapConfig={mapConfig}
+            tokens={tokens}
+            selectedTokenId={selectedTokenId}
+            zoom={zoom}
+            pan={pan}
+            activeTool={activeTool}
+            chatLog={chatLog}
+            isHost={isHost}
+            isConnected={isConnected}
+            connectedPeers={connectedPeers}
+            isAiResponding={isAiResponding}
+            onSelectToken={setSelectedTokenId}
+            onMoveToken={handleMoveToken}
+            onSetZoom={setZoom}
+            onSetPan={setPan}
+            onSetActiveTool={setActiveTool}
+            onUpdateMapConfig={handleUpdateMapConfig}
+            onSelectMapPreset={handleSelectMapPreset}
+            onUploadMap={handleUploadCustomMap}
+            onAddFogShape={handleAddFogShape}
+            onResetFog={handleResetFog}
+            onRevealAllFog={handleRevealAllFog}
+            onUpdateToken={handleUpdateToken}
+            onRemoveToken={handleRemoveToken}
+            onAddToken={handleAddToken}
+            onApplyCharacterAvatar={(dataUrl) => updateCharacter({ avatarUrl: dataUrl } as any)}
+            onSendMessage={handleUserChatMessage}
+            onRollDie={handleRollDie}
+            onRollFormula={(formula, label) => handleRollFormula(formula, label || '')}
+            onRollD20={handleRollD20}
+            onStartEncounter={handleStartEncounter}
+            onNextTurn={handleNextTurn}
+            onPreviousTurn={previousTurn}
+            onSortInitiative={sortCombatantsByInitiative}
+            onResetEncounter={resetEncounter}
+            onHpDelta={handleHpDelta}
+            onToggleCondition={handleToggleCombatantCondition}
+            onUpdateInitiative={updateCombatantInitiative}
+            onRemoveCombatant={removeCombatant}
+            onRollMonsterAttack={(monName, actName, bonus) =>
+              handleRollD20(`${monName}: ${actName}`, bonus)
+            }
+            onRollMonsterDamage={(monName, actName, formula) =>
+              handleRollFormula(formula, `${monName}: ${actName}`)
+            }
+            onAiMonsterAttack={handleTriggerAiMonsterTurn}
+            onOpenMultiplayerModal={() => setIsMultiplayerOpen(true)}
+            onOpenAiDmModal={() => setIsAiDmOpen(true)}
+            onOpenCompendium={() => setIsSpellCompendiumOpen(true)}
+            onOpenBestiary={() => setIsBestiaryOpen(true)}
+            onOpenCharacterSheet={() => setCurrentMode('player')}
+            onOpenMusicPlayer={() => setIsMusicPlayerOpen(true)}
+            onOpenEndSessionModal={() => setIsEndSessionOpen(true)}
+            onStartScenario={handleStartSoloAdventureOnMap}
+            onCollectLoot={handleCollectLoot}
+            onUpdateCharacter={updateCharacter}
+          />
+        </Suspense>
       )}
 
       {/* Barra de Rolagem de Dados Fixa no Rodapé (oculta no VTT pois possui sua própria doca) */}

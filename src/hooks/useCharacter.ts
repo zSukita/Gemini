@@ -397,7 +397,7 @@ export function useCharacter(userId?: string | null) {
     }));
   };
 
-  const useResourceCharge = (id: string, delta: number) => {
+  const consumeResourceCharge = (id: string, delta: number) => {
     updateCharacter((prev) => ({
       ...prev,
       resources: (prev.resources || []).map((r) => {
@@ -409,6 +409,7 @@ export function useCharacter(userId?: string | null) {
       }),
     }));
   };
+  const useResourceCharge = consumeResourceCharge;
 
   // Gerenciamento de Ataques / Armas
   const addAttack = (attack: Omit<WeaponAttack, 'id'>) => {
@@ -619,6 +620,7 @@ export function useCharacter(userId?: string | null) {
     addResource,
     updateResource,
     deleteResource,
+    consumeResourceCharge,
     useResourceCharge,
     addAttack,
     updateAttack,

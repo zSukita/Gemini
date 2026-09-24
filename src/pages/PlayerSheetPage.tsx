@@ -50,7 +50,8 @@ export interface PlayerSheetPageProps {
   addResource: (res: Omit<CharacterResource, 'id'>) => void;
   updateResource: (id: string, updates: Partial<CharacterResource>) => void;
   deleteResource: (id: string) => void;
-  useResourceCharge: (id: string, delta?: number) => void;
+  consumeResourceCharge?: (id: string, delta?: number) => void;
+  useResourceCharge?: (id: string, delta?: number) => void;
   addAttack: (atk: any) => void;
   deleteAttack: (id: string) => void;
   toggleSpellSlotUsed: (level: number, slotIndex: number) => void;
@@ -90,6 +91,7 @@ export const PlayerSheetPage: React.FC<PlayerSheetPageProps> = ({
   addResource,
   updateResource,
   deleteResource,
+  consumeResourceCharge,
   useResourceCharge,
   addAttack,
   deleteAttack,
@@ -230,7 +232,7 @@ export const PlayerSheetPage: React.FC<PlayerSheetPageProps> = ({
                 onAddResource={addResource}
                 onUpdateResource={updateResource}
                 onDeleteResource={deleteResource}
-                onUseCharge={useResourceCharge}
+                onUseCharge={(id, delta) => (consumeResourceCharge || useResourceCharge)?.(id, delta)}
               />
             </div>
 

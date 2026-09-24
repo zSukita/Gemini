@@ -10,18 +10,28 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (id.includes('node_modules/firebase')) {
-            return 'firebase';
+            return 'vendor-firebase';
           }
           if (id.includes('node_modules/@google/genai')) {
-            return 'ai';
+            return 'vendor-ai';
           }
           if (id.includes('node_modules/peerjs')) {
-            return 'peer';
+            return 'vendor-peer';
+          }
+          if (id.includes('node_modules/lucide-react')) {
+            return 'vendor-icons';
+          }
+          if (
+            id.includes('src/data/srdMonsters') ||
+            id.includes('src/data/srdSpells') ||
+            id.includes('src/data/defaultMaps')
+          ) {
+            return 'srd-compendium-data';
           }
         },
       },
     },
-    chunkSizeWarningLimit: 600,
+    chunkSizeWarningLimit: 800,
     sourcemap: false,
     target: 'es2022',
   },

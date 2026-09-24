@@ -393,16 +393,16 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
           ))}
         </div>
 
-        {/* Controles da Mesa & Alternador de Foco */}
-        <div className="flex items-center gap-1.5 sm:gap-2">
+        {/* Controles da Mesa & Alternador de Foco (Alinhamento Perfeito) */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* Status Multiplayer */}
           <button
             type="button"
             onClick={onOpenMultiplayerModal}
-            className={`px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl border text-xs font-serif font-bold flex items-center gap-1.5 transition ${
+            className={`h-9 px-2.5 sm:px-3 rounded-xl border text-xs font-serif font-bold flex items-center justify-center gap-1.5 transition shrink-0 ${
               isConnected
-                ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-200'
-                : 'bg-slate-900/80 border-slate-700 text-slate-300 hover:border-amber-500/40'
+                ? 'bg-emerald-950/70 border-emerald-500/60 text-emerald-200 hover:bg-emerald-900/70'
+                : 'bg-slate-900/80 border-slate-700 text-slate-300 hover:border-amber-500/40 hover:text-white'
             }`}
             title={
               isConnected
@@ -424,7 +424,7 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
           <button
             type="button"
             onClick={onOpenAiDmModal}
-            className="px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl bg-amber-950/60 border border-amber-500/50 text-amber-200 text-xs font-serif font-bold flex items-center gap-1.5 hover:bg-amber-900/60 transition shadow"
+            className="h-9 px-2.5 sm:px-3 rounded-xl bg-amber-950/60 border border-amber-500/50 hover:border-amber-400 text-amber-200 text-xs font-serif font-bold flex items-center justify-center gap-1.5 hover:bg-amber-900/60 transition shadow shrink-0"
             title="Abrir Oráculo IA / Gerador de Aventuras"
           >
             <Sparkles size={14} className="text-amber-400 animate-pulse" />
@@ -436,7 +436,7 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
             <button
               type="button"
               onClick={onOpenEndSessionModal}
-              className="px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl bg-red-950/40 hover:bg-red-900/60 border border-red-500/40 hover:border-red-400 text-red-200 text-xs font-serif font-bold flex items-center gap-1.5 transition shadow"
+              className="h-9 px-2.5 sm:px-3 rounded-xl bg-red-950/50 hover:bg-red-900/70 border border-red-500/50 hover:border-red-400 text-red-200 text-xs font-serif font-bold flex items-center justify-center gap-1.5 transition shadow shrink-0"
               title="Finalizar esta mesa ou iniciar uma nova aventura"
             >
               <Flag size={14} className="text-red-400" />
@@ -449,8 +449,8 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
             <button
               type="button"
               onClick={onOpenMusicPlayer}
-              className="p-1.5 rounded-xl bg-[#2a170d] border border-[#8a633b] text-amber-200 hover:text-white transition"
-              title="Trilha Sonora & Músicas"
+              className="h-9 w-9 flex items-center justify-center rounded-xl bg-[#2a170d] border border-[#8a633b] hover:border-amber-400 text-amber-200 hover:text-white transition shrink-0"
+              title="Trilha Sonora & Músicas de Fundo"
             >
               <Music size={15} />
             </button>
@@ -460,7 +460,7 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
           <button
             type="button"
             onClick={() => setIsMapFocusOnly(!isMapFocusOnly)}
-            className="hidden md:flex px-3 py-1.5 rounded-xl bg-[#3c2214] hover:bg-[#52301c] border border-[#a17849] text-amber-100 text-xs font-serif font-bold items-center gap-1.5 shadow"
+            className="hidden md:flex h-9 px-3 rounded-xl bg-[#3c2214] hover:bg-[#52301c] border border-[#a17849] hover:border-amber-400 text-amber-100 text-xs font-serif font-bold items-center justify-center gap-1.5 shadow transition shrink-0"
             title={isMapFocusOnly ? 'Voltar para Mesa Completa (Fantasy Grounds)' : 'Maximizar apenas o Mapa Tático'}
           >
             {isMapFocusOnly ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
@@ -471,12 +471,12 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
           <button
             type="button"
             onClick={() => setIsBottomDockOpen(!isBottomDockOpen)}
-            className={`hidden md:flex px-3 py-1.5 rounded-xl border text-xs font-serif font-bold items-center gap-1.5 transition shadow ${
+            className={`hidden md:flex h-9 px-3 rounded-xl border text-xs font-serif font-bold items-center justify-center gap-1.5 transition shadow shrink-0 ${
               encounter.isRunning
                 ? 'bg-rose-950/80 border-rose-500 text-rose-200 animate-pulse'
                 : isBottomDockOpen
                 ? 'bg-amber-900/60 border-amber-500 text-amber-100'
-                : 'bg-[#2a170d] border-[#8a633b] text-amber-200 hover:text-white'
+                : 'bg-[#2a170d] border-[#8a633b] hover:border-amber-400 text-amber-200 hover:text-white'
             }`}
             title="Abrir / Recolher Painel de Combate e Alvo"
           >

@@ -303,33 +303,35 @@ body.theme-arcane .rpg-input,
   box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.9);
 }
 
-/* Janela de Pergaminho Envelhecido com Borda Dupla */
+/* Janela de Grimório Arcano / Dark Parchment (Dark Fantasy Imersivo) */
 .tabletop-parchment {
-  background: #f5eedb;
-  background-image: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.4) 0%, rgba(200, 175, 140, 0.25) 100%);
-  color: #26190b;
-  border: 3px solid #6b4c2b;
+  background: #10141f;
+  background-image: 
+    radial-gradient(circle at 50% 15%, rgba(30, 41, 59, 0.45) 0%, rgba(10, 13, 20, 0.98) 100%),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.012) 0px, rgba(255, 255, 255, 0.012) 1px, transparent 1px, transparent 2px);
+  color: #e6dfd5;
+  border: 1.5px solid #5a3c1c;
   box-shadow: 
-    inset 0 0 35px rgba(140, 100, 55, 0.25),
-    0 10px 30px rgba(0, 0, 0, 0.7);
+    inset 0 0 40px rgba(0, 0, 0, 0.8),
+    0 12px 35px rgba(0, 0, 0, 0.85);
   position: relative;
 }
 
 .tabletop-parchment::before {
   content: '';
   position: absolute;
-  inset: 3px;
-  border: 1px solid #9e7a4f;
+  inset: 2px;
+  border: 1px solid rgba(197, 148, 87, 0.25);
   pointer-events: none;
-  border-radius: 4px;
+  border-radius: 8px;
 }
 
-/* Cabeçalho de Pergaminho Ornamental */
+/* Cabeçalho de Grimório Ornamental Escuro */
 .tabletop-parchment-header {
-  background: linear-gradient(180deg, #dfd0b5 0%, #cbb796 100%);
-  border-bottom: 2px solid #7c5c36;
-  color: #3b240e;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
+  background: linear-gradient(180deg, #1e1711 0%, #130d08 100%);
+  border-bottom: 1.5px solid #5a3c1c;
+  color: #f7e6ce;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
 }
 
 /* Badge de Rolagem de Dados Inline (Estilo Fantasy Grounds) */

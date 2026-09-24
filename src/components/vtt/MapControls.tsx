@@ -46,7 +46,9 @@ interface MapControlsProps {
   zoom: number;
   onZoomIn: () => void;
   onZoomOut: () => void;
-  onFitToScreen?: () => void;
+  onFitToScreen?: (mode?: 'fill' | 'focus' | 'contain') => void;
+  fitMode?: 'fill' | 'focus' | 'contain';
+  onAdaptMapToViewport?: () => void;
   onResetZoom: () => void;
   fogEnabled: boolean;
   onToggleFog: () => void;
@@ -82,6 +84,8 @@ export const MapControls: React.FC<MapControlsProps> = ({
   onZoomIn,
   onZoomOut,
   onFitToScreen,
+  fitMode = 'fill',
+  onAdaptMapToViewport,
   onResetZoom,
   fogEnabled,
   onToggleFog,
@@ -99,6 +103,7 @@ export const MapControls: React.FC<MapControlsProps> = ({
 }) => {
   const [showAdvancedTools, setShowAdvancedTools] = useState(false);
   const [isToolbarCollapsed, setIsToolbarCollapsed] = useState(false);
+  const [showFitMenu, setShowFitMenu] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -136,43 +141,43 @@ export const MapControls: React.FC<MapControlsProps> = ({
 
   return (
     <div className="flex flex-col gap-1.5 p-2 bg-slate-900/95 border border-slate-800 rounded-xl shadow-xl backdrop-blur-md shrink-0">
-      {/* 1. BARRA PRINCIPAL COMPACTA (Linha única de ferramentas essenciais) */}
-      <div className="flex flex-wrap items-center justify-between gap-1.5">
+      {/* 1. BARRA PRINCIPAL COMPACTA & ALINHADA (Sem quebras desordenadas) */}
+      <div className="flex items-center justify-between gap-1.5 overflow-x-auto no-scrollbar">
         
-        {/* Ferramentas do Cursor */}
-        <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+        {/* Ferramentas do Cursor (Agrupadas com estilo e alinhamento) */}
+        <div className="flex items-center gap-0.5 bg-slate-950 p-1 rounded-lg border border-slate-800 shrink-0">
           <button
             type="button"
             onClick={() => setActiveTool('select')}
-            className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition ${
+            className={`p-1.5 sm:px-2 sm:py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition ${
               activeTool === 'select'
                 ? 'bg-amber-500 text-slate-950 font-bold shadow'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
-            title="Mover Tokens e Navegar"
+            title="Mover Tokens e Navegar pelo Mapa"
           >
             <MousePointer size={14} />
-            <span className="hidden md:inline">Mover</span>
+            <span className="hidden xl:inline">Mover</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTool('measure')}
-            className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition ${
+            className={`p-1.5 sm:px-2 sm:py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition ${
               activeTool === 'measure'
                 ? 'bg-amber-500 text-slate-950 font-bold shadow'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
-            title="Régua de Medição de Distância"
+            title="Régua de Medição de Distância (em metros e quadrados)"
           >
             <Ruler size={14} />
-            <span className="hidden md:inline">Régua</span>
+            <span className="hidden xl:inline">Régua</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTool('fog-reveal')}
-            className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition ${
+            className={`p-1.5 sm:px-2 sm:py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition ${
               activeTool === 'fog-reveal'
                 ? 'bg-emerald-600 text-white font-bold shadow'
                 : 'text-slate-400 hover:text-slate-200'
@@ -180,13 +185,13 @@ export const MapControls: React.FC<MapControlsProps> = ({
             title="Revelar Área da Névoa de Guerra"
           >
             <Eye size={14} />
-            <span className="hidden md:inline">Revelar</span>
+            <span className="hidden xl:inline">Revelar</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTool('fog-hide')}
-            className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition ${
+            className={`p-1.5 sm:px-2 sm:py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition ${
               activeTool === 'fog-hide'
                 ? 'bg-rose-600 text-white font-bold shadow'
                 : 'text-slate-400 hover:text-slate-200'
@@ -194,13 +199,13 @@ export const MapControls: React.FC<MapControlsProps> = ({
             title="Ocultar Área com Névoa"
           >
             <EyeOff size={14} />
-            <span className="hidden md:inline">Ocultar</span>
+            <span className="hidden xl:inline">Ocultar</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTool(activeTool === 'draw' ? 'select' : 'draw')}
-            className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition ${
+            className={`p-1.5 sm:px-2 sm:py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition ${
               activeTool === 'draw'
                 ? 'bg-amber-500 text-slate-950 font-bold shadow'
                 : 'text-slate-400 hover:text-slate-200'
@@ -208,13 +213,13 @@ export const MapControls: React.FC<MapControlsProps> = ({
             title="Caneta de Desenho Tático Livre"
           >
             <Pencil size={14} />
-            <span className="hidden md:inline">Desenhar</span>
+            <span className="hidden xl:inline">Desenhar</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTool(activeTool === 'ping' ? 'select' : 'ping')}
-            className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition ${
+            className={`p-1.5 sm:px-2 sm:py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition ${
               activeTool === 'ping'
                 ? 'bg-purple-600 text-white font-bold shadow animate-pulse'
                 : 'text-slate-400 hover:text-slate-200'
@@ -222,13 +227,14 @@ export const MapControls: React.FC<MapControlsProps> = ({
             title="Ponteiro Pulsante (Ping no Mapa)"
           >
             <Radio size={14} />
-            <span className="hidden md:inline">Ping</span>
+            <span className="hidden xl:inline">Ping</span>
           </button>
         </div>
 
-        {/* Grade, Snap e Zoom */}
-        <div className="flex items-center gap-1.5">
-          <div className="flex items-center gap-1 bg-slate-950 px-1.5 py-1 rounded-lg border border-slate-800 text-xs">
+        {/* Grade, Snap, Zoom e Enquadramento Adaptativo */}
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+          {/* Grade e Snap */}
+          <div className="flex items-center gap-0.5 bg-slate-950 px-1 py-0.5 rounded-lg border border-slate-800 text-xs">
             <button
               type="button"
               onClick={onToggleGrid}
@@ -252,54 +258,144 @@ export const MapControls: React.FC<MapControlsProps> = ({
             </button>
           </div>
 
-          <div className="flex items-center gap-1 bg-slate-950 px-1.5 py-1 rounded-lg border border-slate-800 text-xs">
+          {/* Zoom com Enquadramento Inteligente */}
+          <div className="flex items-center gap-1 bg-slate-950 px-1.5 py-0.5 rounded-lg border border-slate-800 text-xs relative">
             <button
               type="button"
               onClick={onZoomOut}
-              className="p-0.5 text-slate-400 hover:text-slate-200 transition"
+              className="p-1 text-slate-400 hover:text-slate-200 transition"
               title="Reduzir Zoom"
             >
               <ZoomOut size={13} />
             </button>
 
-            <span className="font-mono text-[10px] text-slate-300 w-9 text-center font-bold">
+            <button
+              type="button"
+              onClick={onResetZoom}
+              className="font-mono text-[11px] text-slate-300 hover:text-amber-400 w-10 text-center font-bold transition cursor-pointer"
+              title="Clique para redefinir o zoom para 100%"
+            >
               {Math.round(zoom * 100)}%
-            </span>
+            </button>
 
             <button
               type="button"
               onClick={onZoomIn}
-              className="p-0.5 text-slate-400 hover:text-slate-200 transition"
+              className="p-1 text-slate-400 hover:text-slate-200 transition"
               title="Aumentar Zoom"
             >
               <ZoomIn size={13} />
             </button>
 
+            {/* BOTÃO ENQUADRAR INTELIGENTE (Adapta o mapa para a área todo sem faixas pretas) */}
             {onFitToScreen && (
-              <button
-                type="button"
-                onClick={onFitToScreen}
-                className="px-1.5 py-0.5 text-amber-400 hover:text-slate-950 hover:bg-amber-400 rounded transition font-bold text-[10px] flex items-center gap-1 shadow-sm"
-                title="Enquadrar Mapa no Espaço da Tela (Fit to Screen)"
-              >
-                <Maximize size={11} />
-                <span className="hidden sm:inline">Enquadrar</span>
-              </button>
-            )}
+              <div className="relative flex items-center">
+                <button
+                  type="button"
+                  onClick={() => onFitToScreen()}
+                  className={`px-2 py-0.5 rounded transition font-bold text-[11px] flex items-center gap-1 shadow-xs ${
+                    fitMode === 'fill'
+                      ? 'bg-amber-500 text-slate-950 hover:bg-amber-400'
+                      : fitMode === 'focus'
+                      ? 'bg-rose-700 text-rose-100 hover:bg-rose-600'
+                      : 'bg-slate-800 text-amber-300 hover:bg-slate-700'
+                  }`}
+                  title="Enquadrar Mapa (Clique para alternar: Preencher Área / Focar no Combate / Ver Mapa Todo)"
+                >
+                  <Maximize size={12} />
+                  <span>
+                    {fitMode === 'fill' ? 'Preencher' : fitMode === 'focus' ? 'Foco Combate' : 'Conter'}
+                  </span>
+                </button>
 
-            <button
-              type="button"
-              onClick={onResetZoom}
-              className="p-0.5 text-slate-500 hover:text-slate-300 transition"
-              title="Resetar Zoom"
-            >
-              <RotateCcw size={12} />
-            </button>
+                <button
+                  type="button"
+                  onClick={() => setShowFitMenu(!showFitMenu)}
+                  className="p-0.5 ml-0.5 text-slate-400 hover:text-slate-200 rounded transition"
+                  title="Opções de Enquadramento"
+                >
+                  <ChevronDown size={11} className={`transition-transform duration-150 ${showFitMenu ? 'rotate-180' : ''}`} />
+                </button>
+
+                {/* Dropdown de Modos de Enquadramento */}
+                {showFitMenu && (
+                  <div className="absolute top-full right-0 mt-1.5 w-48 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-1.5 z-50 flex flex-col gap-1 text-xs animate-in fade-in zoom-in-95 duration-100">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onFitToScreen('fill');
+                        setShowFitMenu(false);
+                      }}
+                      className={`w-full text-left px-2 py-1.5 rounded-lg flex items-center gap-2 transition ${
+                        fitMode === 'fill' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-300 hover:bg-slate-800'
+                      }`}
+                    >
+                      <Maximize size={13} />
+                      <div className="flex flex-col">
+                        <span>Preencher Área Total</span>
+                        <span className="text-[9px] opacity-75">Ocupa toda a tela sem faixas pretas</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onFitToScreen('focus');
+                        setShowFitMenu(false);
+                      }}
+                      className={`w-full text-left px-2 py-1.5 rounded-lg flex items-center gap-2 transition ${
+                        fitMode === 'focus' ? 'bg-rose-600 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'
+                      }`}
+                    >
+                      <Compass size={13} />
+                      <div className="flex flex-col">
+                        <span>Focar nos Heróis & Monstros</span>
+                        <span className="text-[9px] opacity-75">Aproxima a câmera na batalha</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onFitToScreen('contain');
+                        setShowFitMenu(false);
+                      }}
+                      className={`w-full text-left px-2 py-1.5 rounded-lg flex items-center gap-2 transition ${
+                        fitMode === 'contain' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-300 hover:bg-slate-800'
+                      }`}
+                    >
+                      <RotateCcw size={13} />
+                      <div className="flex flex-col">
+                        <span>Ver Mapa Inteiro</span>
+                        <span className="text-[9px] opacity-75">Limites completos (com margens)</span>
+                      </div>
+                    </button>
+
+                    {onAdaptMapToViewport && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onAdaptMapToViewport();
+                          setShowFitMenu(false);
+                        }}
+                        className="w-full text-left px-2 py-1.5 rounded-lg border-t border-slate-800 flex items-center gap-2 text-amber-300 hover:bg-amber-500/10 transition mt-0.5"
+                      >
+                        <Wrench size={13} />
+                        <div className="flex flex-col">
+                          <span>Adaptar Mapa ao Monitor</span>
+                          <span className="text-[9px] text-amber-200/70">Redimensiona o grid para sua tela</span>
+                        </div>
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
         {/* Botão de Opções do Mapa e Botão de Ocultar Barra */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 shrink-0">
           <button
             type="button"
             onClick={() => setShowAdvancedTools(!showAdvancedTools)}

@@ -431,8 +431,11 @@ export const BattleMap: React.FC<BattleMapProps> = ({
     ? calculateMapDistance(ruler.start.x, ruler.start.y, ruler.current.x, ruler.current.y, mapConfig.gridSize)
     : null;
 
-  // Enquadrar o mapa perfeitamente na tela (Fit to Screen)
-  const handleFitToScreen = useCallback(() => {
+  // Modo de Enquadramento Atual (fill = preencher área toda, focus = focar nos tokens/combate, contain = mapa todo)
+  const [currentFitMode, setCurrentFitMode] = useState<'fill' | 'focus' | 'contain'>('fill');
+
+  // Enquadrar o mapa adaptando-se inteligentemente à área disponível
+  const handleFitToScreen = useCallback((requestedMode?: 'fill' | 'focus' | 'contain') => {
     const el = containerRef.current;
     if (!el || !mapConfig.width || !mapConfig.height) return;
 
@@ -440,13 +443,66 @@ export const BattleMap: React.FC<BattleMapProps> = ({
     const containerH = el.clientHeight;
     if (containerW <= 0 || containerH <= 0) return;
 
-    // Calcula a escala para caber no viewport com margem segura
+    // Se nenhum modo foi explicitado, cicla para o próximo modo
+    const targetMode = requestedMode || (currentFitMode === 'fill' ? (tokens && tokens.length > 0 ? 'focus' : 'contain') : currentFitMode === 'focus' ? 'contain' : 'fill');
+    setCurrentFitMode(targetMode);
+
     const scaleX = containerW / mapConfig.width;
     const scaleY = containerH / mapConfig.height;
+
+    // 1. MODO FOCO NOS TOKENS / COMBATE (Centraliza e aproxima exatamente onde os heróis e monstros estão)
+    if (targetMode === 'focus' && tokens && tokens.length > 0) {
+      const minX = Math.min(...tokens.map((t) => t.x));
+      const maxX = Math.max(...tokens.map((t) => t.x + (t.size || 1) * mapConfig.gridSize));
+      const minY = Math.min(...tokens.map((t) => t.y));
+      const maxY = Math.max(...tokens.map((t) => t.y + (t.size || 1) * mapConfig.gridSize));
+
+      const padding = mapConfig.gridSize * 2.5;
+      const boundingW = Math.max(mapConfig.gridSize * 4, (maxX - minX) + padding * 2);
+      const boundingH = Math.max(mapConfig.gridSize * 4, (maxY - minY) + padding * 2);
+
+      const centerTokenX = (minX + maxX) / 2;
+      const centerTokenY = (minY + maxY) / 2;
+
+      const scaleTokensX = containerW / boundingW;
+      const scaleTokensY = containerH / boundingH;
+      const fitTokensScale = Math.min(scaleTokensX, scaleTokensY);
+      const finalZoom = Math.max(0.35, Math.min(2.0, Math.round(fitTokensScale * 100) / 100));
+
+      const panX = Math.round(containerW / 2 - centerTokenX * finalZoom);
+      const panY = Math.round(containerH / 2 - centerTokenY * finalZoom);
+
+      onSetZoom(finalZoom);
+      onSetPan({ x: panX, y: panY });
+      return;
+    }
+
+    // 2. MODO PREENCHER ÁREA (Adapta o mapa para cobrir toda a área visível sem faixas pretas)
+    if (targetMode === 'fill') {
+      const coverScale = Math.max(scaleX, scaleY);
+      const finalZoom = Math.max(0.2, Math.min(3, Math.round(coverScale * 100) / 100));
+
+      // Se houver tokens, centraliza suavemente no centroide dos tokens; senão no centro do mapa
+      let targetFocusX = mapConfig.width / 2;
+      let targetFocusY = mapConfig.height / 2;
+
+      if (tokens && tokens.length > 0) {
+        targetFocusX = tokens.reduce((acc, t) => acc + t.x, 0) / tokens.length;
+        targetFocusY = tokens.reduce((acc, t) => acc + t.y, 0) / tokens.length;
+      }
+
+      const panX = Math.round(containerW / 2 - targetFocusX * finalZoom);
+      const panY = Math.round(containerH / 2 - targetFocusY * finalZoom);
+
+      onSetZoom(finalZoom);
+      onSetPan({ x: panX, y: panY });
+      return;
+    }
+
+    // 3. MODO CONTER (Mapa completo visível)
     const fitScale = Math.min(scaleX, scaleY) * 0.96;
     const finalZoom = Math.max(0.15, Math.min(3, Math.round(fitScale * 100) / 100));
 
-    // Centraliza o mapa dentro do viewport
     const mapRenderedW = mapConfig.width * finalZoom;
     const mapRenderedH = mapConfig.height * finalZoom;
     const centerX = Math.round((containerW - mapRenderedW) / 2);
@@ -454,19 +510,42 @@ export const BattleMap: React.FC<BattleMapProps> = ({
 
     onSetZoom(finalZoom);
     onSetPan({ x: centerX, y: centerY });
-  }, [mapConfig.width, mapConfig.height, onSetZoom, onSetPan]);
+  }, [mapConfig.width, mapConfig.height, mapConfig.gridSize, tokens, currentFitMode, onSetZoom, onSetPan]);
 
-  // Executa o auto-enquadramento sempre que um novo mapa for carregado ou trocado
+  // Adaptar o mapa (aspect ratio e dimensões) para a proporção exata da área disponível
+  const handleAdaptMapToViewport = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const containerW = el.clientWidth;
+    const containerH = el.clientHeight;
+    if (containerW <= 0 || containerH <= 0) return;
+
+    // Ajusta a largura e altura mantendo a densidade de grade proporcional
+    const targetW = Math.max(1000, Math.round(containerW * 1.5));
+    const targetH = Math.max(800, Math.round(containerH * 1.5));
+
+    onUpdateMapConfig({
+      width: targetW,
+      height: targetH,
+    });
+
+    setTimeout(() => {
+      handleFitToScreen('fill');
+    }, 50);
+  }, [onUpdateMapConfig, handleFitToScreen]);
+
+  // Executa o auto-enquadramento adaptativo sempre que um novo mapa for carregado ou trocado
   const lastMapIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (mapConfig.id !== lastMapIdRef.current) {
       lastMapIdRef.current = mapConfig.id;
       const timer = setTimeout(() => {
-        handleFitToScreen();
-      }, 80);
+        // Se houver tokens, foca no combate/área útil; senão, preenche a área para evitar vazios
+        handleFitToScreen(tokens && tokens.length > 0 ? 'focus' : 'fill');
+      }, 100);
       return () => clearTimeout(timer);
     }
-  }, [mapConfig.id, handleFitToScreen]);
+  }, [mapConfig.id, tokens, handleFitToScreen]);
 
   return (
     <div className="w-full h-full flex flex-col gap-2 min-h-0 relative">
@@ -490,7 +569,9 @@ export const BattleMap: React.FC<BattleMapProps> = ({
         onZoomIn={() => onSetZoom((z) => Math.min(3, z + 0.15))}
         onZoomOut={() => onSetZoom((z) => Math.max(0.15, z - 0.15))}
         onFitToScreen={handleFitToScreen}
-        onResetZoom={handleFitToScreen}
+        fitMode={currentFitMode}
+        onAdaptMapToViewport={handleAdaptMapToViewport}
+        onResetZoom={() => handleFitToScreen('fill')}
         fogEnabled={mapConfig.fogOfWarEnabled}
         onToggleFog={() =>
           onUpdateMapConfig((prev) => ({ ...prev, fogOfWarEnabled: !prev.fogOfWarEnabled }))

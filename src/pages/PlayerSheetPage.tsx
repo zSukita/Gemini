@@ -70,6 +70,7 @@ export interface PlayerSheetPageProps {
   onOpenLevelUp: () => void;
   onOpenWizard: () => void;
   onOpenCompendium: () => void;
+  onOpenPrint?: () => void;
 }
 
 export const PlayerSheetPage: React.FC<PlayerSheetPageProps> = ({
@@ -111,6 +112,7 @@ export const PlayerSheetPage: React.FC<PlayerSheetPageProps> = ({
   onOpenLevelUp,
   onOpenWizard,
   onOpenCompendium,
+  onOpenPrint,
 }) => {
   const [activeTab, setActiveTab] = useState<PlayerSheetTabType>('combat');
 
@@ -124,6 +126,7 @@ export const PlayerSheetPage: React.FC<PlayerSheetPageProps> = ({
         onOpenWizard={onOpenWizard}
         onShortRest={handleShortRest}
         onLongRest={handleLongRest}
+        onOpenPrint={onOpenPrint}
       />
 
       {/* Rastreador de Condições & Status Ativos na Ficha */}

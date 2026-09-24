@@ -2406,6 +2406,7 @@ export function App() {
           onOpenLevelUp={() => setIsLevelUpOpen(true)}
           onOpenWizard={() => setIsWizardOpen(true)}
           onOpenCompendium={() => setIsSpellCompendiumOpen(true)}
+          onOpenPrint={() => setIsPrintOpen(true)}
         />
       )}
 

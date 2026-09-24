@@ -193,6 +193,20 @@
     border: none !important;
   }
 
+  .sheet-page {
+    break-after: page;
+    page-break-after: always;
+    min-height: 270mm;
+    box-sizing: border-box;
+    padding: 2mm 0;
+    background: #ffffff !important;
+  }
+
+  .sheet-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
   .no-print {
     display: none !important;
   }

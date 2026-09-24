@@ -15,6 +15,7 @@ import {
   ArrowUpCircle,
   Download,
   Upload,
+  Printer,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -27,6 +28,7 @@ interface HeaderProps {
   onLongRest: () => void;
   onExportJson?: () => void;
   onImportJson?: (json: string) => boolean;
+  onOpenPrint?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -39,6 +41,7 @@ export const Header: React.FC<HeaderProps> = ({
   onLongRest,
   onExportJson,
   onImportJson,
+  onOpenPrint,
 }) => {
   const [isEditingInfo, setIsEditingInfo] = useState(false);
   const [showRestMenu, setShowRestMenu] = useState(false);
@@ -465,6 +468,18 @@ export const Header: React.FC<HeaderProps> = ({
             <Upload size={15} />
             <span className="hidden md:inline text-xs">Importar</span>
           </button>
+
+          {/* Exportar Ficha em PDF Oficial */}
+          {onOpenPrint && (
+            <button
+              onClick={onOpenPrint}
+              className="rpg-button bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:border-amber-400 font-bold"
+              title="Gerar e Exportar Ficha Oficial em PDF (Padrão D&D 5e)"
+            >
+              <Printer size={15} className="text-amber-400" />
+              <span className="hidden sm:inline text-xs">PDF Oficial</span>
+            </button>
+          )}
         </div>
       </div>
     </header>

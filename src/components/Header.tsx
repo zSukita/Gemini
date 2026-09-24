@@ -14,7 +14,6 @@ import {
   Check,
   ArrowUpCircle
 } from 'lucide-react';
-import { LevelUpModal } from './LevelUpModal';
 
 interface HeaderProps {
   character: Character;
@@ -37,7 +36,6 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [isEditingInfo, setIsEditingInfo] = useState(false);
   const [showRestMenu, setShowRestMenu] = useState(false);
-  const [showLevelUp, setShowLevelUp] = useState(false);
   const [isCustomClass, setIsCustomClass] = useState(() => !SRD_CLASSES.some((c) => c.name === character.characterClass));
   const [isCustomRace, setIsCustomRace] = useState(() => !SRD_RACES.some((r) => r.name === character.race));
 
@@ -373,13 +371,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Botão de Subir de Nível */}
           <button
-            onClick={() => {
-              if (onOpenLevelUp) {
-                onOpenLevelUp();
-              } else {
-                setShowLevelUp(true);
-              }
-            }}
+            onClick={() => onOpenLevelUp?.()}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 font-black text-xs shadow-md shadow-amber-600/30 active:scale-95 transition"
             title="Subir de Nível (Level Up Wizard)"
           >
@@ -398,16 +390,6 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         </div>
       </div>
-
-      {/* Modal do Assistente de Subir de Nível (fallback se não fornecido pelo pai) */}
-      {!onOpenLevelUp && (
-        <LevelUpModal
-          isOpen={showLevelUp}
-          onClose={() => setShowLevelUp(false)}
-          character={character}
-          onApplyLevelUp={updateCharacter}
-        />
-      )}
     </header>
   );
 };

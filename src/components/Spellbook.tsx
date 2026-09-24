@@ -19,8 +19,6 @@ import {
   ChevronRight
 } from 'lucide-react';
 
-import { SpellCompendiumModal } from './SpellCompendiumModal';
-
 interface SpellbookProps {
   character: Character;
   updateCharacter: (updater: Partial<Character> | ((prev: Character) => Character)) => void;
@@ -30,6 +28,7 @@ interface SpellbookProps {
   onUpdateSpell: (id: string, updates: Partial<Spell>) => void;
   onDeleteSpell: (id: string) => void;
   onCastSpell: (spell: Spell) => void;
+  onOpenCompendium?: () => void;
 }
 
 export const Spellbook: React.FC<SpellbookProps> = ({
@@ -41,17 +40,17 @@ export const Spellbook: React.FC<SpellbookProps> = ({
   onUpdateSpell,
   onDeleteSpell,
   onCastSpell,
+  onOpenCompendium,
 }) => {
   const [showAddForm, setShowAddForm] = useState(false);
-  const [showCompendium, setShowCompendium] = useState(false);
   const [expandedSpellId, setExpandedSpellId] = useState<string | null>(null);
 
-  // Form states
+  // Form de Nova Magia Manual
   const [newSpellName, setNewSpellName] = useState('');
-  const [newSpellLevel, setNewSpellLevel] = useState(1);
+  const [newSpellLevel, setNewSpellLevel] = useState<number>(0);
   const [newSpellSchool, setNewSpellSchool] = useState('Evocação');
-  const [newSpellCastingTime, setNewSpellCastingTime] = useState('1 Ação');
-  const [newSpellRange, setNewSpellRange] = useState('18m');
+  const [newSpellCastingTime, setNewSpellCastingTime] = useState('1 ação');
+  const [newSpellRange, setNewSpellRange] = useState('18 metros');
   const [newSpellComponents, setNewSpellComponents] = useState('V, S');
   const [newSpellDuration, setNewSpellDuration] = useState('Instantânea');
   const [newSpellDesc, setNewSpellDesc] = useState('');
@@ -176,22 +175,21 @@ export const Spellbook: React.FC<SpellbookProps> = ({
                       return (
                         <button
                           key={idx}
-                          type="button"
                           onClick={() => onToggleSpellSlot(slot.level, idx)}
                           className={`w-3.5 h-3.5 rounded-full border transition-all ${
                             isUsed
-                              ? 'bg-slate-800 border-slate-700 opacity-40'
-                              : 'bg-indigo-500 border-indigo-400 shadow-sm shadow-indigo-500/50'
+                              ? 'bg-slate-950 border-slate-700 opacity-40'
+                              : 'bg-indigo-500 border-indigo-400 shadow-[0_0_8px_rgba(99,102,241,0.6)]'
                           }`}
-                          title={`Espaço ${idx + 1} (${isUsed ? 'Gasto' : 'Disponível'}). Clique para alternar.`}
+                          title={isUsed ? 'Espaço de magia gasto' : 'Espaço disponível (clique para gastar)'}
                         />
                       );
                     })}
                   </div>
                 )}
 
-                <div className="text-[10px] font-mono text-slate-500">
-                  {slot.max - slot.used} disp.
+                <div className="text-[10px] text-slate-500 mt-0.5">
+                  {slot.max - slot.used}/{slot.max}
                 </div>
               </div>
             );
@@ -204,7 +202,7 @@ export const Spellbook: React.FC<SpellbookProps> = ({
         <h3 className="text-sm font-serif font-bold text-amber-200">Feitiços Conhecidos & Preparados</h3>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setShowCompendium(true)}
+            onClick={() => onOpenCompendium?.()}
             className="rpg-button bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/50 text-xs font-semibold shadow-sm"
           >
             <Sparkles size={14} className="text-amber-400" />
@@ -236,15 +234,17 @@ export const Spellbook: React.FC<SpellbookProps> = ({
           </div>
 
           <div>
-            <label className="text-slate-400 block mb-1">Círculo (0 = Truque)</label>
+            <label className="text-slate-400 block mb-1">Círculo / Nível</label>
             <select
               value={newSpellLevel}
               onChange={(e) => setNewSpellLevel(parseInt(e.target.value, 10))}
               className="rpg-input w-full"
             >
-              <option value={0}>0 (Truque / Cantrip)</option>
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((lvl) => (
-                <option key={lvl} value={lvl}>{lvl}º Círculo</option>
+              <option value={0}>Truque (Nível 0)</option>
+              {spellLevels.slice(1).map((lvl) => (
+                <option key={lvl} value={lvl}>
+                  {lvl}º Círculo
+                </option>
               ))}
             </select>
           </div>
@@ -253,7 +253,7 @@ export const Spellbook: React.FC<SpellbookProps> = ({
             <label className="text-slate-400 block mb-1">Escola de Magia</label>
             <input
               type="text"
-              placeholder="Evocação, Abjuração, etc."
+              placeholder="Ex: Evocação, Abjuração"
               value={newSpellSchool}
               onChange={(e) => setNewSpellSchool(e.target.value)}
               className="rpg-input w-full"
@@ -264,7 +264,7 @@ export const Spellbook: React.FC<SpellbookProps> = ({
             <label className="text-slate-400 block mb-1">Tempo de Conjuração</label>
             <input
               type="text"
-              placeholder="1 Ação, 1 Ação Bônus, Reação"
+              placeholder="Ex: 1 ação, 1 reação"
               value={newSpellCastingTime}
               onChange={(e) => setNewSpellCastingTime(e.target.value)}
               className="rpg-input w-full"
@@ -275,7 +275,7 @@ export const Spellbook: React.FC<SpellbookProps> = ({
             <label className="text-slate-400 block mb-1">Alcance</label>
             <input
               type="text"
-              placeholder="Pessoal, 1,5m, 18m, 36m"
+              placeholder="Ex: 18 metros, Toque, Pessoal"
               value={newSpellRange}
               onChange={(e) => setNewSpellRange(e.target.value)}
               className="rpg-input w-full"
@@ -286,18 +286,18 @@ export const Spellbook: React.FC<SpellbookProps> = ({
             <label className="text-slate-400 block mb-1">Componentes</label>
             <input
               type="text"
-              placeholder="V, S, M"
+              placeholder="Ex: V, S, M (uma pena)"
               value={newSpellComponents}
               onChange={(e) => setNewSpellComponents(e.target.value)}
               className="rpg-input w-full"
             />
           </div>
 
-          <div>
+          <div className="sm:col-span-2">
             <label className="text-slate-400 block mb-1">Duração</label>
             <input
               type="text"
-              placeholder="Instantânea, 1 min, etc."
+              placeholder="Ex: Instantânea, Concentração (1 min)"
               value={newSpellDuration}
               onChange={(e) => setNewSpellDuration(e.target.value)}
               className="rpg-input w-full"
@@ -305,126 +305,136 @@ export const Spellbook: React.FC<SpellbookProps> = ({
           </div>
 
           <div className="sm:col-span-3">
-            <label className="text-slate-400 block mb-1">Descrição e Efeitos</label>
+            <label className="text-slate-400 block mb-1">Descrição dos Efeitos</label>
             <textarea
               rows={2}
-              placeholder="Descreva o efeito, fórmulas de dano (ex: 8d6 fogo), salvaguardas necessárias..."
+              placeholder="Descreva o que a magia faz, danos e testes de resistência..."
               value={newSpellDesc}
               onChange={(e) => setNewSpellDesc(e.target.value)}
-              className="rpg-input w-full text-xs"
+              className="rpg-input w-full resize-none"
             />
           </div>
 
-          <div className="sm:col-span-3 flex justify-end gap-2 pt-1">
+          <div className="sm:col-span-3 flex justify-end gap-2 mt-1">
             <button
               type="button"
               onClick={() => setShowAddForm(false)}
-              className="rpg-button bg-slate-800 text-slate-400 text-xs"
+              className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-slate-200 text-xs transition"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="rpg-button bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs"
+              className="px-4 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-md shadow-amber-500/20"
             >
-              Salvar Magia
+              Adicionar ao Grimório
             </button>
           </div>
         </form>
       )}
 
-      {/* Lista de Magias Separadas por Nível */}
+      {/* Lista de Magias por Círculo */}
       <div className="flex flex-col gap-4">
-        {spellLevels.map((lvl) => {
-          const spellsAtLevel = character.spellcasting.spells.filter((s) => s.level === lvl);
-          if (spellsAtLevel.length === 0) return null;
+        {spellLevels.map((level) => {
+          const spellsInLevel = character.spellcasting.spells.filter((s) => s.level === level);
+          if (spellsInLevel.length === 0) return null;
 
           return (
-            <div key={lvl} className="border border-slate-800 rounded-lg p-3 bg-slate-900/30">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-serif font-bold text-amber-300">
-                  {lvl === 0 ? 'Truques (Cantrips)' : `${lvl}º Círculo`}
+            <div key={level} className="border border-slate-800/80 rounded-xl overflow-hidden bg-slate-950/30">
+              <div className="bg-slate-900/60 px-3 py-2 border-b border-slate-800/80 flex items-center justify-between">
+                <span className="font-serif font-bold text-xs text-indigo-300">
+                  {level === 0 ? 'Truques (Nível 0)' : `${level}º Círculo`}
                 </span>
-                <span className="text-[11px] text-slate-500">
-                  {spellsAtLevel.length} {spellsAtLevel.length === 1 ? 'magia' : 'magias'}
+                <span className="text-[11px] text-slate-500 font-mono">
+                  {spellsInLevel.length} {spellsInLevel.length === 1 ? 'magia' : 'magias'}
                 </span>
               </div>
 
-              <div className="flex flex-col gap-1.5">
-                {spellsAtLevel.map((spell) => {
+              <div className="divide-y divide-slate-800/50">
+                {spellsInLevel.map((spell) => {
                   const isExpanded = expandedSpellId === spell.id;
 
                   return (
-                    <div
-                      key={spell.id}
-                      className="rounded-lg bg-slate-900/70 border border-slate-800 overflow-hidden"
-                    >
-                      <div className="flex items-center justify-between p-2.5 gap-2 hover:bg-slate-800/40 transition">
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          {/* Botão Preparada (se não for truque) */}
-                          {spell.level > 0 && (
+                    <div key={spell.id} className="p-3 hover:bg-slate-900/40 transition">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                          {/* Preparada Toggle (truques sempre preparados) */}
+                          {level > 0 && (
                             <button
-                              type="button"
-                              onClick={() => onUpdateSpell(spell.id, { prepared: !spell.prepared })}
-                              className={`w-4 h-4 rounded flex items-center justify-center border transition ${
+                              onClick={() =>
+                                onUpdateSpell(spell.id, { prepared: !spell.prepared })
+                              }
+                              className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${
                                 spell.prepared
-                                  ? 'bg-indigo-600 border-indigo-400 text-white'
-                                  : 'border-slate-600 bg-slate-800'
+                                  ? 'bg-amber-500 border-amber-400 text-slate-950'
+                                  : 'border-slate-600 bg-slate-800 hover:border-slate-500'
                               }`}
-                              title={spell.prepared ? 'Magia Preparada' : 'Magia Não Preparada'}
+                              title={spell.prepared ? 'Magia preparada' : 'Não preparada'}
                             >
-                              {spell.prepared && <Check size={12} />}
+                              {spell.prepared && <Check size={11} strokeWidth={3} />}
                             </button>
                           )}
 
                           <button
-                            onClick={() => setExpandedSpellId(isExpanded ? null : spell.id)}
-                            className="flex items-center gap-1.5 text-left flex-1 min-w-0"
+                            onClick={() =>
+                              setExpandedSpellId(isExpanded ? null : spell.id)
+                            }
+                            className="flex items-center gap-1.5 text-left font-serif font-bold text-xs text-slate-200 hover:text-amber-300 transition truncate"
                           >
-                            {isExpanded ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
-                            <span className="text-xs font-semibold text-slate-200 truncate hover:text-indigo-300">
-                              {spell.name}
-                            </span>
-                            <span className="text-[10px] text-slate-400 px-1.5 py-0.2 rounded bg-slate-800">
-                              {spell.school}
-                            </span>
+                            {isExpanded ? <ChevronDown size={14} className="text-slate-500 shrink-0" /> : <ChevronRight size={14} className="text-slate-500 shrink-0" />}
+                            <span className="truncate">{spell.name}</span>
                           </button>
+
+                          <span className="text-[10px] text-slate-500 italic hidden sm:inline truncate">
+                            {spell.school}
+                          </span>
                         </div>
 
-                        <div className="flex items-center gap-1.5">
-                          {/* Botão Conjurar */}
+                        {/* Ações Rápidas */}
+                        <div className="flex items-center gap-1.5 shrink-0">
                           <button
                             onClick={() => onCastSpell(spell)}
-                            className="rpg-button bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-300 border border-indigo-700/60 text-xs py-0.5 px-2"
-                            title="Conjurar magia (rola dados se houver fórmula e deduz slot se aplicável)"
+                            className="flex items-center gap-1 px-2.5 py-1 rounded bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 hover:text-indigo-100 border border-indigo-500/30 text-[11px] font-semibold transition"
+                            title="Conjurar magia no chat"
                           >
                             <Flame size={12} className="text-amber-400" />
                             <span>Conjurar</span>
                           </button>
 
-                          {/* Excluir */}
                           <button
                             onClick={() => onDeleteSpell(spell.id)}
-                            className="text-slate-500 hover:text-rose-400 p-1 rounded"
-                            title="Remover magia"
+                            className="p-1 rounded text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition"
+                            title="Remover magia do grimório"
                           >
                             <Trash2 size={13} />
                           </button>
                         </div>
                       </div>
 
-                      {/* Detalhes Expandidos */}
+                      {/* Detalhes Expandidos da Magia */}
                       {isExpanded && (
-                        <div className="p-3 bg-slate-950/60 border-t border-slate-800/80 text-xs text-slate-300 flex flex-col gap-1.5 animate-in fade-in">
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-slate-400 border-b border-slate-800 pb-2">
-                            <div><strong className="text-slate-300">Tempo:</strong> {spell.castingTime}</div>
-                            <div><strong className="text-slate-300">Alcance:</strong> {spell.range}</div>
-                            <div><strong className="text-slate-300">Comp:</strong> {spell.components}</div>
-                            <div><strong className="text-slate-300">Duração:</strong> {spell.duration}</div>
+                        <div className="mt-2.5 pt-2.5 border-t border-slate-800/80 text-xs text-slate-300 grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-900/40 p-2.5 rounded-lg animate-in fade-in">
+                          <div>
+                            <span className="text-[10px] uppercase font-bold text-slate-500 block">Tempo:</span>
+                            <span>{spell.castingTime}</span>
                           </div>
-                          <p className="whitespace-pre-line text-slate-300 text-xs leading-relaxed pt-1">
-                            {spell.description || 'Sem descrição cadastrada.'}
-                          </p>
+                          <div>
+                            <span className="text-[10px] uppercase font-bold text-slate-500 block">Alcance:</span>
+                            <span>{spell.range}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] uppercase font-bold text-slate-500 block">Componentes:</span>
+                            <span>{spell.components}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] uppercase font-bold text-slate-500 block">Duração:</span>
+                            <span>{spell.duration}</span>
+                          </div>
+                          {spell.description && (
+                            <div className="col-span-2 sm:col-span-4 mt-1 pt-1 border-t border-slate-800 text-slate-300 text-xs leading-relaxed whitespace-pre-line">
+                              {spell.description}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -441,15 +451,6 @@ export const Spellbook: React.FC<SpellbookProps> = ({
           </div>
         )}
       </div>
-
-      {/* Modal do Compêndio Oficial de Magias SRD */}
-      <SpellCompendiumModal
-        isOpen={showCompendium}
-        onClose={() => setShowCompendium(false)}
-        onAddSpell={onAddSpell}
-        characterSpells={character.spellcasting.spells}
-        characterClass={character.characterClass}
-      />
     </div>
   );
 };

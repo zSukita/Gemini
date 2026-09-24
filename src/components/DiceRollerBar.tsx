@@ -27,7 +27,7 @@ interface DiceRollerBarProps {
   onToggleSecretRoll?: () => void;
 }
 
-export const DiceRollerBar: React.FC<DiceRollerBarProps> = ({
+export const DiceRollerBar = React.memo<DiceRollerBarProps>(({
   advantageMode,
   setAdvantageMode,
   lastRoll,
@@ -231,4 +231,4 @@ export const DiceRollerBar: React.FC<DiceRollerBarProps> = ({
       </div>
     </div>
   );
-};
+});

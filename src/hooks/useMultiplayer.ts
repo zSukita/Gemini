@@ -4,7 +4,8 @@ import type { P2PMessage, PeerUser, MapToken, FogShape, BattleMapConfig } from '
 import type { DiceRollResult } from '../types/dnd5e';
 import type { ChatMessage, ChatMessageType } from '../types/chat';
 import type { MonsterSpawnAction, MapMoveAction, AiLootReward } from '../types/aiDm';
-import { getLocalDirectMessages, saveLocalDirectMessages } from '../firebase/presenceAndFriends';
+import { getLocalDirectMessages, saveLocalDirectMessages, type DirectMessage, type GameInvite } from '../firebase/presenceAndFriends';
+import type { Encounter } from '../types/combat';
 
 export interface UseMultiplayerOptions {
   onRemoteDiceRoll?: (roll: DiceRollResult) => void;
@@ -16,11 +17,11 @@ export interface UseMultiplayerOptions {
     mapConfig?: BattleMapConfig;
     tokens?: MapToken[];
     chatLog?: ChatMessage[];
-    encounter?: any;
+    encounter?: Encounter | null;
   }) => void;
   onRequestRoomState?: (requesterPeerId?: string, requesterData?: any) => void;
-  onRemoteDirectMessage?: (msg: any) => void;
-  onRemoteGameInvite?: (invite: any) => void;
+  onRemoteDirectMessage?: (msg: DirectMessage) => void;
+  onRemoteGameInvite?: (invite: GameInvite) => void;
   onRemoteCharacterSync?: (peer: PeerUser) => void;
 }
 
@@ -369,7 +370,7 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
         mapConfig: BattleMapConfig;
         tokens: MapToken[];
         chatLog: ChatMessage[];
-        encounter?: any;
+        encounter?: Encounter | null;
       },
       targetPeerId?: string
     ) => {
@@ -401,7 +402,7 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
     });
   }, []);
 
-  const broadcastDirectMessage = useCallback((dm: any) => {
+  const broadcastDirectMessage = useCallback((dm: DirectMessage) => {
     if (!p2pManager.isConnected()) return;
     p2pManager.broadcast({
       type: 'DIRECT_MESSAGE',
@@ -412,7 +413,7 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
     });
   }, []);
 
-  const broadcastGameInvite = useCallback((invite: any) => {
+  const broadcastGameInvite = useCallback((invite: GameInvite) => {
     if (!p2pManager.isConnected()) return;
     p2pManager.broadcast({
       type: 'GAME_INVITE',

@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { Scroll, Sparkles } from 'lucide-react';
 import { useCharacter } from './hooks/useCharacter';
 import { useEncounter } from './hooks/useEncounter';
 import { useBattleMap } from './hooks/useBattleMap';
@@ -10,26 +11,11 @@ import { rollD20, rollDie, rollFormula } from './utils/diceRoller';
 import { broadcastSyncMessage } from './utils/syncChannel';
 
 import { Navbar, type AppMode } from './components/Navbar';
-import { Header } from './components/Header';
-import { CombatStats } from './components/CombatStats';
-import { AbilityScores } from './components/AbilityScores';
-import { SkillsList } from './components/SkillsList';
-import { AttacksSection } from './components/AttacksSection';
-import { Spellbook } from './components/Spellbook';
-import { Inventory } from './components/Inventory';
-import { FeaturesAndTraits } from './components/FeaturesAndTraits';
-import { DmScreen } from './components/dm/DmScreen';
-import { TabletopSessionView } from './components/vtt/TabletopSessionView';
-import { BestiaryModal } from './components/dm/BestiaryModal';
-import { SpellCompendiumModal } from './components/SpellCompendiumModal';
 import { DiceRollerBar } from './components/DiceRollerBar';
-import { RollHistoryModal } from './components/RollHistoryModal';
-import { CharacterManagerModal } from './components/CharacterManagerModal';
-import { CharacterWizardModal } from './components/CharacterWizardModal';
-import { MultiplayerModal } from './components/multiplayer/MultiplayerModal';
-import { FloatingOnlineList } from './components/multiplayer/FloatingOnlineList';
-import { SocialSidebar } from './components/social/SocialSidebar';
-import { GameInviteModal } from './components/social/GameInviteModal';
+import { PlayerSheetPage } from './pages/PlayerSheetPage';
+import { DmScreenPage } from './pages/DmScreenPage';
+import { VttSessionPage } from './pages/VttSessionPage';
+import { AppModals } from './components/modals/AppModals';
 import { useSocialPresence } from './hooks/useSocialPresence';
 import {
   type GameInvite,
@@ -38,23 +24,8 @@ import {
   sendDirectMessage,
   markDirectMessagesAsRead,
 } from './firebase/presenceAndFriends';
-import { DiceRollAnimation } from './components/DiceRollAnimation';
-import { PrintSheetModal } from './components/PrintSheetModal';
-import { SessionChatModal } from './components/SessionChatModal';
-import { LevelUpModal } from './components/LevelUpModal';
-import { JournalTab } from './components/JournalTab';
-import { ConditionsTracker } from './components/ConditionsTracker';
-import { QuickActionBar } from './components/QuickActionBar';
-import { MusicPlayerModal } from './components/dm/MusicPlayerModal';
 import { useAuth } from './hooks/useAuth';
 import { LoginScreen } from './components/LoginScreen';
-import { ShortRestModal } from './components/ShortRestModal';
-import { CharacterResources } from './components/CharacterResources';
-import { CampaignModal } from './components/CampaignModal';
-import { HandoutModal } from './components/dm/HandoutModal';
-import { HandoutViewerModal } from './components/HandoutViewerModal';
-import { AiDungeonMasterModal } from './components/ai/AiDungeonMasterModal';
-import { EndSessionModal } from './components/vtt/EndSessionModal';
 import { 
   getStoredApiKey, 
   getStoredGroqApiKey, 
@@ -76,17 +47,6 @@ import { DEFAULT_MAP_PRESETS, type DefaultMapPreset } from './data/defaultMaps';
 import { SRD_MONSTERS } from './data/srdMonsters';
 import { SRD_CLASSES } from './data/srdClasses';
 import { type AiAdventureScenario } from './data/aiAdventureScenarios';
-
-import { 
-  Shield, 
-  Dices, 
-  BookOpen, 
-  Backpack, 
-  Sparkles,
-  Scroll
-} from 'lucide-react';
-
-type TabType = 'combat' | 'skills' | 'spells' | 'inventory' | 'features' | 'journal';
 
 export function App() {
   const {
@@ -165,7 +125,6 @@ export function App() {
 
   // Estados de interface
   const [currentMode, setCurrentMode] = useState<AppMode>('player');
-  const [activeTab, setActiveTab] = useState<TabType>('combat');
   const [advantageMode, setAdvantageMode] = useState<AdvantageMode>('normal');
   const [diceRolls, setDiceRolls] = useState<DiceRollResult[]>([]);
   const [lastRoll, setLastRoll] = useState<DiceRollResult | null>(null);
@@ -406,7 +365,7 @@ export function App() {
   const setMapConfigRef = useRef<React.Dispatch<React.SetStateAction<BattleMapConfig>> | null>(null);
   const mapConfigRef = useRef<BattleMapConfig | null>(null);
   const tokensRef = useRef<MapToken[]>([]);
-  const chatLogRef = useRef<any[]>([]);
+  const chatLogRef = useRef<ChatMessage[]>([]);
   const encounterRef = useRef(encounter);
   encounterRef.current = encounter;
 
@@ -2175,8 +2134,8 @@ export function App() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950 text-amber-400">
         <div className="flex flex-col items-center gap-3">
-          <Scroll className="w-10 h-10 animate-bounce text-amber-400 drop-shadow-[0_0_12px_rgba(212,175,55,0.5)]" />
-          <p className="font-serif text-sm tracking-wider">Invocando ArcanaSheet...</p>
+          <Scroll className="w-10 h-10 animate-bounce text-amber-400 drop-shadow-[0_0_12px_rgba(212,175,55,0.5)]" aria-hidden="true" />
+          <p className="font-serif text-sm tracking-wider" role="status" aria-live="polite">Invocando ArcanaSheet...</p>
         </div>
       </div>
     );
@@ -2199,10 +2158,10 @@ export function App() {
 
   return (
     <div className={`min-h-screen pb-28 pt-3 px-3 sm:px-6 max-w-6xl mx-auto flex flex-col font-sans theme-${currentTheme}`}>
-      {/* Notificação Flutuante (Toast) */}
+      {/* Notificação Flutuante (Toast) com a11y */}
       {notification && (
-        <div className="fixed top-4 right-4 z-50 bg-amber-500 text-slate-950 px-4 py-2.5 rounded-xl shadow-2xl font-semibold text-xs flex items-center gap-2 border border-amber-300 animate-in fade-in slide-in-from-top-2">
-          <Sparkles size={16} />
+        <div role="alert" aria-live="assertive" className="fixed top-4 right-4 z-50 bg-amber-500 text-slate-950 px-4 py-2.5 rounded-xl shadow-2xl font-semibold text-xs flex items-center gap-2 border border-amber-300 animate-in fade-in slide-in-from-top-2">
+          <Sparkles size={16} aria-hidden="true" />
           <span>{notification}</span>
         </div>
       )}
@@ -2237,294 +2196,142 @@ export function App() {
 
       {/* MODO 1: FICHA DE PERSONAGEM (JOGADOR) */}
       {currentMode === 'player' && (
-        <div className="flex flex-col flex-1 animate-in fade-in">
-          <Header
-            character={character}
-            updateCharacter={updateCharacter}
-            onOpenCharacterManager={() => setIsManagerOpen(true)}
-            onOpenLevelUp={() => setIsLevelUpOpen(true)}
-            onOpenWizard={() => setIsWizardOpen(true)}
-            onShortRest={handleShortRest}
-            onLongRest={handleLongRest}
-          />
-
-          {/* Rastreador de Condições & Status Ativos na Ficha */}
-          <div className="mb-3">
-            <ConditionsTracker
-              activeConditions={character.activeConditions || []}
-              onToggleCondition={handleToggleCondition}
-              onClearConditions={handleClearConditions}
-            />
-          </div>
-
-          {/* Navegação por Abas da Ficha */}
-          <nav className="flex items-center gap-1.5 overflow-x-auto pb-2 mb-4 scrollbar-none">
-            <button
-              onClick={() => setActiveTab('combat')}
-              className={`px-4 py-2 rounded-xl text-xs font-serif font-bold tracking-wide flex items-center gap-2 transition-all whitespace-nowrap ${
-                activeTab === 'combat'
-                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/60 shadow-md shadow-amber-500/10'
-                  : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 border border-slate-800'
-              }`}
-            >
-              <Shield size={14} className={activeTab === 'combat' ? 'text-amber-400' : 'text-slate-500'} />
-              <span>Visão Geral & Combate</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('skills')}
-              className={`px-4 py-2 rounded-xl text-xs font-serif font-bold tracking-wide flex items-center gap-2 transition-all whitespace-nowrap ${
-                activeTab === 'skills'
-                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/60 shadow-md shadow-amber-500/10'
-                  : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 border border-slate-800'
-              }`}
-            >
-              <Dices size={14} className={activeTab === 'skills' ? 'text-amber-400' : 'text-slate-500'} />
-              <span>Perícias (18)</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('spells')}
-              className={`px-4 py-2 rounded-xl text-xs font-serif font-bold tracking-wide flex items-center gap-2 transition-all whitespace-nowrap ${
-                activeTab === 'spells'
-                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/60 shadow-md shadow-amber-500/10'
-                  : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 border border-slate-800'
-              }`}
-            >
-              <BookOpen size={14} className={activeTab === 'spells' ? 'text-indigo-400' : 'text-slate-500'} />
-              <span>Grimório & Magias</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('inventory')}
-              className={`px-4 py-2 rounded-xl text-xs font-serif font-bold tracking-wide flex items-center gap-2 transition-all whitespace-nowrap ${
-                activeTab === 'inventory'
-                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/60 shadow-md shadow-amber-500/10'
-                  : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 border border-slate-800'
-              }`}
-            >
-              <Backpack size={14} className={activeTab === 'inventory' ? 'text-amber-400' : 'text-slate-500'} />
-              <span>Inventário & Carga</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('features')}
-              className={`px-4 py-2 rounded-xl text-xs font-serif font-bold tracking-wide flex items-center gap-2 transition-all whitespace-nowrap ${
-                activeTab === 'features'
-                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/60 shadow-md shadow-amber-500/10'
-                  : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 border border-slate-800'
-              }`}
-            >
-              <Sparkles size={14} className={activeTab === 'features' ? 'text-amber-400' : 'text-slate-500'} />
-              <span>Talentos & Roleplay</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('journal')}
-              className={`px-4 py-2 rounded-xl text-xs font-serif font-bold tracking-wide flex items-center gap-2 transition-all whitespace-nowrap ${
-                activeTab === 'journal'
-                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/60 shadow-md shadow-amber-500/10'
-                  : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 border border-slate-800'
-              }`}
-            >
-              <Scroll size={14} className={activeTab === 'journal' ? 'text-amber-400' : 'text-slate-500'} />
-              <span>Diário & Missões</span>
-            </button>
-          </nav>
-
-          {/* Conteúdo da Aba */}
-          <main className="flex-1">
-            {activeTab === 'combat' && (
-              <div>
-                <CombatStats
-                  character={character}
-                  updateCharacter={updateCharacter}
-                  applyDamage={applyDamage}
-                  applyHealing={applyHealing}
-                  setTempHp={setTempHp}
-                  toggleDeathSaveSuccess={toggleDeathSaveSuccess}
-                  toggleDeathSaveFailure={toggleDeathSaveFailure}
-                  onSpendHitDie={handleShortRest}
-                  onRollInitiative={(mod) => handleRollD20('Iniciativa', mod)}
-                />
-
-                <div className="mb-4">
-                  <CharacterResources
-                    resources={character.resources || []}
-                    onAddResource={addResource}
-                    onUpdateResource={updateResource}
-                    onDeleteResource={deleteResource}
-                    onUseCharge={useResourceCharge}
-                  />
-                </div>
-
-                <AttacksSection
-                  attacks={character.attacks}
-                  onRollAttack={(name, bonus) => handleRollD20(`Ataque: ${name}`, bonus)}
-                  onRollDamage={(name, formula) => handleRollFormula(formula, name)}
-                  onAddAttack={addAttack}
-                  onDeleteAttack={deleteAttack}
-                />
-
-                <AbilityScores
-                  character={character}
-                  updateAbility={updateAbility}
-                  onRollCheck={(name, mod) => handleRollD20(name, mod)}
-                  onRollSave={(name, mod) => handleRollD20(name, mod)}
-                />
-              </div>
-            )}
-
-            {activeTab === 'skills' && (
-              <SkillsList
-                character={character}
-                onCycleProficiency={cycleSkillProficiency}
-                onRollSkill={(name, mod) => handleRollD20(`Perícia: ${name}`, mod)}
-              />
-            )}
-
-            {activeTab === 'spells' && (
-              <Spellbook
-                character={character}
-                updateCharacter={updateCharacter}
-                onToggleSpellSlot={toggleSpellSlotUsed}
-                onUpdateSpellSlotMax={updateSpellSlotMax}
-                onAddSpell={addSpell}
-                onUpdateSpell={updateSpell}
-                onDeleteSpell={deleteSpell}
-                onCastSpell={handleCastSpell}
-              />
-            )}
-
-            {activeTab === 'inventory' && (
-              <Inventory
-                character={character}
-                updateCharacter={updateCharacter}
-                onAddItem={addInventoryItem}
-                onUpdateItem={updateInventoryItem}
-                onDeleteItem={deleteInventoryItem}
-              />
-            )}
-
-            {activeTab === 'features' && (
-              <FeaturesAndTraits
-                character={character}
-                updateCharacter={updateCharacter}
-                onAddFeature={addFeature}
-                onDeleteFeature={deleteFeature}
-              />
-            )}
-
-            {activeTab === 'journal' && (
-              <JournalTab
-                character={character}
-                updateCharacter={updateCharacter}
-              />
-            )}
-          </main>
-        </div>
+        <PlayerSheetPage
+          character={character}
+          updateCharacter={updateCharacter}
+          updateAbility={updateAbility}
+          cycleSkillProficiency={cycleSkillProficiency}
+          applyDamage={applyDamage}
+          applyHealing={applyHealing}
+          setTempHp={setTempHp}
+          toggleDeathSaveSuccess={toggleDeathSaveSuccess}
+          toggleDeathSaveFailure={toggleDeathSaveFailure}
+          handleShortRest={handleShortRest}
+          handleLongRest={handleLongRest}
+          handleRollD20={handleRollD20}
+          handleRollFormula={(formula, label) => handleRollFormula(formula, label || '')}
+          handleToggleCondition={handleToggleCondition}
+          handleClearConditions={handleClearConditions}
+          addResource={addResource}
+          updateResource={updateResource}
+          deleteResource={deleteResource}
+          useResourceCharge={(id, delta) => useResourceCharge(id, delta ?? 1)}
+          addAttack={addAttack}
+          deleteAttack={deleteAttack}
+          toggleSpellSlotUsed={toggleSpellSlotUsed}
+          updateSpellSlotMax={updateSpellSlotMax}
+          addSpell={addSpell}
+          updateSpell={updateSpell}
+          deleteSpell={deleteSpell}
+          handleCastSpell={handleCastSpell}
+          addInventoryItem={addInventoryItem}
+          updateInventoryItem={updateInventoryItem}
+          deleteInventoryItem={deleteInventoryItem}
+          addFeature={addFeature}
+          deleteFeature={deleteFeature}
+          handleRollActionFromHotbar={handleRollActionFromHotbar}
+          onOpenCharacterManager={() => setIsManagerOpen(true)}
+          onOpenLevelUp={() => setIsLevelUpOpen(true)}
+          onOpenWizard={() => setIsWizardOpen(true)}
+          onOpenCompendium={() => setIsSpellCompendiumOpen(true)}
+        />
       )}
 
       {/* MODO 2: PAINEL DO MESTRE (DM SCREEN) */}
       {currentMode === 'dm' && (
-        <div className="flex flex-col flex-1 animate-in fade-in">
-          <DmScreen
-            encounter={encounter}
-            charactersList={charactersList}
-            onStartEncounter={handleStartEncounter}
-            onNextTurn={handleNextTurn}
-            onPreviousTurn={previousTurn}
-            onRollAllMonsters={rollAllMonstersInitiative}
-            onSortInitiative={sortCombatantsByInitiative}
-            onImportPlayers={importPlayerCharacters}
-            onResetEncounter={resetEncounter}
-            onHpDelta={handleHpDelta}
-            onToggleCondition={handleToggleCombatantCondition}
-            onUpdateInitiative={updateCombatantInitiative}
-            onRemoveCombatant={removeCombatant}
-            onAddMonster={addMonsterCombatant}
-            onAddCustomCombatant={addCustomCombatant}
-            onRollMonsterAttack={(monName, actName, bonus) =>
-              handleRollD20(`${monName}: ${actName}`, bonus)
-            }
-            onRollMonsterDamage={(monName, actName, formula) =>
-              handleRollFormula(formula, `${monName}: ${actName}`)
-            }
-            onAddTokenToMap={handleAddTokenFromMonster}
-            onAddCoinsToCharacter={handleAddCoinsToCharacter}
-            onAddToSharedLoot={handleAddToSharedLoot}
-            onSaveNpcToJournal={handleSaveNpcToJournal}
-            onOpenAiDm={() => setIsAiDmOpen(true)}
-          />
-        </div>
+        <DmScreenPage
+          encounter={encounter}
+          charactersList={charactersList}
+          onStartEncounter={handleStartEncounter}
+          onNextTurn={handleNextTurn}
+          onPreviousTurn={previousTurn}
+          onRollAllMonsters={rollAllMonstersInitiative}
+          onSortInitiative={sortCombatantsByInitiative}
+          onImportPlayers={importPlayerCharacters}
+          onResetEncounter={resetEncounter}
+          onHpDelta={handleHpDelta}
+          onToggleCondition={handleToggleCombatantCondition}
+          onUpdateInitiative={updateCombatantInitiative}
+          onRemoveCombatant={removeCombatant}
+          onAddMonster={addMonsterCombatant}
+          onAddCustomCombatant={addCustomCombatant}
+          onRollMonsterAttack={(monName, actName, bonus) =>
+            handleRollD20(`${monName}: ${actName}`, bonus)
+          }
+          onRollMonsterDamage={(monName, actName, formula) =>
+            handleRollFormula(formula, `${monName}: ${actName}`)
+          }
+          onAddTokenToMap={handleAddTokenFromMonster}
+          onAddCoinsToCharacter={handleAddCoinsToCharacter}
+          onAddToSharedLoot={handleAddToSharedLoot}
+          onSaveNpcToJournal={handleSaveNpcToJournal}
+          onOpenAiDm={() => setIsAiDmOpen(true)}
+        />
       )}
 
       {/* MODO 3: MESA VIRTUAL ONLINE COMPLETA (MODELO FANTASY GROUNDS) */}
       {currentMode === 'vtt' && (
-        <div className="flex flex-col flex-1 animate-in fade-in">
-          <TabletopSessionView
-            character={character}
-            charactersList={charactersList}
-            encounter={encounter}
-            mapConfig={mapConfig}
-            tokens={tokens}
-            selectedTokenId={selectedTokenId}
-            zoom={zoom}
-            pan={pan}
-            activeTool={activeTool}
-            chatLog={chatLog}
-            currentUserName={character.name}
-            isHost={isHost}
-            isConnected={isConnected}
-            connectedPeers={connectedPeers}
-            isAiResponding={isAiResponding}
-            onSelectToken={setSelectedTokenId}
-            onMoveToken={handleMoveToken}
-            onSetZoom={setZoom}
-            onSetPan={setPan}
-            onSetActiveTool={setActiveTool}
-            onUpdateMapConfig={handleUpdateMapConfig}
-            onSelectMapPreset={handleSelectMapPreset}
-            onUploadMap={handleUploadCustomMap}
-            onAddFogShape={handleAddFogShape}
-            onResetFog={handleResetFog}
-            onRevealAllFog={handleRevealAllFog}
-            onUpdateToken={handleUpdateToken}
-            onRemoveToken={handleRemoveToken}
-            onAddToken={handleAddToken}
-            onApplyCharacterAvatar={(dataUrl) => updateCharacter({ avatarUrl: dataUrl } as any)}
-            onSendMessage={handleUserChatMessage}
-            onRollDie={handleRollDie}
-            onRollFormula={(formula, label) => handleRollFormula(formula, label)}
-            onRollD20={handleRollD20}
-            onStartEncounter={handleStartEncounter}
-            onNextTurn={handleNextTurn}
-            onPreviousTurn={previousTurn}
-            onSortInitiative={sortCombatantsByInitiative}
-            onResetEncounter={resetEncounter}
-            onHpDelta={handleHpDelta}
-            onToggleCondition={handleToggleCombatantCondition}
-            onUpdateInitiative={updateCombatantInitiative}
-            onRemoveCombatant={removeCombatant}
-            onRollMonsterAttack={(monName, actName, bonus) =>
-              handleRollD20(`${monName}: ${actName}`, bonus)
-            }
-            onRollMonsterDamage={(monName, actName, formula) =>
-              handleRollFormula(formula, `${monName}: ${actName}`)
-            }
-            onAiMonsterAttack={handleTriggerAiMonsterTurn}
-            onOpenMultiplayerModal={() => setIsMultiplayerOpen(true)}
-            onOpenAiDmModal={() => setIsAiDmOpen(true)}
-            onOpenCompendium={() => setIsSpellCompendiumOpen(true)}
-            onOpenBestiary={() => setIsBestiaryOpen(true)}
-            onOpenCharacterSheet={() => setCurrentMode('player')}
-            onOpenMusicPlayer={() => setIsMusicPlayerOpen(true)}
-            onOpenEndSessionModal={() => setIsEndSessionOpen(true)}
-            onStartScenario={handleStartSoloAdventureOnMap}
-            onCollectLoot={handleCollectLoot}
-            onUpdateCharacter={updateCharacter}
-          />
-        </div>
+        <VttSessionPage
+          character={character}
+          charactersList={charactersList}
+          encounter={encounter}
+          mapConfig={mapConfig}
+          tokens={tokens}
+          selectedTokenId={selectedTokenId}
+          zoom={zoom}
+          pan={pan}
+          activeTool={activeTool}
+          chatLog={chatLog}
+          isHost={isHost}
+          isConnected={isConnected}
+          connectedPeers={connectedPeers}
+          isAiResponding={isAiResponding}
+          onSelectToken={setSelectedTokenId}
+          onMoveToken={handleMoveToken}
+          onSetZoom={setZoom}
+          onSetPan={setPan}
+          onSetActiveTool={setActiveTool}
+          onUpdateMapConfig={handleUpdateMapConfig}
+          onSelectMapPreset={handleSelectMapPreset}
+          onUploadMap={handleUploadCustomMap}
+          onAddFogShape={handleAddFogShape}
+          onResetFog={handleResetFog}
+          onRevealAllFog={handleRevealAllFog}
+          onUpdateToken={handleUpdateToken}
+          onRemoveToken={handleRemoveToken}
+          onAddToken={handleAddToken}
+          onApplyCharacterAvatar={(dataUrl) => updateCharacter({ avatarUrl: dataUrl } as any)}
+          onSendMessage={handleUserChatMessage}
+          onRollDie={handleRollDie}
+          onRollFormula={(formula, label) => handleRollFormula(formula, label || '')}
+          onRollD20={handleRollD20}
+          onStartEncounter={handleStartEncounter}
+          onNextTurn={handleNextTurn}
+          onPreviousTurn={previousTurn}
+          onSortInitiative={sortCombatantsByInitiative}
+          onResetEncounter={resetEncounter}
+          onHpDelta={handleHpDelta}
+          onToggleCondition={handleToggleCombatantCondition}
+          onUpdateInitiative={updateCombatantInitiative}
+          onRemoveCombatant={removeCombatant}
+          onRollMonsterAttack={(monName, actName, bonus) =>
+            handleRollD20(`${monName}: ${actName}`, bonus)
+          }
+          onRollMonsterDamage={(monName, actName, formula) =>
+            handleRollFormula(formula, `${monName}: ${actName}`)
+          }
+          onAiMonsterAttack={handleTriggerAiMonsterTurn}
+          onOpenMultiplayerModal={() => setIsMultiplayerOpen(true)}
+          onOpenAiDmModal={() => setIsAiDmOpen(true)}
+          onOpenCompendium={() => setIsSpellCompendiumOpen(true)}
+          onOpenBestiary={() => setIsBestiaryOpen(true)}
+          onOpenCharacterSheet={() => setCurrentMode('player')}
+          onOpenMusicPlayer={() => setIsMusicPlayerOpen(true)}
+          onOpenEndSessionModal={() => setIsEndSessionOpen(true)}
+          onStartScenario={handleStartSoloAdventureOnMap}
+          onCollectLoot={handleCollectLoot}
+          onUpdateCharacter={updateCharacter}
+        />
       )}
 
       {/* Barra de Rolagem de Dados Fixa no Rodapé (oculta no VTT pois possui sua própria doca) */}
@@ -2551,22 +2358,21 @@ export function App() {
       />
       )}
 
-      {/* Modal de Histórico de Rolagens */}
-      <RollHistoryModal
-        isOpen={isHistoryOpen}
-        onClose={() => setIsHistoryOpen(false)}
-        rolls={diceRolls}
+      {/* Container Central de Modais e Diálogos */}
+      <AppModals
+        character={character}
+        user={user}
+        showNotification={showNotification}
+        isHistoryOpen={isHistoryOpen}
+        setIsHistoryOpen={setIsHistoryOpen}
+        diceRolls={diceRolls}
         onClearRolls={() => {
           setDiceRolls([]);
           setLastRoll(null);
         }}
-      />
-
-      {/* Modal de Gerenciamento de Personagens */}
-      <CharacterManagerModal
-        isOpen={isManagerOpen}
-        onClose={() => setIsManagerOpen(false)}
-        characters={charactersList}
+        isManagerOpen={isManagerOpen}
+        setIsManagerOpen={setIsManagerOpen}
+        charactersList={charactersList}
         activeId={activeId}
         onSelectCharacter={(id) => {
           setActiveId(id);
@@ -2578,7 +2384,6 @@ export function App() {
           setIsManagerOpen(false);
           showNotification('Nova ficha criada!');
         }}
-        onOpenWizard={() => setIsWizardOpen(true)}
         onDeleteCharacter={() => {
           deleteActiveCharacter();
           showNotification('Ficha removida.');
@@ -2592,33 +2397,22 @@ export function App() {
           return ok;
         }}
         onExportCharacter={exportActiveCharacter}
-        onOpenPrint={() => setIsPrintOpen(true)}
-      />
-
-      {/* Assistente Oficial de Criação de Personagens (Wizard) */}
-      <CharacterWizardModal
-        isOpen={isWizardOpen}
-        onClose={() => setIsWizardOpen(false)}
+        isWizardOpen={isWizardOpen}
+        setIsWizardOpen={setIsWizardOpen}
         onCharacterCreated={(newChar) => {
           addCreatedCharacter(newChar);
           showNotification(
             `Herói "${newChar.name}" (${newChar.race} ${newChar.characterClass}) criado com sucesso!`
           );
         }}
-      />
-
-      {/* Modal Multiplayer Online P2P */}
-      <MultiplayerModal
-        isOpen={isMultiplayerOpen}
-        onClose={() => setIsMultiplayerOpen(false)}
+        isMultiplayerOpen={isMultiplayerOpen}
+        setIsMultiplayerOpen={setIsMultiplayerOpen}
         isConnected={isConnected}
         isConnecting={isConnecting}
         isHost={isHost}
         roomCode={roomCode}
         connectedPeers={connectedPeers}
         chatLog={chatLog}
-        currentUserName={character.name}
-        character={character}
         isAiResponding={isAiResponding}
         onCreateRoom={(name, customCode) => {
           const classAvatar = SRD_CLASSES.find((c) => c.name.toLowerCase() === (character.characterClass || '').toLowerCase())?.avatarUrl;
@@ -2640,40 +2434,17 @@ export function App() {
         onDisconnect={disconnect}
         onSendMessage={handleUserChatMessage}
         onOpenTabletop={() => setCurrentMode('vtt')}
-      />
-
-      {/* Modal de Finalizar Mesa / Nova Sessão */}
-      <EndSessionModal
-        isOpen={isEndSessionOpen}
-        onClose={() => setIsEndSessionOpen(false)}
-        isConnected={isConnected}
-        roomCode={roomCode}
+        isEndSessionOpen={isEndSessionOpen}
+        setIsEndSessionOpen={setIsEndSessionOpen}
         onStartNewAdventure={handleStartNewAdventure}
         onClearMonstersAndCombat={handleClearMonstersAndCombat}
         onDisconnectAndExit={handleDisconnectAndExit}
-      />
-
-      {/* Lista Flutuante de Pessoas Online Fixada na Tela */}
-      <FloatingOnlineList
-        isVisible={isConnected && isOnlineListPinned}
-        roomCode={roomCode}
-        connectedPeers={connectedPeers}
-        currentUserName={character.name || user?.displayName || undefined}
-        isHost={isHost}
-        onUnpin={() => setIsOnlineListPinned(false)}
-        onOpenModal={() => setIsMultiplayerOpen(true)}
-      />
-
-      {/* Barra Lateral Social: Pessoas Online & Amigos (Área Direita da Tela) */}
-      <SocialSidebar
-        isOpen={isSocialSidebarOpen}
-        onToggle={handleToggleSocialSidebar}
+        isOnlineListPinned={isOnlineListPinned}
+        setIsOnlineListPinned={setIsOnlineListPinned}
+        isSocialSidebarOpen={isSocialSidebarOpen}
+        onToggleSocialSidebar={handleToggleSocialSidebar}
         onlineUsers={onlineUsers}
         friends={friends}
-        connectedPeers={connectedPeers}
-        currentUserId={user?.uid || 'local_user'}
-        currentUserName={character.name || user?.displayName || 'Você'}
-        currentRoomCode={isConnected ? roomCode : undefined}
         directMessages={directMessages}
         onSendDirectMessage={handleSendDirectMessage}
         onMarkMessagesAsRead={handleMarkDirectMessagesAsRead}
@@ -2687,7 +2458,7 @@ export function App() {
           return res;
         }}
         onCreateAndInvite={handleCreateRoomAndInvite}
-        onJoinRoom={async (code) => {
+        onJoinFromSocial={async (code) => {
           const classAvatar = SRD_CLASSES.find((c) => c.name.toLowerCase() === (character.characterClass || '').toLowerCase())?.avatarUrl;
           const charData = {
             characterClass: character.characterClass,
@@ -2702,163 +2473,58 @@ export function App() {
             setCurrentMode('vtt');
           }
         }}
-      />
-
-      {/* Modal de Convite de Jogo Recebido */}
-      <GameInviteModal
-        invites={pendingInvites}
-        onAccept={handleAcceptGameInvite}
-        onDecline={handleDeclineInvite}
-      />
-
-      {/* Animação 3D de Rolagem de Dados Poliédricos */}
-      {activeRollAnimation && (
-        <DiceRollAnimation
-          roll={activeRollAnimation}
-          onClose={handleCloseDiceAnimation}
-          onReroll={handleReroll}
-        />
-      )}
-
-      {/* Modal de Impressão e Salvamento em PDF */}
-      <PrintSheetModal
-        isOpen={isPrintOpen}
-        onClose={() => setIsPrintOpen(false)}
-        character={character}
-      />
-
-      {/* Chat Tático e Registro de Sessão com Rolagens Secretas e Mestre IA */}
-      <SessionChatModal
-        isOpen={isChatOpen}
-        onClose={() => setIsChatOpen(false)}
-        chatLog={chatLog}
-        currentUserName={character.name}
-        isHost={isHost}
-        character={character}
-        onSendMessage={(msg) => {
-          sendChatMessage(msg, character.name);
-        }}
-      />
-
-      {/* Assistente Oficial de Subir de Nível (Level Up Wizard) */}
-      <LevelUpModal
-        isOpen={isLevelUpOpen}
-        onClose={() => setIsLevelUpOpen(false)}
-        character={character}
-        onApplyLevelUp={(updates) => {
-          updateCharacter(updates);
-          showNotification(
-            `Parabéns! ${character.name} evoluiu para o Nível ${updates.level ?? (character.level + 1)}!`
-          );
-        }}
-      />
-
-      {/* Modal Interativo de Descanso Curto */}
-      <ShortRestModal
-        isOpen={isShortRestOpen}
-        onClose={() => setIsShortRestOpen(false)}
-        character={character}
-        onSpendHitDie={spendHitDie}
-        onCompleteShortRest={completeShortRest}
-        showNotification={showNotification}
-      />
-
-      {/* Modal de Campanhas na Nuvem (Firebase) */}
-      <CampaignModal
-        isOpen={isCampaignModalOpen}
-        onClose={() => setIsCampaignModalOpen(false)}
-        userId={user?.uid || 'guest'}
-        userName={user?.displayName || user?.email || character.name}
-        activeCharacter={character}
-        onImportPartyToCombat={handleImportPartyToCombat}
-        onOpenHandoutModal={() => setIsHandoutModalOpen(true)}
-        showNotification={showNotification}
+        pendingInvites={pendingInvites}
+        onAcceptInvite={handleAcceptGameInvite}
+        onDeclineInvite={handleDeclineInvite}
+        activeRollAnimation={activeRollAnimation}
+        onCloseDiceAnimation={handleCloseDiceAnimation}
+        onRerollAnimation={handleReroll}
+        isPrintOpen={isPrintOpen}
+        setIsPrintOpen={setIsPrintOpen}
+        isChatOpen={isChatOpen}
+        setIsChatOpen={setIsChatOpen}
+        sendChatMessage={sendChatMessage}
+        isLevelUpOpen={isLevelUpOpen}
+        setIsLevelUpOpen={setIsLevelUpOpen}
+        updateCharacter={updateCharacter}
+        isShortRestOpen={isShortRestOpen}
+        setIsShortRestOpen={setIsShortRestOpen}
+        spendHitDie={spendHitDie}
+        completeShortRest={completeShortRest}
+        isCampaignModalOpen={isCampaignModalOpen}
+        setIsCampaignModalOpen={setIsCampaignModalOpen}
         activeCampaignId={activeCampaignId}
         setActiveCampaignId={handleSetActiveCampaignId}
-      />
-
-      {/* Modal de Envio de Pistas/Documentos pelo Mestre (Handouts) */}
-      <HandoutModal
-        isOpen={isHandoutModalOpen}
-        onClose={() => setIsHandoutModalOpen(false)}
+        onImportPartyToCombat={handleImportPartyToCombat}
+        isHandoutModalOpen={isHandoutModalOpen}
+        setIsHandoutModalOpen={setIsHandoutModalOpen}
+        activeHandout={activeHandout}
+        isHandoutViewerOpen={isHandoutViewerOpen}
+        setIsHandoutViewerOpen={setIsHandoutViewerOpen}
         onBroadcastHandout={handleBroadcastHandout}
-        showNotification={showNotification}
-      />
-
-      {/* Modal de Visualização de Pistas/Documentos em Pergaminho Imersivo */}
-      <HandoutViewerModal
-        isOpen={isHandoutViewerOpen}
-        onClose={() => setIsHandoutViewerOpen(false)}
-        handout={activeHandout}
-        onSaveToJournal={handleSaveHandoutToJournal}
-        showNotification={showNotification}
-      />
-
-      {/* Barra de Ações Rápidas (Macro Hotbar - 1 a 6) */}
-      {currentMode === 'player' && (
-        <QuickActionBar
-          character={character}
-          onRollAction={handleRollActionFromHotbar}
-          updateCharacter={updateCharacter}
-        />
-      )}
-
-      {/* Modal Independente de Trilha Sonora do Mestre */}
-      <MusicPlayerModal
-        isOpen={isMusicPlayerOpen}
-        onClose={() => setIsMusicPlayerOpen(false)}
-      />
-
-      {/* Modal do Mestre IA / Oráculo (Arcana AI Dungeon Master) */}
-      <AiDungeonMasterModal
-        isOpen={isAiDmOpen}
-        onClose={() => setIsAiDmOpen(false)}
-        activeCharacter={character}
-        onTransmitHandout={(handout) => {
-          handleBroadcastHandout(handout);
-        }}
-        onSaveNpcToJournal={(npc) => {
-          handleSaveNpcToJournal(npc);
-        }}
-        onBroadcastToRoom={(msg) => {
-          sendChatMessage(msg, '✨ Mestre Supremo (IA)');
-          showNotification('Narração do Mestre IA transmitida para a mesa online!');
-        }}
+        onSaveHandoutToJournal={handleSaveHandoutToJournal}
+        isMusicPlayerOpen={isMusicPlayerOpen}
+        setIsMusicPlayerOpen={setIsMusicPlayerOpen}
+        isAiDmOpen={isAiDmOpen}
+        setIsAiDmOpen={setIsAiDmOpen}
+        onSaveNpcToJournal={handleSaveNpcToJournal}
         onOpenVttWithAdventure={handleOpenVttFromAiDm}
         onStartSoloAdventureOnMap={handleStartSoloAdventureOnMap}
-      />
-
-      {/* Modal do Bestiário de Monstros */}
-      <BestiaryModal
-        isOpen={isBestiaryOpen}
-        onClose={() => setIsBestiaryOpen(false)}
-        onAddMonster={addMonsterCombatant}
+        isBestiaryOpen={isBestiaryOpen}
+        setIsBestiaryOpen={setIsBestiaryOpen}
+        onAddMonsterCombatant={addMonsterCombatant}
         onRollMonsterAttack={(monName, actName, bonus) =>
           handleRollD20(`${monName}: ${actName}`, bonus)
         }
         onRollMonsterDamage={(monName, actName, formula) =>
           handleRollFormula(formula, `${monName}: ${actName}`)
         }
-        onAddTokenToMap={handleAddTokenFromMonster}
+        onAddTokenFromMonster={handleAddTokenFromMonster}
+        isSpellCompendiumOpen={isSpellCompendiumOpen}
+        setIsSpellCompendiumOpen={setIsSpellCompendiumOpen}
+        onAddSpell={addSpell}
       />
 
-      {/* Modal do Compêndio de Magias SRD */}
-      <SpellCompendiumModal
-        isOpen={isSpellCompendiumOpen}
-        onClose={() => setIsSpellCompendiumOpen(false)}
-        onAddSpell={(spell) => {
-          updateCharacter((prev) => ({
-            ...prev,
-            spellcasting: {
-              ...prev.spellcasting,
-              spells: [...(prev.spellcasting?.spells || []), { ...spell, id: `spell-${Date.now()}` }],
-            },
-          }));
-          showNotification(`Magia "${spell.name}" adicionada ao Grimório!`);
-        }}
-        characterSpells={character.spellcasting?.spells || []}
-        characterClass={character.characterClass}
-      />
     </div>
   );
 }

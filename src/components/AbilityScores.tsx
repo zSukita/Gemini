@@ -18,7 +18,7 @@ interface AbilityScoresProps {
   onRollSave: (abilityName: string, modifier: number) => void;
 }
 
-export const AbilityScores: React.FC<AbilityScoresProps> = ({
+export const AbilityScores = React.memo<AbilityScoresProps>(({
   character,
   updateAbility,
   onRollCheck,
@@ -189,4 +189,4 @@ export const AbilityScores: React.FC<AbilityScoresProps> = ({
       </div>
     </div>
   );
-};
+});

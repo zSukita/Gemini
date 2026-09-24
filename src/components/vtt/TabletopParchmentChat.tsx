@@ -647,11 +647,11 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
 
   return (
     <div className="tabletop-parchment flex flex-col h-full rounded-xl overflow-hidden shadow-2xl">
-      {/* Cabeçalho de Grimório Arcano */}
-      <div className="tabletop-parchment-header px-3.5 py-2 flex items-center justify-between select-none">
+      {/* Cabeçalho de Pergaminho */}
+      <div className="tabletop-parchment-header px-4 py-2 flex items-center justify-between select-none">
         <div className="flex items-center gap-2">
-          <ScrollText size={17} className="text-amber-400" />
-          <h2 className="font-serif font-black text-xs sm:text-sm tracking-wider uppercase text-amber-200">
+          <ScrollText size={18} className="text-amber-900" />
+          <h2 className="font-serif font-black text-sm tracking-wider uppercase text-amber-950">
             Crônica da Aventura
           </h2>
         </div>
@@ -659,24 +659,23 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
           <button
             type="button"
             onClick={() => setIsCampaignMemoryOpen(true)}
-            className="text-[10px] font-serif font-bold text-amber-300 hover:text-amber-100 bg-amber-950/60 hover:bg-amber-900/80 px-2.5 py-1 rounded-md border border-amber-600/40 flex items-center gap-1 transition shadow-xs cursor-pointer"
+            className="text-[10px] font-serif font-bold text-amber-950 hover:text-amber-900 bg-amber-900/10 hover:bg-amber-900/20 px-2 py-0.5 rounded border border-amber-900/30 flex items-center gap-1 transition shadow-xs cursor-pointer"
             title="Visualizar e gerenciar a Memória de Longo Prazo da Campanha"
           >
-            <BookOpen size={11} className="text-amber-400" />
+            <BookOpen size={10} />
             <span>Memória IA</span>
           </button>
-          <span className="text-[10px] font-serif font-bold text-emerald-300 bg-emerald-950/60 px-2 py-1 rounded-md border border-emerald-600/40 flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            Mestre IA
+          <span className="text-[10px] font-serif font-bold text-amber-900/80 bg-amber-900/10 px-2 py-0.5 rounded border border-amber-900/20">
+            Mestre IA Ativo
           </span>
           {onOpenEndSessionModal && (
             <button
               type="button"
               onClick={onOpenEndSessionModal}
-              className="text-[10px] font-serif font-bold text-red-300 hover:text-red-100 bg-red-950/60 hover:bg-red-900/80 px-2.5 py-1 rounded-md border border-red-600/40 flex items-center gap-1 transition shadow-xs cursor-pointer"
+              className="text-[10px] font-serif font-bold text-red-950 hover:text-red-900 bg-red-900/10 hover:bg-red-900/20 px-2 py-0.5 rounded border border-red-900/30 flex items-center gap-1 transition shadow-xs cursor-pointer"
               title="Finalizar esta mesa ou iniciar outra aventura"
             >
-              <RotateCcw size={11} className="text-red-400" />
+              <RotateCcw size={10} />
               <span>Nova Mesa</span>
             </button>
           )}
@@ -777,7 +776,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
 
       {/* 2. Banner de Combate D&D 5e (Iniciativa e Turnos) */}
       {isCombatActive && activeCombatant && (
-        <div className="mx-3 mt-2 p-2.5 rounded-xl bg-slate-900/95 border border-amber-600/40 shadow-md flex items-center justify-between gap-2 shrink-0">
+        <div className="mx-3 mt-2 p-2.5 rounded-xl bg-[#eddcc0] border-2 border-[#b08d57] shadow-sm flex items-center justify-between gap-2 shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <span
               className={`w-3 h-3 rounded-full shrink-0 ${
@@ -785,15 +784,15 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
               }`}
             />
             <div className="truncate">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-amber-400 leading-tight">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-amber-900 leading-tight">
                 ⚔️ Combate D&D 5e · Rodada {encounter?.round ?? 1}
               </div>
-              <div className="text-xs font-serif font-black text-amber-100 truncate">
+              <div className="text-xs font-serif font-black text-amber-950 truncate">
                 Turno Atual:{' '}
-                <span className={isMyTurn ? 'text-emerald-400 underline font-bold' : isMonsterTurn ? 'text-rose-400' : 'text-amber-300'}>
+                <span className={isMyTurn ? 'text-emerald-800 underline' : isMonsterTurn ? 'text-rose-900' : 'text-amber-900'}>
                   {activeCombatant.name}
                 </span>{' '}
-                <span className="text-[10px] font-mono font-bold text-amber-400/80">
+                <span className="text-[10px] font-mono font-bold text-amber-800/80">
                   (Inic. {activeCombatant.initiative})
                 </span>
               </div>
@@ -807,11 +806,11 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                 onSendMessage(`⚔️ ${currentUserName} finalizou o seu turno de combate.`, currentUserName);
                 onNextTurn();
               }}
-              className="bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-[11px] py-1.5 px-3 rounded-lg shadow flex items-center gap-1 active:scale-95 shrink-0 cursor-pointer transition"
+              className="rpg-button bg-amber-800 hover:bg-amber-900 text-amber-100 font-bold text-[10px] py-1 px-2.5 rounded-lg shadow flex items-center gap-1 active:scale-95 shrink-0 cursor-pointer"
               title="Passar a vez para o próximo combatente da iniciativa"
             >
               <span>Finalizar Turno</span>
-              <ArrowRight size={12} />
+              <ArrowRight size={11} />
             </button>
           )}
         </div>
@@ -878,27 +877,27 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
               return (
                 <div
                   key={msg.id}
-                  className="p-3.5 rounded-xl bg-slate-900/95 border border-amber-600/35 shadow-md space-y-2 text-slate-200 animate-in fade-in"
+                  className="p-3.5 rounded-lg bg-[#faeed8] border-2 border-[#b89569] shadow-sm space-y-2 text-[#2d1e10]"
                 >
                   {/* Cabeçalho do Mestre IA */}
-                  <div className="flex items-center justify-between border-b border-amber-500/20 pb-1.5">
-                    <div className="flex items-center gap-1.5 text-amber-300 font-black text-xs">
-                      <Sparkles size={14} className="text-amber-400" />
+                  <div className="flex items-center justify-between border-b border-[#cfb28d] pb-1.5">
+                    <div className="flex items-center gap-1.5 text-amber-900 font-black text-xs">
+                      <Sparkles size={14} className="text-amber-700" />
                       <span>{msg.senderName}</span>
                     </div>
-                    <span className="text-[10px] text-amber-400/60 font-mono">[{timeStr}]</span>
+                    <span className="text-[10px] text-amber-900/60 font-mono">[{timeStr}]</span>
                   </div>
 
                   {/* Texto Narrativo */}
-                  <div className="text-[12px] leading-relaxed whitespace-pre-wrap text-amber-50 font-serif">
+                  <div className="text-[12px] leading-relaxed whitespace-pre-wrap text-[#26170a] font-serif">
                     {msg.text}
                   </div>
 
                   {/* Teste Solicitado */}
                   {msg.requestedRoll && (
-                    <div className="mt-2.5 p-2 bg-slate-950/80 rounded-lg border border-amber-500/40 flex items-center justify-between gap-2 shadow-xs">
-                      <div className="flex items-center gap-1.5 text-amber-200 font-bold text-[11px]">
-                        <ShieldAlert size={14} className="text-amber-400 shrink-0" />
+                    <div className="mt-2.5 p-2 bg-[#f0deb9] rounded-md border border-[#c4a275] flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 text-amber-950 font-bold text-[11px]">
+                        <ShieldAlert size={14} className="text-amber-800 shrink-0" />
                         <span>
                           Teste: {msg.requestedRoll.skillOrAbility}{' '}
                           {msg.requestedRoll.dc ? `(CD ${msg.requestedRoll.dc})` : ''}
@@ -907,7 +906,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                       <button
                         type="button"
                         onClick={() => handleRollRequested(msg.requestedRoll!)}
-                        className="bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-[10px] py-1 px-3 rounded shadow cursor-pointer transition active:scale-95"
+                        className="rpg-button bg-amber-700 hover:bg-amber-800 text-amber-50 font-bold text-[10px] py-1 px-2.5 rounded shadow"
                       >
                         <Dices size={12} />
                         <span>Rolar</span>
@@ -919,7 +918,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                   {msg.suggestedActions && msg.suggestedActions.length > 0 && (
                     <div className="mt-2 space-y-1.5 pt-1">
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] uppercase font-bold text-amber-300 tracking-wider block">
+                        <span className="text-[10px] uppercase font-bold text-amber-900 tracking-wider block">
                           {isCombatActive
                             ? isMyTurn
                               ? '⚔️ Seu Turno — Opções de Ação:'
@@ -929,20 +928,20 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                             : 'Opções Sugeridas:'}
                         </span>
                         {isCombatActive && isOtherPlayerTurn && (
-                          <span className="text-[9px] text-amber-400/80 font-mono italic">
+                          <span className="text-[9px] text-amber-800/80 font-mono italic">
                             Aguardando iniciativa
                           </span>
                         )}
                       </div>
 
                       {isCombatActive && isOtherPlayerTurn && (
-                        <div className="p-1.5 rounded-lg bg-slate-950/60 border border-slate-800 text-[10px] text-amber-200/80 italic">
+                        <div className="p-1.5 rounded bg-amber-900/10 border border-amber-900/20 text-[10px] text-amber-900 italic">
                           ⏳ É a vez de <strong>{activeCombatant?.name}</strong> agir segundo a ordem de iniciativa D&D 5e.
                         </div>
                       )}
 
                       {isCombatActive && isMonsterTurn && (
-                        <div className="p-1.5 rounded-lg bg-rose-950/30 border border-rose-900/40 text-[10px] text-rose-300 italic">
+                        <div className="p-1.5 rounded bg-rose-950/10 border border-rose-900/30 text-[10px] text-rose-900 italic">
                           👹 <strong>{activeCombatant?.name}</strong> está executando sua ação com o Mestre IA.
                         </div>
                       )}
@@ -1013,10 +1012,10 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                               }
                               onSendMessage(`@mestre Escolho: ${act}`, currentUserName);
                             }}
-                            className={`w-full text-left p-2 rounded-lg border text-[11px] font-medium transition flex items-center gap-2 shadow-xs ${
+                            className={`w-full text-left p-1.5 rounded border text-[11px] font-medium transition flex items-center gap-1.5 shadow-xs ${
                               isCombatActive && !isMyTurn
-                                ? 'bg-slate-900/40 border-slate-800 text-slate-500 cursor-not-allowed opacity-50'
-                                : 'bg-[#161b27] hover:bg-[#202738] border-amber-500/30 hover:border-amber-400 text-amber-100 cursor-pointer active:scale-98 shadow-sm'
+                                ? 'bg-[#e0d3ba]/50 border-[#cca97f]/40 text-amber-900/50 cursor-not-allowed opacity-60'
+                                : 'bg-[#f0e3c5] hover:bg-[#e4d1aa] border-[#cfb48c] text-amber-950 cursor-pointer active:scale-98'
                             }`}
                             title={
                               isCombatActive && !isMyTurn
@@ -1024,7 +1023,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                                 : undefined
                             }
                           >
-                            <ArrowRight size={11} className={isCombatActive && !isMyTurn ? 'text-slate-600 shrink-0' : 'text-amber-400 shrink-0'} />
+                            <ArrowRight size={11} className={isCombatActive && !isMyTurn ? 'text-amber-700/40 shrink-0' : 'text-amber-800 shrink-0'} />
                             <span>{act}</span>
                           </button>
                         ))}
@@ -1038,7 +1037,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                             onSendMessage(`⚔️ ${currentUserName} concluiu o seu turno no combate.`, currentUserName);
                             onNextTurn();
                           }}
-                          className="w-full mt-2 py-1.5 px-3 rounded-lg bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-[11px] transition flex items-center justify-center gap-1.5 shadow cursor-pointer active:scale-98"
+                          className="w-full mt-2 py-1.5 px-3 rounded bg-amber-800 hover:bg-amber-900 text-amber-100 font-bold text-[11px] transition flex items-center justify-center gap-1.5 shadow cursor-pointer active:scale-98"
                           title="Finalizar turno e passar para o próximo combatente na iniciativa"
                         >
                           <span>⚔️ Finalizar Meu Turno</span>
@@ -1058,16 +1057,16 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
             return (
               <div
                 key={msg.id}
-                className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 text-slate-200 space-y-1 shadow-xs"
+                className="p-2.5 rounded-lg bg-[#faf4e6]/90 border border-[#d8c3a2] text-[#2c1b0c] space-y-1"
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-xs text-amber-300">
+                  <span className="font-bold text-xs text-amber-950">
                     {msg.senderName}:
                   </span>
-                  <span className="text-[10px] text-slate-500 font-mono">[{timeStr}]</span>
+                  <span className="text-[10px] text-amber-900/60 font-mono">[{timeStr}]</span>
                 </div>
 
-                <div className="text-[11px] leading-snug break-words text-slate-200">
+                <div className="text-[11px] leading-snug break-words">
                   {msg.text}
                 </div>
 
@@ -1079,7 +1078,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                       <span className="dice-val">{msg.diceRoll.total}</span>
                       <span className="dice-mod font-sans">({msg.diceRoll.breakdown})</span>
                     </span>
-                    <span className="text-[10px] text-amber-300/80 font-bold italic">
+                    <span className="text-[10px] text-amber-900 font-bold italic">
                       {msg.diceRoll.label}
                     </span>
                   </div>
@@ -1094,8 +1093,8 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
 
         {/* Indicador de Carregamento da IA */}
         {isAiResponding && (
-          <div className="p-3 rounded-xl bg-slate-900/90 border border-amber-500/40 flex items-center gap-2 text-amber-200 text-xs animate-pulse shadow-md">
-            <Loader2 size={16} className="animate-spin text-amber-400 shrink-0" />
+          <div className="p-3 rounded-lg bg-[#faeed8] border-2 border-[#b89569] flex items-center gap-2 text-amber-950 text-xs animate-pulse">
+            <Loader2 size={16} className="animate-spin text-amber-800 shrink-0" />
             <span className="font-serif italic">
               O Mestre Supremo (IA) está consultando os pergaminhos...
             </span>
@@ -1106,18 +1105,18 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
       </div>
 
       {/* Formulário de Envio */}
-      <form onSubmit={handleSubmit} className="p-2.5 bg-slate-950/95 border-t border-slate-800 space-y-2 select-none">
+      <form onSubmit={handleSubmit} className="p-2.5 bg-[#dfd0b5] border-t-2 border-[#8a6840] space-y-1.5">
         {/* Barra de Atalhos */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 text-[10px]">
           {/* Seletor de Vantagem / Normal / Desvantagem */}
-          <div className="flex items-center bg-slate-900 p-0.5 rounded-lg border border-slate-800 shrink-0">
+          <div className="flex items-center bg-[#cbbb9e] p-0.5 rounded border border-[#9b784f] shrink-0">
             <button
               type="button"
               onClick={() => setAdvantageMode('advantage')}
-              className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+              className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
                 advantageMode === 'advantage'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-emerald-700 text-white shadow-xs'
+                  : 'text-amber-950 hover:bg-[#bfa987]'
               }`}
               title="Rolar com Vantagem (2d20 - escolhe o maior)"
             >
@@ -1126,10 +1125,10 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
             <button
               type="button"
               onClick={() => setAdvantageMode('normal')}
-              className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+              className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
                 advantageMode === 'normal'
-                  ? 'bg-amber-600 text-slate-950 font-black shadow-xs'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-amber-800 text-white shadow-xs'
+                  : 'text-amber-950 hover:bg-[#bfa987]'
               }`}
               title="Rolagem Normal (1d20)"
             >
@@ -1138,10 +1137,10 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
             <button
               type="button"
               onClick={() => setAdvantageMode('disadvantage')}
-              className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+              className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
                 advantageMode === 'disadvantage'
-                  ? 'bg-rose-600 text-white shadow-xs'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-rose-800 text-white shadow-xs'
+                  : 'text-amber-950 hover:bg-[#bfa987]'
               }`}
               title="Rolar com Desvantagem (2d20 - escolhe o menor)"
             >
@@ -1152,24 +1151,24 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
           <button
             type="button"
             onClick={() => setInputText((prev) => (prev.startsWith('@mestre ') ? prev : `@mestre ${prev}`))}
-            className="px-2 py-1 rounded-md bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40 font-bold flex items-center gap-1 shrink-0 shadow-xs cursor-pointer transition"
+            className="px-2 py-0.5 rounded bg-amber-800 hover:bg-amber-900 text-amber-100 font-bold flex items-center gap-1 shrink-0 shadow-xs cursor-pointer"
           >
-            <Sparkles size={11} />
+            <Sparkles size={10} />
             <span>@mestre (IA)</span>
           </button>
 
           <button
             type="button"
             onClick={() => setIsSecretMode(!isSecretMode)}
-            className={`px-2 py-1 rounded-md font-bold flex items-center gap-1 shrink-0 transition shadow-xs cursor-pointer border ${
+            className={`px-2 py-0.5 rounded font-bold flex items-center gap-1 shrink-0 transition shadow-xs cursor-pointer ${
               isSecretMode
-                ? 'bg-rose-950/80 border-rose-600 text-rose-200'
-                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                ? 'bg-red-800 text-white'
+                : 'bg-[#cbbb9e] text-amber-950 hover:bg-[#b8a584]'
             }`}
             title="Rolagem secreta visível apenas pelo mestre"
           >
-            <Lock size={11} />
-            <span>Secreta ({isSecretMode ? 'On' : 'Off'})</span>
+            <Lock size={10} />
+            <span>Rolagem Secreta ({isSecretMode ? 'On' : 'Off'})</span>
           </button>
         </div>
 
@@ -1183,12 +1182,12 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                 ? 'Rolagem secreta (ex: 1d20+5)...'
                 : 'Digite uma fala ou @mestre [sua ação]...'
             }
-            className="flex-1 py-1.5 px-3 text-xs bg-slate-900/90 text-amber-100 placeholder-slate-500 border border-slate-700/80 focus:border-amber-500 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 font-serif"
+            className="flex-1 py-1.5 px-2.5 text-xs bg-[#f8f2e2] text-[#2c1c0d] placeholder-[#8c7457] border border-[#9b784f] rounded focus:outline-none focus:ring-1 focus:ring-amber-700 font-serif"
           />
           <button
             type="submit"
             disabled={isAiResponding}
-            className="bg-amber-600 hover:bg-amber-500 text-slate-950 px-3.5 py-1.5 rounded-lg font-bold disabled:opacity-50 shadow cursor-pointer transition flex items-center justify-center shrink-0 active:scale-95"
+            className="rpg-button bg-amber-800 hover:bg-amber-900 text-amber-100 px-3 py-1.5 font-bold disabled:opacity-50 shadow cursor-pointer"
             title="Enviar mensagem"
           >
             <Send size={13} />
@@ -1198,25 +1197,25 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
 
       {/* Modal de Memória da Campanha */}
       {isCampaignMemoryOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
-          <div className="tabletop-parchment w-full max-w-lg rounded-xl overflow-hidden shadow-2xl border-2 border-amber-600/70 p-4 space-y-3 bg-[#111520] text-slate-200">
-            <div className="flex items-center justify-between border-b border-amber-500/20 pb-2">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in">
+          <div className="tabletop-parchment w-full max-w-lg rounded-xl overflow-hidden shadow-2xl border-2 border-amber-700 p-4 space-y-3">
+            <div className="flex items-center justify-between border-b border-amber-900/30 pb-2">
               <div className="flex items-center gap-2">
-                <BookOpen className="text-amber-400" size={18} />
-                <h3 className="font-serif font-black text-sm uppercase text-amber-200">
+                <BookOpen className="text-amber-900" size={18} />
+                <h3 className="font-serif font-black text-sm uppercase text-amber-950">
                   Memória de Longo Prazo da Campanha
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setIsCampaignMemoryOpen(false)}
-                className="text-slate-400 hover:text-white font-bold text-sm px-2 py-0.5 rounded cursor-pointer transition"
+                className="text-amber-900 hover:text-amber-950 font-bold text-sm px-2 py-0.5 rounded cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <p className="text-[11px] text-slate-400 leading-relaxed font-serif">
+            <p className="text-[11px] text-amber-900/80 leading-relaxed font-serif">
               Este resumo é injetado diretamente no cérebro do Mestre IA a cada turno para manter coerência contínua entre sessões, lembrando de inimigos abatidos, aliados, itens conquistados e objetivos imediatos.
             </p>
 
@@ -1225,7 +1224,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
               onChange={(e) => setCampaignSummaryText(e.target.value)}
               rows={6}
               placeholder="Nenhum resumo da campanha registrado ainda. Clique em 'Sintetizar com IA' ou digite os fatos marcantes da aventura..."
-              className="w-full text-xs p-2.5 rounded-lg bg-slate-900/90 text-amber-100 placeholder-slate-500 border border-slate-700 font-serif focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+              className="w-full text-xs p-2.5 rounded bg-[#f8f2e2] text-[#2c1c0d] placeholder-[#8c7457] border border-[#9b784f] font-serif focus:ring-1 focus:ring-amber-700"
             />
 
             <div className="flex items-center justify-between gap-2 pt-1">
@@ -1233,7 +1232,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                 type="button"
                 disabled={isSynthesizingMemory}
                 onClick={handleSynthesizeMemory}
-                className="px-3.5 py-1.5 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40 text-xs font-bold flex items-center gap-1.5 transition shadow cursor-pointer disabled:opacity-50"
+                className="px-3 py-1.5 rounded bg-amber-900 hover:bg-amber-950 text-amber-100 text-xs font-bold flex items-center gap-1.5 transition shadow cursor-pointer disabled:opacity-50"
               >
                 {isSynthesizingMemory ? (
                   <>
@@ -1255,7 +1254,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                     saveStoredCampaignSummary(campaignSummaryText);
                     setIsCampaignMemoryOpen(false);
                   }}
-                  className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-slate-950 text-xs font-bold transition shadow cursor-pointer"
+                  className="px-4 py-1.5 rounded bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold transition shadow cursor-pointer"
                 >
                   Salvar Memória
                 </button>

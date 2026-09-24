@@ -1631,6 +1631,60 @@ export function App() {
       showNotification(`Iniciativa (${res.total}) enviada para o combate do Mestre!`);
     }
 
+    // Regras Oficiais de D&D 5e: Salvaguardas contra a Morte automáticas
+    const isDeathSave = /salvamento de morte|salvaguarda da morte|death save/i.test(label);
+    if (isDeathSave && character) {
+      const d20Roll = res.selectedRoll ?? res.total;
+      const currentSuccesses = character.deathSaves?.successes || 0;
+      const currentFailures = character.deathSaves?.failures || 0;
+
+      if (d20Roll === 20) {
+        // 20 Natural: Recupera 1 PV e acorda consciente imediatamente!
+        updateCharacter((prev) => ({
+          ...prev,
+          currentHp: Math.max(1, prev.currentHp || 0) + 1,
+          deathSaves: { successes: 0, failures: 0 },
+        }));
+        showNotification('🌟 20 NATURAL! Você recuperou 1 PV e recobrou a consciência!');
+      } else if (d20Roll >= 10) {
+        // Sucesso
+        const newSuccesses = Math.min(3, currentSuccesses + 1);
+        updateCharacter((prev) => ({
+          ...prev,
+          deathSaves: { ...prev.deathSaves, successes: newSuccesses },
+        }));
+        if (newSuccesses >= 3) {
+          showNotification('🛡️ 3 Sucessos! Você se estabilizou contra a morte!');
+        } else {
+          showNotification(`🛡️ Sucesso no teste de morte (${newSuccesses}/3)!`);
+        }
+      } else if (d20Roll === 1) {
+        // 1 Natural: 2 Falhas imediatas!
+        const newFailures = Math.min(3, currentFailures + 2);
+        updateCharacter((prev) => ({
+          ...prev,
+          deathSaves: { ...prev.deathSaves, failures: newFailures },
+        }));
+        if (newFailures >= 3) {
+          showNotification('💀 1 NATURAL! 2 Falhas adicionadas. Você acumulou 3 falhas de morte!');
+        } else {
+          showNotification(`💔 1 Natural! 2 Falhas de morte sofridas (${newFailures}/3)!`);
+        }
+      } else {
+        // Falha normal (< 10)
+        const newFailures = Math.min(3, currentFailures + 1);
+        updateCharacter((prev) => ({
+          ...prev,
+          deathSaves: { ...prev.deathSaves, failures: newFailures },
+        }));
+        if (newFailures >= 3) {
+          showNotification('💀 3 Falhas acumuladas nas salvaguardas da morte!');
+        } else {
+          showNotification(`💔 Falha no teste de morte (${newFailures}/3)!`);
+        }
+      }
+    }
+
     // Reset para modo normal após rolar com vantagem/desvantagem
     if (advantageMode !== 'normal') {
       setAdvantageMode('normal');

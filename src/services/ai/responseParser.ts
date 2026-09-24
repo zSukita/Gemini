@@ -97,8 +97,8 @@ export function parseAiResponse(rawText: string): {
       damageFormula,
       target,
     };
-    cleanText = cleanText.replace(monsterAttackRegex, '').trim();
   }
+  cleanText = cleanText.replace(/\[ATAQUE_MONSTRO:\s*([^\]]+)\]/gi, '').trim();
 
   // 5. Extrair [SPAWN_MONSTRO: Monstro | Quantidade]
   const spawnRegex = /\[SPAWN_MONSTRO:\s*([^\]]+)\]/gi;
@@ -239,7 +239,10 @@ export function parseAiResponse(rawText: string): {
   }
 
   return {
-    cleanText: cleanText.replace(/\n{3,}/g, '\n\n').trim(),
+    cleanText: cleanText
+      .replace(/\[(?:ATAQUE_MONSTRO|SPAWN_MONSTRO|MOVER|DERROTAR_MONSTRO|DANO_MONSTRO|LOOT|HANDOUT|TESTE):\s*[^\]]+\]/gi, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim(),
     suggestedActions,
     requestedRoll,
     handoutProposal,

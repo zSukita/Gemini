@@ -47,6 +47,7 @@ import { DEFAULT_MAP_PRESETS, type DefaultMapPreset } from './data/defaultMaps';
 import { SRD_MONSTERS } from './data/srdMonsters';
 import { SRD_CLASSES } from './data/srdClasses';
 import { type AiAdventureScenario } from './data/aiAdventureScenarios';
+import { getXpForCr } from './utils/encounterDifficulty';
 
 export function App() {
   const {
@@ -1942,6 +1943,64 @@ export function App() {
       isAiMonsterTurnExecutingRef.current = false;
     }
   }, [encounter.isRunning, encounter.activeCombatantIndex, encounter.combatants, isConnected, isHost]);
+
+  // Automação: Detecção de vitória no combate e concessão automática de XP (D&D 5e Oficial)
+  const awardedCombatVictoryIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!encounter.isRunning) return;
+
+    // Apenas no Host ou em sessão solo para evitar duplicação no P2P
+    if (isConnected && !isHost) return;
+
+    const monsters = encounter.combatants.filter((c) => c.type === 'monster');
+    if (monsters.length === 0) return;
+
+    // Verifica se todos os monstros foram derrotados
+    const allMonstersDefeated = monsters.every((m) => m.currentHp <= 0);
+    if (!allMonstersDefeated) return;
+
+    // Evita premiar repetidamente o mesmo combate
+    const victoryKey = `${encounter.id}-win-${monsters.map((m) => m.id).join('-')}`;
+    if (awardedCombatVictoryIdRef.current === victoryKey) return;
+    awardedCombatVictoryIdRef.current = victoryKey;
+
+    // Calcula o XP total dos monstros derrotados segundo as regras do Dungeon Master's Guide 5e
+    const totalXp = monsters.reduce((acc, m) => {
+      const cr = m.monsterData?.challengeRating || '1/4';
+      return acc + getXpForCr(cr);
+    }, 0);
+
+    // Conta os jogadores participantes da batalha
+    const players = encounter.combatants.filter((c) => c.type === 'player');
+    const playerCount = Math.max(1, players.length);
+    const xpPerPlayer = Math.round(totalXp / playerCount);
+
+    // Atualiza a ficha do herói com o XP conquistado
+    if (xpPerPlayer > 0) {
+      updateCharacter((prev) => ({
+        ...prev,
+        experience: prev.experience + xpPerPlayer,
+      }));
+    }
+
+    // Mensagem de vitória do Mestre IA no chat
+    sendChatMessage(
+      {
+        text: `🏆 **VITÓRIA NO COMBATE!**\n\nTodos os inimigos foram derrotados na **Rodada ${encounter.round}**!\n\n` +
+          `🎖️ **Recompensa de Experiência (D&D 5e Oficial):**\n` +
+          `- **XP Total dos Monstros:** ${totalXp} XP\n` +
+          `- **Aventureiros:** ${playerCount} herói(s)\n` +
+          `- **XP Concedido a Cada Aventureiro:** **+${xpPerPlayer} XP** adicionados automaticamente à ficha!\n\n` +
+          `_A poeira da batalha assenta e os corações acalmam. Vocês triunfaram! O que desejam fazer agora?_`,
+        senderName: '✨ Mestre Supremo (IA)',
+        type: 'AI_DM',
+      },
+      '✨ Mestre Supremo (IA)'
+    );
+
+    showNotification(`🏆 Vitória! +${xpPerPlayer} XP adicionados à ficha de ${character.name}!`);
+  }, [encounter.isRunning, encounter.id, encounter.combatants, encounter.round, isConnected, isHost, updateCharacter, sendChatMessage, showNotification, character.name]);
 
   // Avança o turno D&D 5e e sincroniza entre Host e jogadores
   const handleNextTurn = useCallback(() => {

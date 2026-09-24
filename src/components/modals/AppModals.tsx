@@ -507,6 +507,7 @@ export const AppModals: React.FC<AppModalsProps> = (props) => {
         activeCharacter={character}
         onTransmitHandout={onBroadcastHandout}
         onSaveNpcToJournal={onSaveNpcToJournal}
+        onSaveLoreToJournal={onSaveHandoutToJournal}
         onBroadcastToRoom={(msg) => {
           sendChatMessage(typeof msg === 'string' ? msg : msg.text, '✨ Mestre Supremo (IA)');
           showNotification('Narração do Mestre IA transmitida para a mesa online!');

@@ -2531,6 +2531,7 @@ export function App() {
             return next;
           });
         }}
+        activeConditions={character.activeConditions}
       />
       )}
 

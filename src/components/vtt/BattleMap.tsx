@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import type { BattleMapConfig, MapToken, FogShape, DrawingStroke, MapPing, FloatingCombatText } from '../../types/vtt';
 import type { Encounter } from '../../types/combat';
 import { TokenMarker } from './TokenMarker';
@@ -69,6 +69,7 @@ export const BattleMap: React.FC<BattleMapProps> = ({
 
   // Estados de arrasto de token
   const [draggingTokenId, setDraggingTokenId] = useState<string | null>(null);
+  const [dragTokenOrigin, setDragTokenOrigin] = useState<{ x: number; y: number } | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
   // Estados do Criador de Tokens e Galeria
@@ -363,6 +364,7 @@ export const BattleMap: React.FC<BattleMapProps> = ({
 
     if (draggingTokenId) {
       setDraggingTokenId(null);
+      setDragTokenOrigin(null);
     }
 
     if (draggingAoEId) {
@@ -420,6 +422,7 @@ export const BattleMap: React.FC<BattleMapProps> = ({
     if (!token) return;
 
     setDraggingTokenId(tokenId);
+    setDragTokenOrigin({ x: token.x, y: token.y });
     setDragOffset({
       x: coords.x - token.x,
       y: coords.y - token.y,
@@ -430,6 +433,39 @@ export const BattleMap: React.FC<BattleMapProps> = ({
   const rulerMetrics = ruler
     ? calculateMapDistance(ruler.start.x, ruler.start.y, ruler.current.x, ruler.current.y, mapConfig.gridSize)
     : null;
+
+  // Métricas de deslocamento tático do token sendo arrastado
+  const tokenMoveMetrics = useMemo(() => {
+    if (!draggingTokenId || !dragTokenOrigin) return null;
+    const token = tokens.find((t) => t.id === draggingTokenId);
+    if (!token) return null;
+    const halfToken = (token.size * mapConfig.gridSize) / 2;
+    const originCenter = {
+      x: dragTokenOrigin.x + halfToken,
+      y: dragTokenOrigin.y + halfToken,
+    };
+    const currentCenter = {
+      x: token.x + halfToken,
+      y: token.y + halfToken,
+    };
+    const dist = calculateMapDistance(
+      originCenter.x,
+      originCenter.y,
+      currentCenter.x,
+      currentCenter.y,
+      mapConfig.gridSize
+    );
+    // Deslocamento padrão comum em D&D 5e: 9m (6 quadrados / 30 pés)
+    const exceedsNormalSpeed = dist.meters > 9.0;
+    return {
+      origin: originCenter,
+      current: currentCenter,
+      meters: dist.meters,
+      squares: dist.squares,
+      feet: dist.feet,
+      exceedsNormalSpeed,
+    };
+  }, [draggingTokenId, dragTokenOrigin, tokens, mapConfig.gridSize]);
 
   // Modo de Enquadramento Atual (fill = preencher área toda, focus = focar nos tokens/combate, contain = mapa todo)
   const [currentFitMode, setCurrentFitMode] = useState<'fill' | 'focus' | 'contain'>('fill');
@@ -1063,6 +1099,30 @@ export const BattleMap: React.FC<BattleMapProps> = ({
                   🔥
                 </button>
 
+                {/* Revelar Visão do Token na Névoa (9m / 6 quadrados) */}
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const radiusPx = 6 * mapConfig.gridSize; // 9m = 6 quadrados
+                    const tokenCenterX = token.x + (token.size * mapConfig.gridSize) / 2;
+                    const tokenCenterY = token.y + (token.size * mapConfig.gridSize) / 2;
+                    onAddFogShape({
+                      x: tokenCenterX - radiusPx,
+                      y: tokenCenterY - radiusPx,
+                      width: radiusPx * 2,
+                      height: radiusPx * 2,
+                      type: 'circle',
+                      isRevealed: true,
+                    });
+                  }}
+                  className="px-1.5 py-0.5 rounded bg-sky-950/80 hover:bg-sky-900 text-sky-300 font-bold text-[10px] active:scale-90 transition flex items-center gap-1"
+                  title="Revelar Névoa de Guerra ao redor do token (Visão de 9m / 6 quadrados)"
+                >
+                  👁️ 9m
+                </button>
+
                 {/* Ajustar HP: -1 */}
                 <button
                   type="button"
@@ -1112,6 +1172,72 @@ export const BattleMap: React.FC<BattleMapProps> = ({
               </div>
             );
           })()}
+
+          {/* Linha e Distância Tática de Movimento do Token ao Arrastar */}
+          {tokenMoveMetrics && (
+            <svg
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: `${mapConfig.width}px`,
+                height: `${mapConfig.height}px`,
+                pointerEvents: 'none',
+                zIndex: 32,
+              }}
+            >
+              <line
+                x1={tokenMoveMetrics.origin.x}
+                y1={tokenMoveMetrics.origin.y}
+                x2={tokenMoveMetrics.current.x}
+                y2={tokenMoveMetrics.current.y}
+                stroke={tokenMoveMetrics.exceedsNormalSpeed ? '#f43f5e' : '#10b981'}
+                strokeWidth="3"
+                strokeDasharray="6 4"
+              />
+              <circle
+                cx={tokenMoveMetrics.origin.x}
+                cy={tokenMoveMetrics.origin.y}
+                r="6"
+                fill={tokenMoveMetrics.exceedsNormalSpeed ? '#f43f5e' : '#10b981'}
+                fillOpacity="0.4"
+                stroke={tokenMoveMetrics.exceedsNormalSpeed ? '#f43f5e' : '#10b981'}
+                strokeWidth="2"
+              />
+              <circle
+                cx={tokenMoveMetrics.current.x}
+                cy={tokenMoveMetrics.current.y}
+                r="4"
+                fill={tokenMoveMetrics.exceedsNormalSpeed ? '#f43f5e' : '#10b981'}
+              />
+              <g
+                transform={`translate(${(tokenMoveMetrics.origin.x + tokenMoveMetrics.current.x) / 2}, ${(tokenMoveMetrics.origin.y + tokenMoveMetrics.current.y) / 2 - 14})`}
+              >
+                <rect
+                  x="-55"
+                  y="-12"
+                  width="110"
+                  height="24"
+                  rx="6"
+                  fill="#020617"
+                  fillOpacity="0.95"
+                  stroke={tokenMoveMetrics.exceedsNormalSpeed ? '#f43f5e' : '#10b981'}
+                  strokeWidth="1.5"
+                />
+                <text
+                  x="0"
+                  y="4"
+                  textAnchor="middle"
+                  fill={tokenMoveMetrics.exceedsNormalSpeed ? '#fca5a5' : '#6ee7b7'}
+                  fontSize="11"
+                  fontWeight="bold"
+                  fontFamily="monospace"
+                >
+                  {tokenMoveMetrics.meters}m ({tokenMoveMetrics.squares}q)
+                </text>
+              </g>
+            </svg>
+          )}
 
           {/* 5. Linha e Distância da Régua */}
           {ruler && (

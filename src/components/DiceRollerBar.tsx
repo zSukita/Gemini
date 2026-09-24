@@ -9,7 +9,8 @@ import {
   TrendingUp, 
   TrendingDown, 
   Minus,
-  Lock
+  Lock,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface DiceRollerBarProps {
@@ -25,6 +26,7 @@ interface DiceRollerBarProps {
   onReplayAnimation?: (roll: DiceRollResult) => void;
   isSecretRoll?: boolean;
   onToggleSecretRoll?: () => void;
+  activeConditions?: string[];
 }
 
 export const DiceRollerBar = React.memo<DiceRollerBarProps>(({
@@ -40,8 +42,21 @@ export const DiceRollerBar = React.memo<DiceRollerBarProps>(({
   onReplayAnimation,
   isSecretRoll = false,
   onToggleSecretRoll,
+  activeConditions = [],
 }) => {
   const [customFormula, setCustomFormula] = useState('');
+
+  const conditionNames: Record<string, string> = {
+    blinded: 'Cego',
+    frightened: 'Amedrontado',
+    poisoned: 'Envenenado',
+    prone: 'Caído',
+    restrained: 'Impedido',
+  };
+
+  const disadvantageConditions = activeConditions.filter((c) =>
+    ['blinded', 'frightened', 'poisoned', 'prone', 'restrained'].includes(c)
+  );
 
   const diceTypes = [4, 6, 8, 10, 12, 20, 100];
 
@@ -57,7 +72,34 @@ export const DiceRollerBar = React.memo<DiceRollerBarProps>(({
       <div className="bg-slate-900/95 backdrop-blur-md border border-amber-500/40 rounded-2xl p-2.5 sm:p-3 shadow-2xl shadow-black/80 flex flex-col sm:flex-row items-center justify-between gap-2.5">
         
         {/* Esquerda: Seletor de Vantagem / Desvantagem */}
-        <div className="flex items-center gap-1 bg-slate-950/80 p-1 rounded-xl border border-slate-800 self-stretch sm:self-auto justify-center">
+        <div className="flex flex-col sm:flex-row items-center gap-1.5 self-stretch sm:self-auto">
+          {disadvantageConditions.length > 0 && (
+            <div 
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  if (advantageMode !== 'disadvantage') setAdvantageMode('disadvantage');
+                }
+              }}
+              onClick={() => {
+                if (advantageMode !== 'disadvantage') setAdvantageMode('disadvantage');
+              }}
+              className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-semibold border transition ${
+                advantageMode === 'disadvantage'
+                  ? 'bg-rose-950/70 border-rose-500/60 text-rose-200'
+                  : 'bg-amber-950/70 border-amber-500/50 text-amber-200 animate-pulse cursor-pointer hover:bg-amber-900/60'
+              }`}
+              title="Clique para aplicar Desvantagem automática segundo as regras de D&D 5e"
+            >
+              <AlertTriangle size={11} className="text-amber-400 shrink-0" />
+              <span>Condição: {disadvantageConditions.map((c) => conditionNames[c] || c).join(', ')}</span>
+              {advantageMode !== 'disadvantage' && (
+                <span className="underline ml-0.5 font-bold text-amber-300">Aplicar</span>
+              )}
+            </div>
+          )}
+          <div className="flex items-center gap-1 bg-slate-950/80 p-1 rounded-xl border border-slate-800 self-stretch sm:self-auto justify-center">
           <button
             type="button"
             onClick={() => setAdvantageMode('disadvantage')}
@@ -99,6 +141,7 @@ export const DiceRollerBar = React.memo<DiceRollerBarProps>(({
             <span className="text-[11px]">Vantagem</span>
           </button>
         </div>
+      </div>
 
         {/* Centro: Botões Rápidos de Dados (d4 a d100) */}
         <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto py-1 max-w-full">

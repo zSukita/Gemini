@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import type { Character } from '../types/dnd5e';
 import { getProficiencyBonus } from '../utils/calculations';
 import { SRD_CLASSES } from '../data/srdClasses';
@@ -12,7 +12,9 @@ import {
   ChevronDown, 
   Edit3, 
   Check,
-  ArrowUpCircle
+  ArrowUpCircle,
+  Download,
+  Upload,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -23,6 +25,8 @@ interface HeaderProps {
   onOpenWizard?: () => void;
   onShortRest: () => void;
   onLongRest: () => void;
+  onExportJson?: () => void;
+  onImportJson?: (json: string) => boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -33,11 +37,57 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenWizard,
   onShortRest,
   onLongRest,
+  onExportJson,
+  onImportJson,
 }) => {
   const [isEditingInfo, setIsEditingInfo] = useState(false);
   const [showRestMenu, setShowRestMenu] = useState(false);
   const [isCustomClass, setIsCustomClass] = useState(() => !SRD_CLASSES.some((c) => c.name === character.characterClass));
   const [isCustomRace, setIsCustomRace] = useState(() => !SRD_RACES.some((r) => r.name === character.race));
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleDefaultExport = () => {
+    if (onExportJson) {
+      onExportJson();
+      return;
+    }
+    const jsonStr = JSON.stringify(character, null, 2);
+    const fileName = `${(character.name || 'personagem').toLowerCase().replace(/\s+/g, '_')}_dnd5e.json`;
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      if (content) {
+        if (onImportJson) {
+          onImportJson(content);
+        } else {
+          try {
+            const parsed = JSON.parse(content);
+            if (parsed && typeof parsed === 'object') {
+              updateCharacter(parsed);
+            }
+          } catch (err) {
+            console.error('Erro ao ler JSON da ficha', err);
+          }
+        }
+      }
+    };
+    reader.readAsText(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   const handleSelectClass = (className: string) => {
     const cls = SRD_CLASSES.find((c) => c.name === className);
@@ -387,6 +437,33 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Users size={16} />
             <span className="hidden sm:inline">Fichas</span>
+          </button>
+
+          {/* Exportar Ficha (.json) */}
+          <button
+            onClick={handleDefaultExport}
+            className="rpg-button bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 hover:text-amber-300"
+            title="Exportar ficha em arquivo .json (Backup)"
+          >
+            <Download size={15} />
+            <span className="hidden md:inline text-xs">Exportar</span>
+          </button>
+
+          {/* Importar Ficha (.json) */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            onChange={handleFileInputChange}
+            className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="rpg-button bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 hover:text-amber-300"
+            title="Importar ficha de arquivo .json"
+          >
+            <Upload size={15} />
+            <span className="hidden md:inline text-xs">Importar</span>
           </button>
         </div>
       </div>

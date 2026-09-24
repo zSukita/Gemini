@@ -60,6 +60,7 @@ interface AiDungeonMasterModalProps {
   activeCharacter: Character | null;
   onTransmitHandout?: (handout: Omit<CampaignHandout, 'id' | 'createdAt'>) => void;
   onSaveNpcToJournal?: (npc: CampaignNpc) => void;
+  onSaveLoreToJournal?: (title: string, text: string) => void;
   onBroadcastToRoom?: (message: {
     id?: string;
     text: string;
@@ -80,6 +81,7 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
   activeCharacter,
   onTransmitHandout,
   onSaveNpcToJournal,
+  onSaveLoreToJournal,
   onBroadcastToRoom,
   onOpenVttWithAdventure,
   onStartSoloAdventureOnMap,
@@ -105,12 +107,40 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
   const [showPremisePicker, setShowPremisePicker] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Efeito de Máquina de Escrever (Typewriter) na narrativa recente
+  const [typingMessageId, setTypingMessageId] = useState<string | null>(null);
+  const [visibleChars, setVisibleChars] = useState<number>(0);
+
+  // Mensagens da IA já registradas no diário do herói
+  const [savedJournalMsgIds, setSavedJournalMsgIds] = useState<Set<string>>(new Set());
+
   // Oráculo Co-DM
   const [oracleAction, setOracleAction] = useState<AiOracleAction>('twist');
   const [oracleContext, setOracleContext] = useState('');
   const [oracleResult, setOracleResult] = useState('');
   const [isOracleLoading, setIsOracleLoading] = useState(false);
   const [copiedNotification, setCopiedNotification] = useState(false);
+
+  // Efeito progressivo de leitura do mestre para a mensagem atual
+  useEffect(() => {
+    if (!typingMessageId) return;
+    const msg = history.find((m) => m.id === typingMessageId);
+    if (!msg) {
+      setTypingMessageId(null);
+      return;
+    }
+
+    if (visibleChars >= msg.content.length) {
+      setTypingMessageId(null);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setVisibleChars((prev) => Math.min(msg.content.length, prev + 6));
+    }, 16);
+
+    return () => clearTimeout(timer);
+  }, [typingMessageId, visibleChars, history]);
 
   // Carregar dados salvos ao abrir
   useEffect(() => {
@@ -209,6 +239,8 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
     const initialHistory = [introMessage];
     setHistory(initialHistory);
     saveStoredChatHistory(initialHistory);
+    setTypingMessageId(introMessage.id);
+    setVisibleChars(1);
     setIsAiLoading(false);
 
     if (onBroadcastToRoom && autoBroadcastToRoom) {
@@ -240,6 +272,8 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
     const initialHistory = [introMessage];
     setHistory(initialHistory);
     saveStoredChatHistory(initialHistory);
+    setTypingMessageId(introMessage.id);
+    setVisibleChars(1);
     setCustomPremiseText('');
 
     if (onBroadcastToRoom && autoBroadcastToRoom) {
@@ -298,6 +332,8 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
       const finalHistory = [...updatedHistory, response];
       setHistory(finalHistory);
       saveStoredChatHistory(finalHistory);
+      setTypingMessageId(response.id);
+      setVisibleChars(1);
 
       if (onBroadcastToRoom && autoBroadcastToRoom) {
         onBroadcastToRoom({
@@ -753,6 +789,26 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
                                     <span>Transmitir</span>
                                   </button>
                                 )}
+                                {onSaveLoreToJournal && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                      const snippet = msg.content.length > 35 ? msg.content.slice(0, 35) + '...' : msg.content;
+                                      onSaveLoreToJournal(`Narrativa IA (${timeStr}) - ${snippet}`, msg.content);
+                                      setSavedJournalMsgIds((prev) => new Set(prev).add(msg.id));
+                                    }}
+                                    className={`ml-1 text-[10px] px-2 py-0.5 rounded border flex items-center gap-1 transition ${
+                                      savedJournalMsgIds.has(msg.id)
+                                        ? 'bg-emerald-950/70 text-emerald-300 border-emerald-500/40'
+                                        : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                                    }`}
+                                    title="Registrar esta narrativa no Diário do Personagem"
+                                  >
+                                    <Feather size={10} />
+                                    <span>{savedJournalMsgIds.has(msg.id) ? 'No Diário ✓' : 'Diário'}</span>
+                                  </button>
+                                )}
                               </>
                             ) : (
                               <>
@@ -773,7 +829,30 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
                                 : 'bg-indigo-950/70 border border-indigo-500/40 text-indigo-100 rounded-br-xs whitespace-pre-line'
                             }`}
                           >
-                            {msg.content}
+                            {(() => {
+                              const isTypingThis = isNarrator && msg.id === typingMessageId && visibleChars < msg.content.length;
+                              const textToShow = isTypingThis ? msg.content.slice(0, visibleChars) : msg.content;
+                              return (
+                                <>
+                                  <span>{textToShow}</span>
+                                  {isTypingThis && (
+                                    <span className="inline-block w-1.5 h-3.5 ml-1 bg-amber-400 animate-pulse align-middle" />
+                                  )}
+                                  {isTypingThis && (
+                                    <div className="mt-2 pt-1.5 border-t border-amber-500/20 flex justify-end">
+                                      <button
+                                        type="button"
+                                        onClick={() => setTypingMessageId(null)}
+                                        className="text-[10px] font-mono font-bold text-amber-300 hover:text-amber-100 flex items-center gap-1 px-2 py-0.5 bg-amber-500/10 hover:bg-amber-500/20 rounded border border-amber-500/30 cursor-pointer transition active:scale-95"
+                                        title="Exibir texto completo imediatamente"
+                                      >
+                                        ⚡ Pular Efeito
+                                      </button>
+                                    </div>
+                                  )}
+                                </>
+                              );
+                            })()}
 
                             {/* Card de Teste de Dado Solicitado */}
                             {msg.requestedRoll && (

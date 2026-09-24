@@ -12,6 +12,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './config';
 import { p2pManager } from '../utils/peerService';
+import { broadcastSyncMessage, subscribeToSync } from '../utils/syncChannel';
 
 export interface DirectMessage {
   id: string;
@@ -435,6 +436,11 @@ export async function sendGameInvite(
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('arcanasheet_game_invite', { detail: fullInvite }));
   }
+  // Transmite para outras abas locais via syncChannel
+  broadcastSyncMessage({
+    type: 'SYNC_GAME_INVITE' as any,
+    payload: fullInvite,
+  });
 
   // 2. Transmite via P2P se conectado
   if (p2pManager.isConnected()) {
@@ -491,7 +497,8 @@ export function subscribeToIncomingInvites(
   if (db) {
     try {
       const colRef = collection(db, 'game_invites');
-      const q = query(colRef, where('status', '==', 'pending'));
+      // Consulta direcionada por toUserId (compatível com regras de segurança do Firestore)
+      const q = query(colRef, where('toUserId', '==', userId), where('status', '==', 'pending'));
       firestoreUnsub = onSnapshot(
         q,
         (snapshot) => {
@@ -534,6 +541,18 @@ export function subscribeToIncomingInvites(
     window.addEventListener('arcanasheet_game_invite', localHandler);
   }
 
+  // Ouvinte de mensagens sincronizadas entre abas
+  const unsubSync = subscribeToSync((msg) => {
+    if (msg.type === ('SYNC_GAME_INVITE' as any)) {
+      if (msg.payload) {
+        const inv = msg.payload as GameInvite;
+        const cur = getLocalInvites().filter((i) => i.id !== inv.id);
+        saveLocalInvites([...cur, inv]);
+      }
+      localHandler();
+    }
+  });
+
   // Emissão inicial imediata
   callback(getLocalInvites().filter(isTargetForUser));
 
@@ -541,6 +560,7 @@ export function subscribeToIncomingInvites(
     if (firestoreUnsub) {
       firestoreUnsub();
     }
+    unsubSync();
     if (typeof window !== 'undefined') {
       window.removeEventListener('storage', localHandler);
       window.removeEventListener('arcanasheet_game_invite', localHandler);

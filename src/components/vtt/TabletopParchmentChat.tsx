@@ -43,6 +43,7 @@ interface TabletopParchmentChatProps {
   onStartScenario?: (scenario: AiAdventureScenario) => void;
   onCollectLoot?: (reward: AiLootReward, messageId?: string) => void;
   onUpdateCharacter?: (updates: Partial<Character>) => void;
+  onNextTurn?: () => void;
   onSendMessage: (
     textOrPayload:
       | string
@@ -75,6 +76,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
   onCollectLoot,
   onUpdateCharacter,
   onSendMessage,
+  onNextTurn,
 }) => {
   const [inputText, setInputText] = useState('');
   const [isSecretMode, setIsSecretMode] = useState(false);
@@ -84,6 +86,16 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
   const [campaignSummaryText, setCampaignSummaryText] = useState(() => getStoredCampaignSummary());
   const [isSynthesizingMemory, setIsSynthesizingMemory] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Estados e Regras de Turno D&D 5e
+  const isCombatActive = Boolean(encounter?.isRunning && encounter.combatants.length > 0);
+  const activeCombatant = isCombatActive && encounter
+    ? encounter.combatants[encounter.activeCombatantIndex]
+    : null;
+  const isPlayerTurn = activeCombatant?.type === 'player';
+  const isMyTurn = !isCombatActive || Boolean(isPlayerTurn && activeCombatant?.name.toLowerCase() === currentUserName.toLowerCase());
+  const isOtherPlayerTurn = Boolean(isCombatActive && isPlayerTurn && !isMyTurn);
+  const isMonsterTurn = Boolean(isCombatActive && activeCombatant?.type === 'monster');
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -242,16 +254,37 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
       const isCritMiss = Boolean(rollRes.isCriticalFailure || (advantageMode === 'normal' && natural === 1));
       const isHit = isCritHit || (!isCritMiss && rollRes.total >= req.dc);
 
-      // Localiza o monstro alvo nos combatentes ativos
-      const monsterCandidates = encounter?.combatants.filter((c) => c.type === 'monster' && c.currentHp > 0) || [];
+      // Localiza o monstro alvo nos combatentes ativos vivos
+      const monsterCandidates = encounter?.combatants.filter((c) => (c.type === 'monster' || c.type === 'npc') && c.currentHp > 0) || [];
       const reasonLower = req.reason.toLowerCase();
       const skillLower = req.skillOrAbility.toLowerCase();
 
-      let targetMonster = monsterCandidates.find(
-        (m) => reasonLower.includes(m.name.toLowerCase()) || skillLower.includes(m.name.toLowerCase())
-      );
+      // Coleta o texto das mensagens recentes do chat (escolha do jogador e narrativa do mestre)
+      const recentChatText = chatLog.slice(-5).map((m) => m.text).join(' ').toLowerCase();
+      const fullContextText = `${reasonLower} ${skillLower} ${recentChatText}`;
+
+      // Helper para normalizar nome (remove "(Ghoul)", sufixos e números)
+      const cleanMonName = (name: string) =>
+        name.toLowerCase().replace(/\s*\([^)]*\)/g, '').trim();
+
+      // 1. Prioridade máxima: monstro com correspondência exata do nome completo com número (ex: "Carniçal 2" ou "Carniçal 1")
+      let targetMonster = monsterCandidates.find((m) => {
+        const exactName = cleanMonName(m.name);
+        return fullContextText.includes(exactName);
+      });
+
+      // 2. Segunda prioridade: monstro com correspondência do nome base (ex: "Carniçal")
+      if (!targetMonster) {
+        targetMonster = monsterCandidates.find((m) => {
+          const baseName = cleanMonName(m.name).replace(/\s*\d+$/, '').trim();
+          return baseName.length >= 3 && fullContextText.includes(baseName);
+        });
+      }
+
+      // 3. Terceira prioridade: se houver combatente com menos vida (ferido em combate anterior)
       if (!targetMonster && monsterCandidates.length > 0) {
-        targetMonster = monsterCandidates[0];
+        const wounded = monsterCandidates.find((m) => m.currentHp < m.maxHp);
+        targetMonster = wounded || monsterCandidates[0];
       }
 
       const targetDisplayName = targetMonster?.name || 'o Inimigo';
@@ -741,6 +774,48 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
         </div>
       )}
 
+      {/* 2. Banner de Combate D&D 5e (Iniciativa e Turnos) */}
+      {isCombatActive && activeCombatant && (
+        <div className="mx-3 mt-2 p-2.5 rounded-xl bg-[#eddcc0] border-2 border-[#b08d57] shadow-sm flex items-center justify-between gap-2 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <span
+              className={`w-3 h-3 rounded-full shrink-0 ${
+                isMyTurn ? 'bg-emerald-500 animate-ping' : isMonsterTurn ? 'bg-rose-500 animate-pulse' : 'bg-amber-500'
+              }`}
+            />
+            <div className="truncate">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-amber-900 leading-tight">
+                ⚔️ Combate D&D 5e · Rodada {encounter?.round ?? 1}
+              </div>
+              <div className="text-xs font-serif font-black text-amber-950 truncate">
+                Turno Atual:{' '}
+                <span className={isMyTurn ? 'text-emerald-800 underline' : isMonsterTurn ? 'text-rose-900' : 'text-amber-900'}>
+                  {activeCombatant.name}
+                </span>{' '}
+                <span className="text-[10px] font-mono font-bold text-amber-800/80">
+                  (Inic. {activeCombatant.initiative})
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {isMyTurn && onNextTurn && (
+            <button
+              type="button"
+              onClick={() => {
+                onSendMessage(`⚔️ ${currentUserName} finalizou o seu turno de combate.`, currentUserName);
+                onNextTurn();
+              }}
+              className="rpg-button bg-amber-800 hover:bg-amber-900 text-amber-100 font-bold text-[10px] py-1 px-2.5 rounded-lg shadow flex items-center gap-1 active:scale-95 shrink-0 cursor-pointer"
+              title="Passar a vez para o próximo combatente da iniciativa"
+            >
+              <span>Finalizar Turno</span>
+              <ArrowRight size={11} />
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Corpo do Log de Chat */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3 font-serif text-xs select-text">
         {chatLog.length === 0 ? (
@@ -842,15 +917,43 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                   {/* Ações Sugeridas */}
                   {msg.suggestedActions && msg.suggestedActions.length > 0 && (
                     <div className="mt-2 space-y-1.5 pt-1">
-                      <span className="text-[10px] uppercase font-bold text-amber-900 tracking-wider block">
-                        Opções Sugeridas:
-                      </span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] uppercase font-bold text-amber-900 tracking-wider block">
+                          {isCombatActive
+                            ? isMyTurn
+                              ? '⚔️ Seu Turno — Opções de Ação:'
+                              : isOtherPlayerTurn
+                              ? `⏳ Turno de ${activeCombatant?.name} — Opções:`
+                              : `👹 Turno de ${activeCombatant?.name} — Opções:`
+                            : 'Opções Sugeridas:'}
+                        </span>
+                        {isCombatActive && isOtherPlayerTurn && (
+                          <span className="text-[9px] text-amber-800/80 font-mono italic">
+                            Aguardando iniciativa
+                          </span>
+                        )}
+                      </div>
+
+                      {isCombatActive && isOtherPlayerTurn && (
+                        <div className="p-1.5 rounded bg-amber-900/10 border border-amber-900/20 text-[10px] text-amber-900 italic">
+                          ⏳ É a vez de <strong>{activeCombatant?.name}</strong> agir segundo a ordem de iniciativa D&D 5e.
+                        </div>
+                      )}
+
+                      {isCombatActive && isMonsterTurn && (
+                        <div className="p-1.5 rounded bg-rose-950/10 border border-rose-900/30 text-[10px] text-rose-900 italic">
+                          👹 <strong>{activeCombatant?.name}</strong> está executando sua ação com o Mestre IA.
+                        </div>
+                      )}
+
                       <div className="space-y-1">
                         {msg.suggestedActions.map((act, i) => (
                           <button
                             key={i}
                             type="button"
+                            disabled={isCombatActive && !isMyTurn}
                             onClick={() => {
+                              if (isCombatActive && !isMyTurn) return;
                               const actLower = act.toLowerCase();
                               const isMoveOrAttack =
                                 /avan[çc]ar|flanquear|atacar|aproximar|investir|esgueirar|golpear|correr|bloquear|decapitar|finalizar|miseric[oó]rdia/i.test(actLower);
@@ -862,9 +965,11 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                                 const monsterCandidates = encounter.combatants.filter(
                                   (c) => (c.type === 'monster' || c.type === 'npc') && c.currentHp > 0
                                 );
-                                let targetMonster = monsterCandidates.find((m) =>
-                                  actLower.includes(m.name.toLowerCase().replace(/\s*\d+$/, '').trim())
-                                );
+                                let targetMonster = monsterCandidates.find((m) => {
+                                  const cName = m.name.toLowerCase().replace(/\s*\([^)]*\)/g, '').trim();
+                                  const cBase = cName.replace(/\s*\d+$/, '').trim();
+                                  return actLower.includes(cName) || (cBase.length >= 3 && actLower.includes(cBase));
+                                });
                                 if (!targetMonster && monsterCandidates.length > 0) {
                                   targetMonster = [...monsterCandidates].sort((a, b) => a.currentHp - b.currentHp)[0];
                                 }
@@ -882,11 +987,12 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                                     t.type === 'player'
                                 );
                                 const targetToken =
-                                  tokens.find(
-                                    (t) =>
-                                      t.type === 'monster' &&
-                                      actLower.includes(t.name.toLowerCase().replace(/\s*\d+$/, '').trim())
-                                  ) || tokens.find((t) => t.type === 'monster');
+                                  tokens.find((t) => {
+                                    if (t.type !== 'monster' || (t.currentHp ?? 1) <= 0) return false;
+                                    const tClean = t.name.toLowerCase().replace(/\s*\([^)]*\)/g, '').trim();
+                                    const tBase = tClean.replace(/\s*\d+$/, '').trim();
+                                    return actLower.includes(tClean) || (tBase.length >= 3 && actLower.includes(tBase));
+                                  }) || tokens.find((t) => t.type === 'monster' && (t.currentHp ?? 1) > 0);
 
                                 if (playerToken && targetToken && playerToken.id !== targetToken.id) {
                                   const dx = targetToken.x - playerToken.x;
@@ -906,13 +1012,38 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                               }
                               onSendMessage(`@mestre Escolho: ${act}`, currentUserName);
                             }}
-                            className="w-full text-left p-1.5 rounded bg-[#f0e3c5] hover:bg-[#e4d1aa] border border-[#cfb48c] text-[11px] text-amber-950 font-medium transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                            className={`w-full text-left p-1.5 rounded border text-[11px] font-medium transition flex items-center gap-1.5 shadow-xs ${
+                              isCombatActive && !isMyTurn
+                                ? 'bg-[#e0d3ba]/50 border-[#cca97f]/40 text-amber-900/50 cursor-not-allowed opacity-60'
+                                : 'bg-[#f0e3c5] hover:bg-[#e4d1aa] border-[#cfb48c] text-amber-950 cursor-pointer active:scale-98'
+                            }`}
+                            title={
+                              isCombatActive && !isMyTurn
+                                ? `Aguardando a vez de ${activeCombatant?.name} na iniciativa`
+                                : undefined
+                            }
                           >
-                            <ArrowRight size={11} className="text-amber-800 shrink-0" />
+                            <ArrowRight size={11} className={isCombatActive && !isMyTurn ? 'text-amber-700/40 shrink-0' : 'text-amber-800 shrink-0'} />
                             <span>{act}</span>
                           </button>
                         ))}
                       </div>
+
+                      {/* Botão de Finalizar Turno para o Jogador Ativo */}
+                      {isCombatActive && isMyTurn && onNextTurn && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onSendMessage(`⚔️ ${currentUserName} concluiu o seu turno no combate.`, currentUserName);
+                            onNextTurn();
+                          }}
+                          className="w-full mt-2 py-1.5 px-3 rounded bg-amber-800 hover:bg-amber-900 text-amber-100 font-bold text-[11px] transition flex items-center justify-center gap-1.5 shadow cursor-pointer active:scale-98"
+                          title="Finalizar turno e passar para o próximo combatente na iniciativa"
+                        >
+                          <span>⚔️ Finalizar Meu Turno</span>
+                          <ArrowRight size={12} />
+                        </button>
+                      )}
                     </div>
                   )}
 

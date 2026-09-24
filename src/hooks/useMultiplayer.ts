@@ -18,9 +18,10 @@ export interface UseMultiplayerOptions {
     chatLog?: ChatMessage[];
     encounter?: any;
   }) => void;
-  onRequestRoomState?: (requesterPeerId?: string) => void;
+  onRequestRoomState?: (requesterPeerId?: string, requesterData?: any) => void;
   onRemoteDirectMessage?: (msg: any) => void;
   onRemoteGameInvite?: (invite: any) => void;
+  onRemoteCharacterSync?: (peer: PeerUser) => void;
 }
 
 export function useMultiplayer(options?: UseMultiplayerOptions) {
@@ -54,7 +55,10 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
       }
       if (msg.type === 'REQUEST_ROOM_STATE' && optionsRef.current?.onRequestRoomState) {
         const payload = msg.payload as any;
-        optionsRef.current.onRequestRoomState(payload?.targetPeerId || msg.senderId);
+        optionsRef.current.onRequestRoomState(payload?.targetPeerId || msg.senderId, payload);
+      }
+      if (msg.type === 'CHARACTER_SYNC' && optionsRef.current?.onRemoteCharacterSync) {
+        optionsRef.current.onRemoteCharacterSync(msg.payload as PeerUser);
       }
       if (msg.type === 'DICE_ROLL' && optionsRef.current?.onRemoteDiceRoll) {
         optionsRef.current.onRemoteDiceRoll(msg.payload as DiceRollResult);
@@ -145,20 +149,28 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
     }
   }, []);
 
-  const joinRoom = useCallback(async (code: string, userName: string, avatarUrl?: string) => {
-    setIsConnecting(true);
-    try {
-      const success = await p2pManager.joinRoom(code, userName, avatarUrl);
-      if (success) {
-        setRoomCode(code);
-        setIsConnected(true);
-        setIsHost(false);
+  const joinRoom = useCallback(
+    async (
+      code: string,
+      userName: string,
+      avatarUrl?: string,
+      characterData?: Partial<PeerUser>
+    ) => {
+      setIsConnecting(true);
+      try {
+        const success = await p2pManager.joinRoom(code, userName, avatarUrl, characterData);
+        if (success) {
+          setRoomCode(code);
+          setIsConnected(true);
+          setIsHost(false);
+        }
+        return success;
+      } finally {
+        setIsConnecting(false);
       }
-      return success;
-    } finally {
-      setIsConnecting(false);
-    }
-  }, []);
+    },
+    []
+  );
 
   const clearChatLog = useCallback(() => {
     setChatLog([]);

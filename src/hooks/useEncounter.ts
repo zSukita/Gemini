@@ -110,10 +110,19 @@ export function useEncounter() {
     setEncounter((prev) => {
       const newCombatants: Combatant[] = [];
       const dexMod = getAbilityModifier(monster.abilities.dex);
+      // Remove parênteses com nome em inglês do SRD para exibição limpa (ex: "Carniçal (Ghoul)" -> "Carniçal")
+      const baseCleanName = monster.name.replace(/\s*\([^)]*\)/g, '').trim();
+
+      // Conta quantos monstros desse tipo já existem no combate para numeração sequencial sem conflito
+      const existingSameType = prev.combatants.filter((c) => {
+        const cBase = c.name.replace(/\s*\([^)]*\)/g, '').replace(/\s*\d+$/, '').trim().toLowerCase();
+        return cBase === baseCleanName.toLowerCase();
+      });
+      const startIdx = existingSameType.length;
 
       for (let i = 1; i <= count; i++) {
-        // Se houver mais de um, nomeia como "Goblin 1", "Goblin 2", etc.
-        const displayName = count > 1 ? `${monster.name} ${i}` : monster.name;
+        const num = startIdx + i;
+        const displayName = count > 1 || startIdx > 0 ? `${baseCleanName} ${num}` : baseCleanName;
         const initialInit = rollDie(20) + dexMod;
 
         newCombatants.push({

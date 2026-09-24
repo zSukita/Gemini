@@ -100,7 +100,12 @@ export class P2PNetworkManager {
   /**
    * Conecta a uma sala existente como Jogador (Client)
    */
-  public async joinRoom(roomCode: string, userName: string, avatarUrl?: string): Promise<boolean> {
+  public async joinRoom(
+    roomCode: string,
+    userName: string,
+    avatarUrl?: string,
+    characterData?: Partial<PeerUser>
+  ): Promise<boolean> {
     this.disconnect();
     this.currentUserName = userName;
     this.currentUserAvatar = avatarUrl || '';
@@ -116,7 +121,18 @@ export class P2PNetworkManager {
       this.peer.on('open', () => {
         if (!this.peer) return;
         const conn = this.peer.connect(targetPeerId, {
-          metadata: { name: this.currentUserName, role: 'player', avatarUrl: this.currentUserAvatar },
+          metadata: {
+            name: this.currentUserName,
+            role: 'player',
+            avatarUrl: this.currentUserAvatar,
+            currentHp: characterData?.currentHp,
+            maxHp: characterData?.maxHp,
+            armorClass: characterData?.armorClass,
+            characterClass: characterData?.characterClass,
+            characterLevel: characterData?.characterLevel,
+            dexScore: characterData?.dexScore,
+            initiativeBonus: characterData?.initiativeBonus,
+          },
           reliable: true,
         });
 
@@ -124,27 +140,43 @@ export class P2PNetworkManager {
         this.setupConnection(conn);
 
         conn.on('open', () => {
-          this.activePeers = [
-            {
-              peerId: this.peer?.id || 'player',
-              name: this.currentUserName,
-              role: 'player',
-              avatarUrl: this.currentUserAvatar,
-              joinedAt: Date.now(),
-            },
-          ];
+          const selfUser: PeerUser = {
+            peerId: this.peer?.id || 'player',
+            name: this.currentUserName,
+            role: 'player',
+            avatarUrl: this.currentUserAvatar,
+            currentHp: characterData?.currentHp,
+            maxHp: characterData?.maxHp,
+            armorClass: characterData?.armorClass,
+            characterClass: characterData?.characterClass,
+            characterLevel: characterData?.characterLevel,
+            dexScore: characterData?.dexScore,
+            initiativeBonus: characterData?.initiativeBonus,
+            joinedAt: Date.now(),
+          };
+
+          this.activePeers = [selfUser];
           this.notifyPeerList();
 
-          // 1. Solicita imediatamente ao Mestre (Host) o estado atual da mesa (mapa, tokens, chat e combate)
+          // 1. Envia ficha e dados do personagem para o Mestre
+          this.broadcast({
+            type: 'CHARACTER_SYNC',
+            senderId: this.peer?.id || 'player',
+            senderName: this.currentUserName,
+            payload: selfUser,
+            timestamp: Date.now(),
+          });
+
+          // 2. Solicita imediatamente ao Mestre (Host) o estado atual da mesa (mapa, tokens, chat e combate)
           this.broadcast({
             type: 'REQUEST_ROOM_STATE',
             senderId: this.peer?.id || 'player',
             senderName: this.currentUserName,
-            payload: null,
+            payload: selfUser,
             timestamp: Date.now(),
           });
 
-          // 2. Avisa o host e a mesa sobre a entrada
+          // 3. Avisa o host e a mesa sobre a entrada
           this.broadcast({
             type: 'CHAT_MESSAGE',
             senderId: this.peer?.id || 'player',
@@ -173,7 +205,9 @@ export class P2PNetworkManager {
     this.connections.set(conn.peer, conn);
 
     const registerPeer = () => {
-      const metadata = conn.metadata as { name?: string; role?: 'dm' | 'player'; avatarUrl?: string } | undefined;
+      const metadata = conn.metadata as
+        | (Partial<PeerUser> & { name?: string; role?: 'dm' | 'player'; avatarUrl?: string })
+        | undefined;
       const peerName = metadata?.name?.trim() || 'Aventureiro';
       const peerRole = metadata?.role || 'player';
       const peerAvatar = metadata?.avatarUrl;
@@ -183,6 +217,13 @@ export class P2PNetworkManager {
         name: peerName,
         role: peerRole,
         avatarUrl: peerAvatar,
+        currentHp: metadata?.currentHp,
+        maxHp: metadata?.maxHp,
+        armorClass: metadata?.armorClass,
+        characterClass: metadata?.characterClass,
+        characterLevel: metadata?.characterLevel,
+        dexScore: metadata?.dexScore,
+        initiativeBonus: metadata?.initiativeBonus,
         joinedAt: Date.now(),
       };
 

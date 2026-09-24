@@ -554,6 +554,7 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
             onSendMessage={onSendMessage}
             onCollectLoot={onCollectLoot}
             onUpdateCharacter={onUpdateCharacter}
+            onNextTurn={onNextTurn}
           />
         </div>
 

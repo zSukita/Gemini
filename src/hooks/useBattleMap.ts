@@ -114,8 +114,14 @@ export function useBattleMap(
           const size = c.monsterData?.size === 'Grande' ? 2 : c.monsterData?.size === 'Enorme' ? 3 : 1;
           const col = index % 4;
           const row = Math.floor(index / 4);
-          const startX = isPlayer ? 550 + col * 65 : 420 + col * 75;
-          const startY = isPlayer ? 550 + row * 65 : 160 + row * 75;
+          
+          // Posiciona heróis juntos na linha de frente e monstros organizados
+          const existingHero = updated.find((t) => t.type === 'player');
+          const heroBaseX = existingHero ? existingHero.x : 420;
+          const heroBaseY = existingHero ? existingHero.y : 240;
+
+          const startX = isPlayer ? (existingHero ? heroBaseX + (col + 1) * 65 : 420 + col * 65) : 420 + col * 75;
+          const startY = isPlayer ? (existingHero ? heroBaseY : 240 + row * 65) : 160 + row * 75;
 
           updated.push({
             id: `token-${c.id}`,
@@ -170,8 +176,8 @@ export function useBattleMap(
           updated.push({
             id: `token-player-${character.id || 'local'}`,
             name: character.name,
-            x: 550,
-            y: 550,
+            x: 420,
+            y: 240,
             size: 1,
             color: '#10b981',
             avatarUrl: effectiveAvatar,
@@ -185,6 +191,12 @@ export function useBattleMap(
 
       // 2. Colegas conectados na sala via P2P (connectedPeers)
       if (connectedPeers && connectedPeers.length > 0) {
+        const localHero = updated.find(
+          (t) => t.type === 'player' && t.name.toLowerCase() === (character?.name || '').toLowerCase()
+        );
+        const partyBaseX = localHero ? localHero.x : 420;
+        const partyBaseY = localHero ? localHero.y : 240;
+
         connectedPeers.forEach((peer, pIdx) => {
           if (character?.name && peer.name.toLowerCase() === character.name.toLowerCase()) return;
 
@@ -198,6 +210,8 @@ export function useBattleMap(
                 return {
                   ...t,
                   avatarUrl: peer.avatarUrl || t.avatarUrl,
+                  currentHp: peer.currentHp ?? t.currentHp,
+                  maxHp: peer.maxHp ?? t.maxHp,
                 };
               }
               return t;
@@ -206,8 +220,8 @@ export function useBattleMap(
             updated.push({
               id: `token-peer-${peer.peerId}`,
               name: peer.name,
-              x: 550 + ((pIdx + 1) % 4) * 65,
-              y: 550 + Math.floor((pIdx + 1) / 4) * 65,
+              x: partyBaseX + ((pIdx + 1) % 4) * 65,
+              y: partyBaseY + Math.floor((pIdx + 1) / 4) * 65,
               size: 1,
               color: '#06b6d4',
               avatarUrl: peer.avatarUrl,

@@ -136,6 +136,13 @@ export const TokenMarker: React.FC<TokenMarkerProps> = ({
           </span>
         )}
 
+        {/* Indicador D&D 5e: Turno Ativo */}
+        {isActiveTurn && (
+          <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-30 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-black text-[8px] uppercase tracking-wider px-1.5 py-0.2 rounded-full shadow-lg border border-amber-300 animate-bounce pointer-events-none whitespace-nowrap">
+            Turno
+          </div>
+        )}
+
         {/* Badges de Condições Ativas (Órbitas ao redor do token) */}
         {activeConditions.length > 0 && (
           <div className="absolute -top-1 -right-1 flex flex-wrap gap-0.5 max-w-[44px] pointer-events-none z-30">
@@ -179,20 +186,21 @@ export const TokenMarker: React.FC<TokenMarkerProps> = ({
           </span>
         )}
 
-        {/* Mini Barra de Vida no Topo com Rótulo Numérico */}
-        <div className="absolute -top-2 left-1/2 -translate-x-1/2 flex flex-col items-center">
-          <div className="w-10 bg-slate-950 rounded-full h-1.5 overflow-hidden border border-slate-700 shadow">
-            <div
-              className={`h-full transition-all duration-300 ${
-                hpPercent > 50 ? 'bg-emerald-400' : hpPercent > 20 ? 'bg-amber-400' : 'bg-rose-500'
-              }`}
-              style={{ width: `${hpPercent}%` }}
-            />
-          </div>
-          {/* Valor numérico de HP (visível se estiver ferido, selecionado ou em hover) */}
-          <span className={`text-[9px] font-mono font-bold px-1 rounded bg-slate-950/95 border border-slate-700 text-slate-200 mt-0.5 whitespace-nowrap shadow transition-opacity ${
-            isSelected || token.currentHp < (token.maxHp || 1) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-          }`}>
+        {/* Rótulo Numérico de HP no Topo (O anel circular SVG já funciona como barra de vida visual) */}
+        <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none z-30">
+          <span
+            className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-full bg-slate-950/95 border border-slate-700 whitespace-nowrap shadow-md transition-opacity ${
+              token.currentHp <= 0
+                ? 'text-rose-400 border-rose-800'
+                : hpPercent > 50
+                ? 'text-emerald-300 border-emerald-800/80'
+                : hpPercent > 20
+                ? 'text-amber-300 border-amber-800/80'
+                : 'text-rose-300 border-rose-800/80'
+            } ${
+              isSelected || token.currentHp < (token.maxHp || 1) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+            }`}
+          >
             {token.currentHp}/{token.maxHp}
           </span>
         </div>

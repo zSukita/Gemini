@@ -106,6 +106,14 @@ export const BattleMap: React.FC<BattleMapProps> = ({
   const [floatingTexts, setFloatingTexts] = useState<FloatingCombatText[]>([]);
   const prevHpsRef = useRef<Map<string, number>>(new Map());
 
+  // Combatente do Turno Ativo no Encontro D&D 5e
+  const activeTurnCombatant =
+    encounter?.isRunning && encounter.combatants.length > 0
+      ? encounter.combatants[encounter.activeCombatantIndex]
+      : null;
+  const activeTurnCombatantId = activeTurnCombatant?.id;
+  const activeTurnCombatantName = activeTurnCombatant?.name?.toLowerCase();
+
   // Detecta automaticamente alterações de PV em qualquer token
   useEffect(() => {
     const prevMap = prevHpsRef.current;
@@ -423,8 +431,42 @@ export const BattleMap: React.FC<BattleMapProps> = ({
     ? calculateMapDistance(ruler.start.x, ruler.start.y, ruler.current.x, ruler.current.y, mapConfig.gridSize)
     : null;
 
-  const activeTurnCombatantId =
-    encounter?.combatants[encounter.activeCombatantIndex]?.id;
+  // Enquadrar o mapa perfeitamente na tela (Fit to Screen)
+  const handleFitToScreen = useCallback(() => {
+    const el = containerRef.current;
+    if (!el || !mapConfig.width || !mapConfig.height) return;
+
+    const containerW = el.clientWidth;
+    const containerH = el.clientHeight;
+    if (containerW <= 0 || containerH <= 0) return;
+
+    // Calcula a escala para caber no viewport com margem segura
+    const scaleX = containerW / mapConfig.width;
+    const scaleY = containerH / mapConfig.height;
+    const fitScale = Math.min(scaleX, scaleY) * 0.96;
+    const finalZoom = Math.max(0.15, Math.min(3, Math.round(fitScale * 100) / 100));
+
+    // Centraliza o mapa dentro do viewport
+    const mapRenderedW = mapConfig.width * finalZoom;
+    const mapRenderedH = mapConfig.height * finalZoom;
+    const centerX = Math.round((containerW - mapRenderedW) / 2);
+    const centerY = Math.round((containerH - mapRenderedH) / 2);
+
+    onSetZoom(finalZoom);
+    onSetPan({ x: centerX, y: centerY });
+  }, [mapConfig.width, mapConfig.height, onSetZoom, onSetPan]);
+
+  // Executa o auto-enquadramento sempre que um novo mapa for carregado ou trocado
+  const lastMapIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (mapConfig.id !== lastMapIdRef.current) {
+      lastMapIdRef.current = mapConfig.id;
+      const timer = setTimeout(() => {
+        handleFitToScreen();
+      }, 80);
+      return () => clearTimeout(timer);
+    }
+  }, [mapConfig.id, handleFitToScreen]);
 
   return (
     <div className="w-full h-full flex flex-col gap-2 min-h-0 relative">
@@ -446,11 +488,9 @@ export const BattleMap: React.FC<BattleMapProps> = ({
         onChangeGridSize={(size) => onUpdateMapConfig({ gridSize: size })}
         zoom={zoom}
         onZoomIn={() => onSetZoom((z) => Math.min(3, z + 0.15))}
-        onZoomOut={() => onSetZoom((z) => Math.max(0.3, z - 0.15))}
-        onResetZoom={() => {
-          onSetZoom(1);
-          onSetPan({ x: 0, y: 0 });
-        }}
+        onZoomOut={() => onSetZoom((z) => Math.max(0.15, z - 0.15))}
+        onFitToScreen={handleFitToScreen}
+        onResetZoom={handleFitToScreen}
         fogEnabled={mapConfig.fogOfWarEnabled}
         onToggleFog={() =>
           onUpdateMapConfig((prev) => ({ ...prev, fogOfWarEnabled: !prev.fogOfWarEnabled }))
@@ -864,7 +904,11 @@ export const BattleMap: React.FC<BattleMapProps> = ({
               key={token.id}
               token={token}
               gridSize={mapConfig.gridSize}
-              isActiveTurn={Boolean(activeTurnCombatantId && token.combatantId === activeTurnCombatantId)}
+              isActiveTurn={Boolean(
+                activeTurnCombatant &&
+                  ((token.combatantId && token.combatantId === activeTurnCombatantId) ||
+                    (token.name && token.name.toLowerCase() === activeTurnCombatantName))
+              )}
               isSelected={token.id === selectedTokenId}
               onSelect={() => onSelectToken(token.id)}
               onDragStart={(e) => handleTokenDragStart(token.id, e)}

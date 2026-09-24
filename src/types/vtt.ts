@@ -102,7 +102,8 @@ export type P2PMessageType =
   | 'MAP_PING'
   | 'CHAT_MESSAGE'
   | 'DIRECT_MESSAGE'
-  | 'GAME_INVITE';
+  | 'GAME_INVITE'
+  | 'CHARACTER_SYNC';
 
 export interface P2PMessage {
   type: P2PMessageType;
@@ -120,4 +121,9 @@ export interface PeerUser {
   avatarUrl?: string;
   currentHp?: number;
   maxHp?: number;
+  armorClass?: number;
+  characterClass?: string;
+  characterLevel?: number;
+  dexScore?: number;
+  initiativeBonus?: number;
 }

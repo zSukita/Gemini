@@ -11,6 +11,7 @@ import {
   ZoomIn, 
   ZoomOut, 
   RotateCcw, 
+  Maximize,
   Upload,
   Magnet,
   Compass,
@@ -45,6 +46,7 @@ interface MapControlsProps {
   zoom: number;
   onZoomIn: () => void;
   onZoomOut: () => void;
+  onFitToScreen?: () => void;
   onResetZoom: () => void;
   fogEnabled: boolean;
   onToggleFog: () => void;
@@ -79,6 +81,7 @@ export const MapControls: React.FC<MapControlsProps> = ({
   zoom,
   onZoomIn,
   onZoomOut,
+  onFitToScreen,
   onResetZoom,
   fogEnabled,
   onToggleFog,
@@ -259,7 +262,7 @@ export const MapControls: React.FC<MapControlsProps> = ({
               <ZoomOut size={13} />
             </button>
 
-            <span className="font-mono text-[10px] text-slate-300 w-8 text-center font-bold">
+            <span className="font-mono text-[10px] text-slate-300 w-9 text-center font-bold">
               {Math.round(zoom * 100)}%
             </span>
 
@@ -271,6 +274,18 @@ export const MapControls: React.FC<MapControlsProps> = ({
             >
               <ZoomIn size={13} />
             </button>
+
+            {onFitToScreen && (
+              <button
+                type="button"
+                onClick={onFitToScreen}
+                className="px-1.5 py-0.5 text-amber-400 hover:text-slate-950 hover:bg-amber-400 rounded transition font-bold text-[10px] flex items-center gap-1 shadow-sm"
+                title="Enquadrar Mapa no Espaço da Tela (Fit to Screen)"
+              >
+                <Maximize size={11} />
+                <span className="hidden sm:inline">Enquadrar</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -288,220 +303,226 @@ export const MapControls: React.FC<MapControlsProps> = ({
           <button
             type="button"
             onClick={() => setShowAdvancedTools(!showAdvancedTools)}
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 border transition ${
+            className={`px-2 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 border transition ${
               showAdvancedTools
                 ? 'bg-amber-500 text-slate-950 border-amber-400 font-bold shadow'
                 : 'bg-slate-950 hover:bg-slate-800 text-slate-300 border-slate-800'
             }`}
             title="Configurações de Mapa, Luz, Névoa e Tokens"
           >
-            <Sliders size={13} />
-            <span className="text-xs">Opções</span>
-            <ChevronDown size={13} className={`transition-transform duration-200 ${showAdvancedTools ? 'rotate-180' : ''}`} />
+            <Sliders size={12} />
+            <span className="text-[11px]">Opções</span>
+            <ChevronDown size={12} className={`transition-transform duration-200 ${showAdvancedTools ? 'rotate-180' : ''}`} />
           </button>
 
           <button
             type="button"
             onClick={() => setIsToolbarCollapsed(true)}
-            className="p-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800 transition"
+            className="p-1 rounded-lg bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800 transition"
             title="Recolher barra para visão total do mapa"
           >
-            <ChevronUp size={13} />
+            <ChevronUp size={12} />
           </button>
         </div>
       </div>
 
-      {/* 2. SUB-BARRA EXPANSÍVEL: FERRAMENTAS AVANÇADAS DO TABULEIRO */}
+      {/* 2. SUB-BARRA EXPANSÍVEL: FERRAMENTAS AVANÇADAS DO TABULEIRO (COMPACTA) */}
       {showAdvancedTools && (
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80 animate-in slide-in-from-top-1 duration-150 text-xs">
-          
-          {/* Névoa de Guerra */}
-          <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
-            <button
-              type="button"
-              onClick={onToggleFog}
-              className={`px-2 py-0.5 rounded text-[11px] font-semibold transition ${
-                fogEnabled
-                  ? 'bg-indigo-900/80 text-indigo-200 border border-indigo-500'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-              title="Ativar / desativar Névoa de Guerra"
-            >
-              Névoa: {fogEnabled ? 'Ligada' : 'Desligada'}
-            </button>
+        <div className="flex flex-col gap-1.5 pt-1.5 border-t border-slate-800/80 animate-in slide-in-from-top-1 duration-150 text-xs">
+          {/* Linha 1: Efeitos Visuais (Luz, Névoa, Magias AoE) */}
+          <div className="flex flex-wrap items-center justify-between gap-1.5">
+            {/* Iluminação de Ambiente */}
+            {onSetAmbientLight && (
+              <div className="flex items-center gap-1 bg-slate-950 px-1.5 py-0.5 rounded-lg border border-slate-800">
+                <span className="text-[10px] text-slate-400 font-semibold mr-0.5">Luz:</span>
+                <button
+                  type="button"
+                  onClick={() => onSetAmbientLight('day')}
+                  className={`p-1 rounded transition ${
+                    ambientLight === 'day'
+                      ? 'bg-amber-500 text-slate-950 font-bold shadow'
+                      : 'text-slate-400 hover:text-amber-300'
+                  }`}
+                  title="Iluminação Diurna (Luz Plena)"
+                >
+                  <Sun size={12} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSetAmbientLight('dusk')}
+                  className={`p-1 rounded transition ${
+                    ambientLight === 'dusk'
+                      ? 'bg-amber-700 text-amber-100 font-bold shadow'
+                      : 'text-slate-400 hover:text-amber-400'
+                  }`}
+                  title="Crepúsculo (Penumbra)"
+                >
+                  <Sunset size={12} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSetAmbientLight('night')}
+                  className={`p-1 rounded transition ${
+                    ambientLight === 'night'
+                      ? 'bg-indigo-900 text-indigo-200 font-bold shadow'
+                      : 'text-slate-400 hover:text-indigo-300'
+                  }`}
+                  title="Noite Escura (Visão nas Tochas)"
+                >
+                  <Moon size={12} />
+                </button>
+              </div>
+            )}
 
-            {fogEnabled && (
-              <>
-                <button
-                  type="button"
-                  onClick={onRevealAllFog}
-                  className="px-1.5 py-0.5 text-[10px] text-emerald-400 hover:text-emerald-300 transition"
-                  title="Revelar todo o mapa"
+            {/* Névoa de Guerra */}
+            <div className="flex items-center gap-1 bg-slate-950 px-1.5 py-0.5 rounded-lg border border-slate-800">
+              <button
+                type="button"
+                onClick={onToggleFog}
+                className={`px-2 py-0.5 rounded text-[10px] font-semibold transition ${
+                  fogEnabled
+                    ? 'bg-indigo-900/80 text-indigo-200 border border-indigo-500'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+                title="Ativar / desativar Névoa de Guerra"
+              >
+                Névoa: {fogEnabled ? 'Ligada' : 'Desligada'}
+              </button>
+
+              {fogEnabled && (
+                <>
+                  <button
+                    type="button"
+                    onClick={onRevealAllFog}
+                    className="px-1.5 py-0.5 text-[10px] text-emerald-400 hover:text-emerald-300 transition"
+                    title="Revelar todo o mapa"
+                  >
+                    Revelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onResetFog}
+                    className="px-1.5 py-0.5 text-[10px] text-rose-400 hover:text-rose-300 transition"
+                    title="Cobrir todo o mapa com névoa"
+                  >
+                    Cobrir
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Áreas de Efeito (AoE) */}
+            {onAddAoETemplate && (
+              <div className="flex items-center gap-1 bg-slate-950 px-1.5 py-0.5 rounded-lg border border-slate-800">
+                <select
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      onAddAoETemplate(e.target.value);
+                      e.target.value = '';
+                    }
+                  }}
+                  className="bg-transparent text-amber-300 text-[11px] font-bold focus:outline-none cursor-pointer"
+                  defaultValue=""
                 >
-                  Revelar
-                </button>
-                <button
-                  type="button"
-                  onClick={onResetFog}
-                  className="px-1.5 py-0.5 text-[10px] text-rose-400 hover:text-rose-300 transition"
-                  title="Cobrir todo o mapa com névoa"
-                >
-                  Cobrir
-                </button>
-              </>
+                  <option value="" disabled>
+                    ✨ Magias (AoE)...
+                  </option>
+                  {AOE_PRESETS.map((preset) => (
+                    <option key={preset.id} value={preset.id} className="bg-slate-900 text-slate-200">
+                      {preset.name}
+                    </option>
+                  ))}
+                </select>
+
+                {hasAoETemplates && onClearAoETemplates && (
+                  <button
+                    type="button"
+                    onClick={onClearAoETemplates}
+                    className="p-1 text-rose-400 hover:text-rose-300 transition"
+                    title="Limpar áreas de magia"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                )}
+              </div>
             )}
           </div>
 
-          {/* Iluminação de Ambiente */}
-          {onSetAmbientLight && (
-            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
-              <button
-                type="button"
-                onClick={() => onSetAmbientLight('day')}
-                className={`p-1 rounded transition ${
-                  ambientLight === 'day'
-                    ? 'bg-amber-500 text-slate-950 font-bold'
-                    : 'text-slate-400 hover:text-amber-300'
-                }`}
-                title="Iluminação Diurna (Luz Plena)"
-              >
-                <Sun size={13} />
-              </button>
-              <button
-                type="button"
-                onClick={() => onSetAmbientLight('dusk')}
-                className={`p-1 rounded transition ${
-                  ambientLight === 'dusk'
-                    ? 'bg-amber-700 text-amber-100 font-bold'
-                    : 'text-slate-400 hover:text-amber-400'
-                }`}
-                title="Crepúsculo (Penumbra)"
-              >
-                <Sunset size={13} />
-              </button>
-              <button
-                type="button"
-                onClick={() => onSetAmbientLight('night')}
-                className={`p-1 rounded transition ${
-                  ambientLight === 'night'
-                    ? 'bg-indigo-900 text-indigo-200 font-bold'
-                    : 'text-slate-400 hover:text-indigo-300'
-                }`}
-                title="Noite Escura"
-              >
-                <Moon size={13} />
-              </button>
-            </div>
-          )}
+          {/* Linha 2: Gestão de Mapas, Tokens e Grade */}
+          <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1 border-t border-slate-800/40">
+            {/* Galeria, Mapas Prontos e Upload */}
+            <div className="flex items-center gap-1">
+              {onOpenGallery && (
+                <button
+                  type="button"
+                  onClick={onOpenGallery}
+                  className="rpg-button bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-[11px] py-0.5 px-2 shadow flex items-center gap-1"
+                  title="Galeria de Mapas de Batalha HD"
+                >
+                  <Compass size={12} />
+                  <span>Galeria</span>
+                </button>
+              )}
 
-          {/* Áreas de Efeito (AoE) */}
-          {onAddAoETemplate && (
-            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
               <select
                 onChange={(e) => {
-                  if (e.target.value) {
-                    onAddAoETemplate(e.target.value);
-                    e.target.value = '';
-                  }
+                  const preset = DEFAULT_MAP_PRESETS.find((p) => p.id === e.target.value);
+                  if (preset) onSelectMapPreset(preset);
                 }}
-                className="bg-transparent text-amber-300 text-xs font-bold focus:outline-none cursor-pointer"
-                defaultValue=""
+                className="rpg-input py-0.5 text-[11px] max-w-[140px] truncate"
               >
-                <option value="" disabled>
-                  ✨ Magias (AoE)...
-                </option>
-                {AOE_PRESETS.map((preset) => (
-                  <option key={preset.id} value={preset.id} className="bg-slate-900 text-slate-200">
-                    {preset.name}
+                <option value="">Mapas Prontos...</option>
+                {DEFAULT_MAP_PRESETS.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.isOnline ? `🌐 ${p.title}` : `📐 ${p.title}`}
                   </option>
                 ))}
               </select>
 
-              {hasAoETemplates && onClearAoETemplates && (
-                <button
-                  type="button"
-                  onClick={onClearAoETemplates}
-                  className="p-1 text-rose-400 hover:text-rose-300 transition"
-                  title="Limpar áreas de magia"
-                >
-                  <Trash2 size={12} />
-                </button>
-              )}
-            </div>
-          )}
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileUpload}
+                accept="image/*"
+                className="hidden"
+              />
 
-          {/* Criar Token */}
-          {onOpenTokenMaker && (
-            <button
-              type="button"
-              onClick={onOpenTokenMaker}
-              className="rpg-button bg-purple-950/80 hover:bg-purple-900 text-purple-200 border border-purple-700/60 text-xs py-1 px-2 flex items-center gap-1 shadow"
-              title="Abrir Criador de Tokens Circulares"
-            >
-              <Sparkles size={12} className="text-amber-400" />
-              <span className="font-bold">Criar Token</span>
-            </button>
-          )}
-
-          {/* Galeria, Mapas Prontos e Upload */}
-          <div className="flex items-center gap-1.5">
-            {onOpenGallery && (
               <button
                 type="button"
-                onClick={onOpenGallery}
-                className="rpg-button bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs py-1 px-2 shadow flex items-center gap-1"
-                title="Galeria de Mapas de Batalha"
+                onClick={() => fileInputRef.current?.click()}
+                className="rpg-button bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] py-0.5 px-2 flex items-center gap-1"
+                title="Carregar imagem de mapa personalizada (.png, .jpg, .webp)"
               >
-                <Compass size={12} />
-                <span>Galeria</span>
+                <Upload size={12} className="text-amber-400" />
+                <span>Upload</span>
+              </button>
+            </div>
+
+            {/* Criar Token */}
+            {onOpenTokenMaker && (
+              <button
+                type="button"
+                onClick={onOpenTokenMaker}
+                className="rpg-button bg-purple-950/80 hover:bg-purple-900 text-purple-200 border border-purple-700/60 text-[11px] py-0.5 px-2 flex items-center gap-1 shadow"
+                title="Abrir Criador de Tokens Circulares"
+              >
+                <Sparkles size={11} className="text-amber-400" />
+                <span className="font-bold">Criar Token</span>
               </button>
             )}
 
-            <select
-              onChange={(e) => {
-                const preset = DEFAULT_MAP_PRESETS.find((p) => p.id === e.target.value);
-                if (preset) onSelectMapPreset(preset);
-              }}
-              className="rpg-input py-1 text-xs"
-            >
-              <option value="">Mapas Prontos...</option>
-              {DEFAULT_MAP_PRESETS.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.isOnline ? `🌐 ${p.title}` : `📐 ${p.title}`}
-                </option>
-              ))}
-            </select>
-
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileUpload}
-              accept="image/*"
-              className="hidden"
-            />
-
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="rpg-button bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs py-1 px-2 flex items-center gap-1"
-              title="Carregar imagem de mapa personalizada (.png, .jpg, .webp)"
-            >
-              <Upload size={12} className="text-amber-400" />
-              <span>Upload</span>
-            </button>
-          </div>
-
-          {/* Ajuste Fino do Grid */}
-          <div className="flex items-center gap-1 bg-slate-950 px-2 py-0.5 rounded-lg border border-slate-800 text-[11px] text-slate-400">
-            <span>Grade: {gridSize}px</span>
-            <input
-              type="range"
-              min={35}
-              max={75}
-              value={gridSize}
-              onChange={(e) => onChangeGridSize(parseInt(e.target.value, 10))}
-              className="w-14 accent-amber-500 cursor-pointer"
-            />
+            {/* Ajuste Fino do Grid */}
+            <div className="flex items-center gap-1 bg-slate-950 px-2 py-0.5 rounded-lg border border-slate-800 text-[10px] text-slate-400">
+              <span>Grade: {gridSize}px</span>
+              <input
+                type="range"
+                min={35}
+                max={75}
+                value={gridSize}
+                onChange={(e) => onChangeGridSize(parseInt(e.target.value, 10))}
+                className="w-14 accent-amber-500 cursor-pointer"
+              />
+            </div>
           </div>
         </div>
       )}

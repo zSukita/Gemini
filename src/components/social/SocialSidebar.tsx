@@ -339,6 +339,17 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
     const code = targetRoom || currentRoomCode;
     if (code) {
       const res = await onSendGameInvite(resolvedId, friendName, code);
+      if (onSendDirectMessage) {
+        try {
+          await onSendDirectMessage(
+            resolvedId,
+            friendName,
+            `⚔️ Convite para jogar RPG! Entrei na mesa ${code}. Clique no botão abaixo para entrar na sala.`
+          );
+        } catch {
+          // ignore
+        }
+      }
       if (res.ok) {
         setInvitedFriends((prev) => ({ ...prev, [friendUserId]: true, [resolvedId]: true }));
         setTimeout(() => {
@@ -503,6 +514,26 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
                       }`}
                     >
                       <p className="whitespace-pre-wrap">{m.content}</p>
+                      {(() => {
+                        const match = m.content.match(/\b(MESA-[A-Za-z0-9_-]+)\b/i);
+                        if (match && onJoinRoom) {
+                          const extractedCode = match[1].toUpperCase();
+                          return (
+                            <div className="mt-2 pt-2 border-t border-amber-500/30 flex items-center justify-between gap-2">
+                              <span className="font-mono text-[10px] text-amber-300 font-bold">Mesa: {extractedCode}</span>
+                              <button
+                                type="button"
+                                onClick={() => onJoinRoom(extractedCode)}
+                                className="rpg-button bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-[10px] py-1 px-2.5 shadow rounded-lg flex items-center gap-1 active:scale-95 cursor-pointer"
+                              >
+                                <Swords size={11} />
+                                <span>Entrar na Mesa</span>
+                              </button>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                     <span className="text-[9px] text-slate-500 mt-0.5 px-1 font-mono flex items-center gap-1">
                       {timeStr}

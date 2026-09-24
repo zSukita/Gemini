@@ -5,7 +5,7 @@ import { useBattleMap } from './hooks/useBattleMap';
 import { useMultiplayer } from './hooks/useMultiplayer';
 
 import type { AdvantageMode, DiceRollResult, Spell, ThemeId, CampaignNpc } from './types/dnd5e';
-import type { FogShape, MapToken, BattleMapConfig } from './types/vtt';
+import type { FogShape, MapToken, BattleMapConfig, PeerUser } from './types/vtt';
 import { rollD20, rollDie, rollFormula } from './utils/diceRoller';
 import { broadcastSyncMessage } from './utils/syncChannel';
 
@@ -399,7 +399,7 @@ export function App() {
 
   const [isAiResponding, setIsAiResponding] = useState(false);
   const triggerAiDmRef = useRef<((promptText: string) => Promise<void>) | undefined>(undefined);
-  const executeAiMonsterAttackRef = useRef<((attack: MonsterAttackAction) => void) | undefined>(undefined);
+  const executeAiMonsterAttackRef = useRef<((attack: MonsterAttackAction) => Promise<void>) | undefined>(undefined);
   const handleTriggerAiMonsterTurnRef = useRef<((combatant?: Combatant) => void) | undefined>(undefined);
 
   const setTokensRef = useRef<React.Dispatch<React.SetStateAction<MapToken[]>> | null>(null);
@@ -455,17 +455,91 @@ export function App() {
       }
       showNotification('🗺️ Mesa e mapa sincronizados com o Mestre!');
     },
-    onRequestRoomState: (requesterPeerId) => {
-      if (isHost && mapConfigRef.current) {
-        broadcastRoomSync(
-          {
-            mapConfig: mapConfigRef.current,
-            tokens: tokensRef.current,
-            chatLog: chatLogRef.current,
-            encounter: encounterRef.current,
-          },
-          requesterPeerId
-        );
+    onRequestRoomState: (requesterPeerId, requesterData) => {
+      if (isHost) {
+        if (requesterData?.userName) {
+          const peerName = requesterData.userName;
+          setEncounter((prev) => {
+            const exists = prev.combatants.some(
+              (c) => (requesterPeerId && c.playerId === requesterPeerId) || c.name.toLowerCase() === peerName.toLowerCase()
+            );
+            if (exists) return prev;
+            const dexMod = requesterData.dexScore ? Math.floor((requesterData.dexScore - 10) / 2) : 0;
+            const init = (requesterData.initiativeBonus || 0) + dexMod + (prev.isRunning ? rollDie(20) : 0);
+            const newCombatant: Combatant = {
+              id: `combatant-peer-${requesterPeerId || Date.now()}`,
+              name: peerName,
+              type: 'player',
+              avatarUrl: requesterData.avatarUrl,
+              initiative: init,
+              armorClass: requesterData.armorClass || 10,
+              maxHp: requesterData.maxHp || 10,
+              currentHp: requesterData.currentHp ?? requesterData.maxHp ?? 10,
+              tempHp: 0,
+              conditions: [],
+              playerId: requesterPeerId,
+            };
+            return {
+              ...prev,
+              combatants: [...prev.combatants, newCombatant],
+            };
+          });
+        }
+        setTimeout(() => {
+          if (mapConfigRef.current) {
+            broadcastRoomSync(
+              {
+                mapConfig: mapConfigRef.current,
+                tokens: tokensRef.current,
+                chatLog: chatLogRef.current,
+                encounter: encounterRef.current,
+              },
+              requesterPeerId
+            );
+          }
+        }, 120);
+      }
+    },
+    onRemoteCharacterSync: (peer: PeerUser) => {
+      if (!peer || !peer.name) return;
+      if (isHost) {
+        setEncounter((prev) => {
+          const peerId = peer.peerId;
+          const existingIdx = prev.combatants.findIndex(
+            (c) => (peerId && c.playerId === peerId) || c.name.toLowerCase() === peer.name.toLowerCase()
+          );
+          if (existingIdx >= 0) {
+            const updated = [...prev.combatants];
+            updated[existingIdx] = {
+              ...updated[existingIdx],
+              name: peer.name,
+              avatarUrl: peer.avatarUrl || updated[existingIdx].avatarUrl,
+              currentHp: peer.currentHp ?? updated[existingIdx].currentHp,
+              maxHp: peer.maxHp ?? updated[existingIdx].maxHp,
+              armorClass: peer.armorClass ?? updated[existingIdx].armorClass,
+            };
+            return { ...prev, combatants: updated };
+          }
+          const dexMod = peer.dexScore ? Math.floor((peer.dexScore - 10) / 2) : 0;
+          const init = (peer.initiativeBonus || 0) + dexMod + (prev.isRunning ? rollDie(20) : 0);
+          const newCombatant: Combatant = {
+            id: `combatant-peer-${peerId || Date.now()}`,
+            name: peer.name,
+            type: 'player',
+            avatarUrl: peer.avatarUrl,
+            initiative: init,
+            armorClass: peer.armorClass || 10,
+            maxHp: peer.maxHp || 10,
+            currentHp: peer.currentHp ?? peer.maxHp ?? 10,
+            tempHp: 0,
+            conditions: [],
+            playerId: peerId,
+          };
+          return {
+            ...prev,
+            combatants: [...prev.combatants, newCombatant],
+          };
+        });
       }
     },
     onRemoteDirectMessage: (dm) => {
@@ -477,6 +551,11 @@ export function App() {
       );
     },
     onRemoteChatMessage: (remoteMsg, rawPayload) => {
+      // Se for o Host da sala e o jogador remoto finalizou seu turno
+      if (isHost && remoteMsg.text.includes('[Turno] Finalizei meu turno')) {
+        nextTurn();
+      }
+
       // Se for o Host da sala e o remetente não tiver processado a IA localmente
       if (isHost && remoteMsg.type === 'PUBLIC' && rawPayload?.aiHandledBySender !== true) {
         const trimmed = remoteMsg.text.trim();
@@ -565,6 +644,18 @@ export function App() {
     [applyCombatantHpDelta, isConnected, broadcastTokenMove, character.name, setTokens]
   );
 
+  // Sincroniza o combate D&D 5e do Host com todos os pares conectados quando o encontro mudar
+  useEffect(() => {
+    if (isHost && isConnected && mapConfigRef.current) {
+      broadcastRoomSync({
+        mapConfig: mapConfigRef.current,
+        tokens: tokensRef.current,
+        chatLog: chatLogRef.current,
+        encounter,
+      });
+    }
+  }, [isHost, isConnected, encounter, broadcastRoomSync]);
+
   // Alternar Condição de Combatente e Sincronizar Imediatamente os Tokens no Mapa e Rede P2P
   const handleToggleCombatantCondition = useCallback(
     (id: string, condition: ConditionKey) => {
@@ -642,43 +733,36 @@ export function App() {
           }
         );
 
-        sendChatMessage({
-          id: aiReply.id,
-          text: aiReply.content,
-          senderName: '✨ Mestre Supremo (IA)',
-          type: 'AI_DM',
-          suggestedActions: aiReply.suggestedActions,
-          requestedRoll: aiReply.requestedRoll,
-          monsterAttack: aiReply.monsterAttack,
-          monsterSpawns: aiReply.monsterSpawns,
-          mapMoves: aiReply.mapMoves,
-          lootReward: aiReply.lootReward,
-        });
-
-        // 1. Inserir novos monstros no encontro e tokens no mapa (SPAWN)
+        // 1. Inserir novos monstros no encontro e tokens no mapa (SPAWN / REFORÇOS)
         if (aiReply.monsterSpawns && aiReply.monsterSpawns.length > 0) {
           aiReply.monsterSpawns.forEach((spawn) => {
-            // Se o monstro exato com count=1 já existe no encontro ativo, evita duplicações desnecessárias
-            const alreadyExists = spawn.count <= 1 && encounterRef.current?.combatants.some((c) => {
-              return c.name.toLowerCase() === spawn.monsterName.toLowerCase();
-            });
+            const cleanSpawnName = spawn.monsterName.replace(/\s*\([^)]*\)/g, '').trim();
+            const spawnBase = cleanSpawnName.toLowerCase().replace(/\s*\d+$/, '').trim();
+
+            // Se o monstro com esse nome base já existe no encontro ativo e está vivo, evita duplicações desnecessárias
+            const alreadyExists =
+              spawn.count <= 1 &&
+              encounterRef.current?.combatants.some((c) => {
+                const cBase = c.name.toLowerCase().replace(/\s*\([^)]*\)/g, '').replace(/\s*\d+$/, '').trim();
+                return cBase === spawnBase && c.currentHp > 0;
+              });
 
             if (alreadyExists) {
               return;
             }
 
-            const foundMon = SRD_MONSTERS.find(
-              (m) =>
-                m.name.toLowerCase().includes(spawn.monsterName.toLowerCase()) ||
-                spawn.monsterName.toLowerCase().includes(m.name.toLowerCase())
-            );
+            const foundMon = SRD_MONSTERS.find((m) => {
+              const mClean = m.name.toLowerCase().replace(/\s*\([^)]*\)/g, '').trim();
+              const mBase = mClean.replace(/\s*\d+$/, '').trim();
+              return mBase === spawnBase || mClean.includes(spawnBase) || spawnBase.includes(mBase);
+            });
 
             if (foundMon) {
               addMonsterCombatant(foundMon, spawn.count);
             } else {
               const fallbackMon: Monster = {
                 id: `custom-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-                name: spawn.monsterName,
+                name: cleanSpawnName,
                 size: 'Médio',
                 type: 'Monstruosidade',
                 alignment: 'Hostil',
@@ -713,7 +797,7 @@ export function App() {
 
             sendChatMessage(
               {
-                text: `⚠️ **Reforços Inimigos:** ${spawn.count}x **${spawn.monsterName}** entraram no combate e foram adicionados ao mapa tático!`,
+                text: `⚠️ **Reforços Inimigos:** ${spawn.count}x **${cleanSpawnName}** entraram no combate e foram adicionados ao mapa tático!`,
                 senderName: '✨ Mestre Supremo (IA)',
                 type: 'AI_DM',
               },
@@ -822,12 +906,7 @@ export function App() {
           });
         }
 
-        // 3. Executar ataque mecânico do monstro
-        if (aiReply.monsterAttack) {
-          executeAiMonsterAttackRef.current?.(aiReply.monsterAttack);
-        }
-
-        // 4. Aplicar derrota mecânica de monstros (DERROTAR_MONSTRO ou heurística de abate narrativo)
+        // 3. Aplicar derrota mecânica de monstros (DERROTAR_MONSTRO ou heurística de abate narrativo)
         const defeatedNames = new Set<string>();
         if (aiReply.defeatedMonsters && aiReply.defeatedMonsters.length > 0) {
           aiReply.defeatedMonsters.forEach((name) => defeatedNames.add(name.toLowerCase()));
@@ -888,7 +967,7 @@ export function App() {
           }
         });
 
-        // 5. Aplicar dano mecânico a monstros (DANO_MONSTRO)
+        // 4. Aplicar dano mecânico a monstros (DANO_MONSTRO)
         if (aiReply.monsterDamage && aiReply.monsterDamage.length > 0) {
           aiReply.monsterDamage.forEach((dmg) => {
             const dmgNameLower = dmg.monsterName.toLowerCase();
@@ -904,6 +983,22 @@ export function App() {
             }
           });
         }
+
+        // 5. Executar ataque mecânico do monstro (dados 3D, suspense de CA e dedução de PV do herói)
+        if (aiReply.monsterAttack) {
+          await executeAiMonsterAttackRef.current?.(aiReply.monsterAttack);
+        }
+
+        // 6. Enviar resposta narrativa do Mestre IA com as ações sugeridas (sempre por último no chat)
+        sendChatMessage({
+          id: aiReply.id,
+          text: aiReply.content,
+          senderName: '✨ Mestre Supremo (IA)',
+          type: 'AI_DM',
+          suggestedActions: aiReply.suggestedActions,
+          requestedRoll: aiReply.requestedRoll,
+          lootReward: aiReply.lootReward,
+        });
       } catch (err: unknown) {
         const errText = err instanceof Error ? err.message : String(err);
         sendChatMessage({
@@ -1041,7 +1136,7 @@ export function App() {
         Boolean(groqKey) ||
         Boolean(geminiKey);
 
-      const willHandleAi = isAiCommand && isAiReady;
+      const willHandleAi = isAiCommand && isAiReady && (!isConnected || isHost);
 
       if (isObj) {
         if (textOrPayload.diceRoll) {
@@ -1071,6 +1166,11 @@ export function App() {
       }
 
       if (isAiCommand) {
+        if (isConnected && !isHost) {
+          // Em sala multiplayer P2P, apenas o Mestre (Host) processa a IA e narra para todos
+          return;
+        }
+
         let cleanPrompt = trimmed
           .replace(/^(@mestre|\/mestre|\/ia|@ia|@dm)\s*[:,-]?\s*/i, '')
           .trim();
@@ -1082,7 +1182,7 @@ export function App() {
         triggerAiDm(cleanPrompt);
       }
     },
-    [sendChatMessage, character.name, triggerAiDm, addRollResult, isConnected, broadcastDiceRoll]
+    [sendChatMessage, character.name, triggerAiDm, addRollResult, isConnected, isHost, broadcastDiceRoll]
   );
 
   // Criar Mesa Cooperativa com Mestre IA (Mapa Tático + Monstros + História)
@@ -1121,6 +1221,13 @@ export function App() {
           addMonsterCombatant(mon, m.count);
         }
       });
+
+      // Se houver monstros no cenário, inicia o combate D&D 5e e a ordem de turnos
+      if (scenario.monsters.length > 0) {
+        setTimeout(() => {
+          startEncounter();
+        }, 300);
+      }
 
       // 6. Envia o prólogo/história da IA para o chat da sala
       const prologueText = customPrompt?.trim()
@@ -1161,6 +1268,7 @@ export function App() {
       resetEncounter,
       importPlayerCharacters,
       addMonsterCombatant,
+      startEncounter,
       sendChatMessage,
       showNotification,
     ]
@@ -1221,6 +1329,13 @@ export function App() {
         }
       });
 
+      // Se houver monstros no cenário, inicia o combate D&D 5e e a ordem de turnos
+      if (scenario.monsters.length > 0) {
+        setTimeout(() => {
+          startEncounter();
+        }, 300);
+      }
+
       // 5. Monta o prólogo narrativo da IA
       const prologueText = customPrompt?.trim()
         ? `📜 **Prólogo da Aventura Solo: ${scenario.title}**\n\n${customPrompt}\n\nO Mestre Supremo (IA) aguarda as suas ações no mapa tático!`
@@ -1261,6 +1376,7 @@ export function App() {
       resetEncounter,
       importPlayerCharacters,
       addMonsterCombatant,
+      startEncounter,
       setChatLog,
       showNotification,
     ]
@@ -1324,7 +1440,15 @@ export function App() {
           (c) => c.name.toLowerCase() === (character.characterClass || '').toLowerCase()
         )?.avatarUrl;
         const effectiveAvatar = character.avatarUrl || classAvatar;
-        const ok = await joinRoom(targetRoomCode, character.name || 'Jogador', effectiveAvatar);
+        const charData = {
+          characterClass: character.characterClass,
+          currentHp: character.currentHp,
+          maxHp: character.maxHp,
+          armorClass: character.armorClass,
+          dexScore: character.abilities?.dex?.score,
+          initiativeBonus: character.initiativeBonus,
+        };
+        const ok = await joinRoom(targetRoomCode, character.name || 'Jogador', effectiveAvatar, charData);
         if (ok) {
           setCurrentMode('vtt');
           showNotification(`🎉 Você entrou na mesa ${targetRoomCode}!`);
@@ -1333,7 +1457,7 @@ export function App() {
         }
       }
     },
-    [handleAcceptInvite, joinRoom, character.name, character.characterClass, character.avatarUrl, showNotification]
+    [handleAcceptInvite, joinRoom, character, showNotification]
   );
 
   // Criar sala e convidar amigo caso ainda não esteja em uma sala
@@ -1666,85 +1790,107 @@ export function App() {
 
   // Executa o ataque autônomo do monstro pela IA com dados 3D na tela, transmissão P2P e dedução de PV
   const executeAiMonsterAttack = useCallback(
-    (attack: MonsterAttackAction) => {
-      // 1. Notificação de início do ataque
-      showNotification(`🐉 ${attack.monsterName} ataca com ${attack.attackName}!`);
+    (attack: MonsterAttackAction): Promise<void> => {
+      return new Promise<void>((resolve) => {
+        // 1. Notificação de início do ataque
+        showNotification(`🐉 ${attack.monsterName} ataca com ${attack.attackName}!`);
 
-      // 2. Rolagem de Ataque com d20 único (aciona animação 3D e broadcast P2P)
-      const targetName = attack.target || character.name || 'o Herói';
-      const targetAc = character.armorClass || 10;
-      const attackLabel = `${attack.monsterName}: ${attack.attackName}${attack.target ? ` (vs ${attack.target})` : ''}`;
-      
-      const attackRoll = rollD20(attackLabel, attack.attackBonus || 0, 'normal');
-      addRollResult(attackRoll);
-      if (isConnected) {
-        broadcastDiceRoll(attackRoll, attack.monsterName);
-      }
+        // 2. Rolagem de Ataque com d20 único (aciona animação 3D e broadcast P2P)
+        const targetName = attack.target || character.name || 'o Herói';
+        const targetAc = character.armorClass || 10;
+        const attackLabel = `${attack.monsterName}: ${attack.attackName}${attack.target ? ` (vs ${attack.target})` : ''}`;
+        
+        const attackRoll = rollD20(attackLabel, attack.attackBonus || 0, 'normal');
+        addRollResult(attackRoll);
+        if (isConnected) {
+          broadcastDiceRoll(attackRoll, attack.monsterName);
+        }
 
-      const natural = attackRoll.rolls?.[0] ?? attackRoll.selectedRoll;
-      const isNat20 = natural === 20 || Boolean(attackRoll.isCriticalSuccess);
-      const isNat1 = natural === 1 || Boolean(attackRoll.isCriticalFailure);
-      const isHit = isNat20 || (!isNat1 && attackRoll.total >= targetAc);
+        const natural = attackRoll.rolls?.[0] ?? attackRoll.selectedRoll;
+        const isNat20 = natural === 20 || Boolean(attackRoll.isCriticalSuccess);
+        const isNat1 = natural === 1 || Boolean(attackRoll.isCriticalFailure);
+        const isHit = isNat20 || (!isNat1 && attackRoll.total >= targetAc);
 
-      // 3. Intervalo de suspense (1.6s) para os jogadores conferirem se acertou a CA antes do dano
-      setTimeout(() => {
-        let finalDamage = 0;
-        let damageRoll: DiceRollResult | null = null;
+        // 3. Intervalo de suspense (1.6s) para os jogadores conferirem se acertou a CA antes do dano
+        setTimeout(() => {
+          let finalDamage = 0;
+          let damageRoll: DiceRollResult | null = null;
 
-        if (isHit) {
-          const damageLabel = `${attack.monsterName}: Dano ${attack.attackName}`;
-          damageRoll = rollFormula(attack.damageFormula || '1d6', damageLabel);
-          finalDamage = isNat20 ? damageRoll.total * 2 : damageRoll.total;
+          if (isHit) {
+            const damageLabel = `${attack.monsterName}: Dano ${attack.attackName}`;
+            damageRoll = rollFormula(attack.damageFormula || '1d6', damageLabel);
+            finalDamage = isNat20 ? damageRoll.total * 2 : damageRoll.total;
 
-          // Se o herói local for o alvo, deduz vida na ficha e no mapa
-          const isLocalTarget = !attack.target || attack.target.toLowerCase() === (character.name || '').toLowerCase();
-          if (isLocalTarget && finalDamage > 0) {
-            applyDamage(finalDamage);
+            // Se o herói local for o alvo, deduz vida na ficha e no mapa
+            const isLocalTarget =
+              !attack.target ||
+              attack.target.toLowerCase() === (character.name || '').toLowerCase() ||
+              attack.target.toLowerCase() === 'o herói';
 
-            setTokens((prev) =>
-              prev.map((t) => {
-                if (t.type === 'player' && t.name.toLowerCase() === (character.name || '').toLowerCase()) {
-                  const current = t.currentHp ?? t.maxHp ?? 10;
-                  return { ...t, currentHp: Math.max(0, current - finalDamage) };
-                }
-                return t;
-              })
+            if (isLocalTarget && finalDamage > 0) {
+              applyDamage(finalDamage);
+
+              setTokens((prev) =>
+                prev.map((t) => {
+                  if (t.type === 'player' && t.name.toLowerCase() === (character.name || '').toLowerCase()) {
+                    const current = t.currentHp ?? t.maxHp ?? 10;
+                    return { ...t, currentHp: Math.max(0, current - finalDamage) };
+                  }
+                  return t;
+                })
+              );
+            }
+
+            // Também deduz o dano no combatente correspondente em encounter.combatants
+            const targetCombatant = encounterRef.current?.combatants.find(
+              (c) =>
+                c.name.toLowerCase() === (attack.target || '').toLowerCase() ||
+                (isLocalTarget && c.name.toLowerCase() === (character.name || '').toLowerCase())
             );
+            if (targetCombatant && finalDamage > 0) {
+              applyCombatantHpDelta(targetCombatant.id, -finalDamage);
+            }
           }
-        }
 
-        const breakdown = attackRoll.breakdown;
-        const outcome = isNat20
-          ? '💥 ACERTO CRÍTICO!'
-          : isHit
-          ? `⚔️ ACERTOU! (vs CA ${targetAc})`
-          : `🛡️ ERROU! (vs CA ${targetAc})`;
+          const breakdown = attackRoll.breakdown;
+          const outcome = isNat20
+            ? '💥 ACERTO CRÍTICO!'
+            : isHit
+            ? `⚔️ ACERTOU! (vs CA ${targetAc})`
+            : `🛡️ ERROU! (vs CA ${targetAc})`;
 
-        let resultChat = `⚔️ **${attack.monsterName}** desferiu **${attack.attackName}** contra **${targetName}**!\n\n` +
-          `🎲 **Rolagem de Ataque:** [${breakdown}] ➜ **${outcome}**\n`;
+          let resultChat = `⚔️ **${attack.monsterName}** desferiu **${attack.attackName}** contra **${targetName}**!\n\n` +
+            `🎲 **Rolagem de Ataque:** [${breakdown}] ➜ **${outcome}**\n`;
 
-        if (isHit && damageRoll) {
-          resultChat += `🩸 **Dano de D&D 5e:** [${damageRoll.breakdown}] = **${finalDamage}** de dano sofrido!\n` +
-            `💔 **${targetName}** sofreu dano em combate!`;
-        } else {
-          resultChat += `🛡️ O golpe ricocheteou na armadura ou foi esquivado a tempo!`;
-        }
+          if (isHit && damageRoll) {
+            resultChat += `🩸 **Dano de D&D 5e:** [${damageRoll.breakdown}] = **${finalDamage}** de dano sofrido!\n` +
+              `💔 **${targetName}** sofreu dano em combate!`;
+          } else {
+            resultChat += `🛡️ O golpe ricocheteou na armadura ou foi esquivado a tempo!`;
+          }
 
-        sendChatMessage(
-          {
-            text: resultChat,
-            senderName: '✨ Mestre Supremo (IA)',
-            type: 'AI_DM',
-            diceRoll: damageRoll || undefined,
-          },
-          '✨ Mestre Supremo (IA)'
-        );
+          sendChatMessage(
+            {
+              text: resultChat,
+              senderName: '✨ Mestre Supremo (IA)',
+              type: 'AI_DM',
+              diceRoll: damageRoll || undefined,
+            },
+            '✨ Mestre Supremo (IA)'
+          );
 
-        // 4. Notificação e aviso para passar o turno
-        showNotification(`⚔️ ${attack.monsterName} finalizou o ataque! Você já pode passar o turno no combate.`);
-      }, 1600);
+          // 4. Notificação e avanço automático de turno do monstro após o ataque
+          showNotification(`⚔️ ${attack.monsterName} finalizou o ataque!`);
+          if (encounterRef.current?.isRunning) {
+            setTimeout(() => {
+              nextTurn();
+            }, 1000);
+          }
+          resolve();
+        }, 1600);
+      });
     },
-    [character, applyDamage, addRollResult, isConnected, broadcastDiceRoll, setTokens, sendChatMessage, showNotification]
+    [character, applyDamage, applyCombatantHpDelta, nextTurn, addRollResult, isConnected, broadcastDiceRoll, setTokens, sendChatMessage, showNotification]
   );
   executeAiMonsterAttackRef.current = executeAiMonsterAttack;
 
@@ -1799,6 +1945,51 @@ export function App() {
     [encounter.combatants, encounter.activeCombatantIndex, executeAiMonsterAttack, sendChatMessage, showNotification]
   );
   handleTriggerAiMonsterTurnRef.current = handleTriggerAiMonsterTurn;
+
+  // Avança o turno D&D 5e e sincroniza entre Host e jogadores
+  const handleNextTurn = useCallback(() => {
+    nextTurn();
+    if (isConnected) {
+      if (isHost) {
+        setTimeout(() => {
+          if (mapConfigRef.current) {
+            broadcastRoomSync({
+              mapConfig: mapConfigRef.current,
+              tokens: tokensRef.current,
+              chatLog: chatLogRef.current,
+              encounter: encounterRef.current,
+            });
+          }
+        }, 50);
+      } else {
+        sendChatMessage(
+          {
+            text: '⚔️ [Turno] Finalizei meu turno no combate!',
+            senderName: character.name || 'Jogador',
+            type: 'PUBLIC',
+          },
+          character.name || 'Jogador'
+        );
+      }
+    }
+  }, [nextTurn, isConnected, isHost, broadcastRoomSync, sendChatMessage, character.name]);
+
+  // Inicia o encontro D&D 5e e sincroniza com a sala
+  const handleStartEncounter = useCallback(() => {
+    startEncounter();
+    if (isConnected && isHost) {
+      setTimeout(() => {
+        if (mapConfigRef.current) {
+          broadcastRoomSync({
+            mapConfig: mapConfigRef.current,
+            tokens: tokensRef.current,
+            chatLog: chatLogRef.current,
+            encounter: encounterRef.current,
+          });
+        }
+      }, 100);
+    }
+  }, [startEncounter, isConnected, isHost, broadcastRoomSync]);
 
   // Descanso Curto (Abre modal interativo para gastar dados de vida e recarregar recursos)
   const handleShortRest = () => {
@@ -2240,8 +2431,8 @@ export function App() {
           <DmScreen
             encounter={encounter}
             charactersList={charactersList}
-            onStartEncounter={startEncounter}
-            onNextTurn={nextTurn}
+            onStartEncounter={handleStartEncounter}
+            onNextTurn={handleNextTurn}
             onPreviousTurn={previousTurn}
             onRollAllMonsters={rollAllMonstersInitiative}
             onSortInitiative={sortCombatantsByInitiative}
@@ -2306,8 +2497,8 @@ export function App() {
             onRollDie={handleRollDie}
             onRollFormula={(formula, label) => handleRollFormula(formula, label)}
             onRollD20={handleRollD20}
-            onStartEncounter={startEncounter}
-            onNextTurn={nextTurn}
+            onStartEncounter={handleStartEncounter}
+            onNextTurn={handleNextTurn}
             onPreviousTurn={previousTurn}
             onSortInitiative={sortCombatantsByInitiative}
             onResetEncounter={resetEncounter}
@@ -2436,7 +2627,15 @@ export function App() {
         onCreateAiRoom={handleCreateAiRoom}
         onJoinRoom={(code, name) => {
           const classAvatar = SRD_CLASSES.find((c) => c.name.toLowerCase() === (character.characterClass || '').toLowerCase())?.avatarUrl;
-          return joinRoom(code, name, character.avatarUrl || classAvatar);
+          const charData = {
+            characterClass: character.characterClass,
+            currentHp: character.currentHp,
+            maxHp: character.maxHp,
+            armorClass: character.armorClass,
+            dexScore: character.abilities?.dex?.score,
+            initiativeBonus: character.initiativeBonus,
+          };
+          return joinRoom(code, name, character.avatarUrl || classAvatar, charData);
         }}
         onDisconnect={disconnect}
         onSendMessage={handleUserChatMessage}
@@ -2489,7 +2688,16 @@ export function App() {
         }}
         onCreateAndInvite={handleCreateRoomAndInvite}
         onJoinRoom={async (code) => {
-          const ok = await joinRoom(code, character.name || 'Jogador', character.avatarUrl);
+          const classAvatar = SRD_CLASSES.find((c) => c.name.toLowerCase() === (character.characterClass || '').toLowerCase())?.avatarUrl;
+          const charData = {
+            characterClass: character.characterClass,
+            currentHp: character.currentHp,
+            maxHp: character.maxHp,
+            armorClass: character.armorClass,
+            dexScore: character.abilities?.dex?.score,
+            initiativeBonus: character.initiativeBonus,
+          };
+          const ok = await joinRoom(code, character.name || 'Jogador', character.avatarUrl || classAvatar, charData);
           if (ok) {
             setCurrentMode('vtt');
           }

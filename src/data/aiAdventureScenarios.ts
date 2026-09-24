@@ -41,8 +41,7 @@ export const AI_ADVENTURE_SCENARIOS: AiAdventureScenario[] = [
       reason: 'Para identificar qual sarcófago está prestes a se romper primeiro',
     },
     monsters: [
-      { monsterId: 'srd-skeleton', count: 2, initialX: 300, initialY: 350 },
-      { monsterId: 'srd-zombie', count: 1, initialX: 600, initialY: 350 },
+      { monsterId: 'srd-skeleton', count: 3, initialX: 300, initialY: 350 },
     ],
   },
   {

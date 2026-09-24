@@ -49,10 +49,20 @@ import {
   AlertTriangle,
   Wand2,
   Wifi,
-  Map
+  Map,
+  Volume2,
+  VolumeX,
+  Square
 } from 'lucide-react';
 import type { ChatMessageType } from '../../types/chat';
 import { AI_ADVENTURE_SCENARIOS, type AiAdventureScenario } from '../../data/aiAdventureScenarios';
+import {
+  speakNarrative,
+  stopNarrativeVoice,
+  isAutoNarrationEnabled,
+  toggleAutoNarration,
+  isSpeechSynthesisSupported
+} from '../../utils/narrationVoice';
 
 interface AiDungeonMasterModalProps {
   isOpen: boolean;
@@ -120,6 +130,49 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
   const [oracleResult, setOracleResult] = useState('');
   const [isOracleLoading, setIsOracleLoading] = useState(false);
   const [copiedNotification, setCopiedNotification] = useState(false);
+
+  // Narração por Voz (TTS Gratuito)
+  const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
+  const [autoVoice, setAutoVoice] = useState<boolean>(() => isAutoNarrationEnabled());
+
+  // Interrompe voz ao desmontar componente
+  useEffect(() => {
+    return () => {
+      stopNarrativeVoice();
+    };
+  }, []);
+
+  const handleClose = () => {
+    stopNarrativeVoice();
+    setSpeakingMsgId(null);
+    onClose();
+  };
+
+  const handleToggleAutoVoice = () => {
+    const next = toggleAutoNarration();
+    setAutoVoice(next);
+    if (!next) {
+      stopNarrativeVoice();
+      setSpeakingMsgId(null);
+    }
+  };
+
+  const handleToggleSpeak = (msgId: string, text: string) => {
+    if (speakingMsgId === msgId) {
+      stopNarrativeVoice();
+      setSpeakingMsgId(null);
+    } else {
+      stopNarrativeVoice();
+      const started = speakNarrative(text, {
+        onStart: () => setSpeakingMsgId(msgId),
+        onEnd: () => setSpeakingMsgId(null),
+        onError: () => setSpeakingMsgId(null),
+      });
+      if (started) {
+        setSpeakingMsgId(msgId);
+      }
+    }
+  };
 
   // Efeito progressivo de leitura do mestre para a mensagem atual
   useEffect(() => {
@@ -252,6 +305,14 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
         suggestedActions: introMessage.suggestedActions,
       });
     }
+
+    if (autoVoice && isSpeechSynthesisSupported()) {
+      speakNarrative(introMessage.content, {
+        onStart: () => setSpeakingMsgId(introMessage.id),
+        onEnd: () => setSpeakingMsgId(null),
+        onError: () => setSpeakingMsgId(null),
+      });
+    }
   };
 
   // Iniciar com premissa customizada
@@ -283,6 +344,14 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
         senderName: '✨ Mestre Supremo (IA)',
         type: 'AI_DM',
         suggestedActions: introMessage.suggestedActions,
+      });
+    }
+
+    if (autoVoice && isSpeechSynthesisSupported()) {
+      speakNarrative(introMessage.content, {
+        onStart: () => setSpeakingMsgId(introMessage.id),
+        onEnd: () => setSpeakingMsgId(null),
+        onError: () => setSpeakingMsgId(null),
       });
     }
   };
@@ -334,6 +403,14 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
       saveStoredChatHistory(finalHistory);
       setTypingMessageId(response.id);
       setVisibleChars(1);
+
+      if (autoVoice && isSpeechSynthesisSupported()) {
+        speakNarrative(response.content, {
+          onStart: () => setSpeakingMsgId(response.id),
+          onEnd: () => setSpeakingMsgId(null),
+          onError: () => setSpeakingMsgId(null),
+        });
+      }
 
       if (onBroadcastToRoom && autoBroadcastToRoom) {
         onBroadcastToRoom({
@@ -553,8 +630,8 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
 
             <button
               type="button"
-              onClick={onClose}
-              className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
+              onClick={handleClose}
+              className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition cursor-pointer"
               title="Fechar Janela"
             >
               <X size={18} />
@@ -720,6 +797,20 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
 
                       <button
                         type="button"
+                        onClick={handleToggleAutoVoice}
+                        className={`px-2 sm:px-2.5 py-1 rounded-lg border transition flex items-center gap-1 text-[11px] font-bold cursor-pointer ${
+                          autoVoice
+                            ? 'bg-amber-950/80 text-amber-300 border-amber-500/50 shadow-sm shadow-amber-500/20'
+                            : 'bg-slate-800 hover:bg-slate-700 text-slate-400 border-slate-700'
+                        }`}
+                        title="Narração automática por voz das respostas do Mestre (100% gratuita)"
+                      >
+                        {autoVoice ? <Volume2 size={12} className="text-amber-400" /> : <VolumeX size={12} className="text-slate-400" />}
+                        <span className="hidden sm:inline">{autoVoice ? 'Voz: Ativa' : 'Voz: Mudo'}</span>
+                      </button>
+
+                      <button
+                        type="button"
                         onClick={handleCopyHistory}
                         className="px-2 sm:px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition flex items-center gap-1 text-[11px]"
                         title="Copiar toda a crônica da aventura"
@@ -809,6 +900,29 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
                                     <span>{savedJournalMsgIds.has(msg.id) ? 'No Diário ✓' : 'Diário'}</span>
                                   </button>
                                 )}
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleSpeak(msg.id, msg.content)}
+                                  className={`ml-1 text-[10px] px-2 py-0.5 rounded border flex items-center gap-1 transition cursor-pointer ${
+                                    speakingMsgId === msg.id
+                                      ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 animate-pulse'
+                                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                                  }`}
+                                  title={speakingMsgId === msg.id ? 'Parar narração de voz' : 'Ouvir narração do Mestre por voz'}
+                                >
+                                  {speakingMsgId === msg.id ? (
+                                    <>
+                                      <Square size={10} className="fill-current" />
+                                      <span>Parar</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Volume2 size={10} />
+                                      <span>Ouvir</span>
+                                    </>
+                                  )}
+                                </button>
                               </>
                             ) : (
                               <>
@@ -1393,6 +1507,60 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
                     placeholder="Ex: Não mate meu personagem no nível 1; Foco em descrições poéticas; Inimigos falam em charadas..."
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 focus:outline-hidden focus:border-amber-500"
                   />
+                </div>
+              </div>
+
+              {/* Narração por Voz (Text-to-Speech) */}
+              <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                    <Volume2 size={14} className="text-amber-400" />
+                    <span>Narração por Voz do Mestre (TTS Gratuito)</span>
+                  </label>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold uppercase">
+                    100% Grátis & Offline
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Utiliza o sintetizador de voz nativo do seu navegador e sistema operacional para ler as narrações com entonação em Português (pt-BR), sem consumir tokens de API e sem custo algum.
+                </p>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={autoVoice}
+                      onChange={handleToggleAutoVoice}
+                      className="rounded border-slate-700 text-amber-500 focus:ring-amber-500"
+                    />
+                    <span className="text-xs text-slate-300 font-bold">
+                      Narrar automaticamente cada resposta do Mestre em voz alta
+                    </span>
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleToggleSpeak(
+                        'preview_voice',
+                        'Saudações, nobre aventureiro! Os dados foram rolados e o destino do seu grupo aguarda além dos portões.'
+                      )
+                    }
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 font-bold text-xs rounded-lg transition flex items-center gap-1.5 cursor-pointer active:scale-95"
+                  >
+                    {speakingMsgId === 'preview_voice' ? (
+                      <>
+                        <Square size={12} className="fill-current text-amber-400" />
+                        <span>Parar Teste</span>
+                      </>
+                    ) : (
+                      <>
+                        <Volume2 size={12} />
+                        <span>Testar Voz do Mestre</span>
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
 

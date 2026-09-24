@@ -417,86 +417,89 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in">
-      <div className="w-full max-w-5xl h-[92vh] max-h-[850px] bg-slate-900 border-2 border-amber-500/50 rounded-2xl shadow-2xl flex flex-col overflow-hidden relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in">
+      <div className="w-full max-w-5xl h-dvh sm:h-[92vh] sm:max-h-[850px] bg-slate-900 border-0 sm:border-2 border-amber-500/50 rounded-none sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden relative">
         
         {/* Top Header */}
-        <div className="px-5 py-3 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border-b border-amber-500/30 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 via-amber-600 to-amber-700 flex items-center justify-center text-slate-950 shadow-md shadow-amber-500/20">
-              <Sparkles size={22} className="animate-pulse" />
+        <div className="px-3 sm:px-5 py-2.5 sm:py-3 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border-b border-amber-500/30 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-amber-500 via-amber-600 to-amber-700 flex items-center justify-center text-slate-950 shadow-md shadow-amber-500/20 shrink-0">
+              <Sparkles size={18} className="animate-pulse sm:w-[22px] sm:h-[22px]" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="font-serif font-black tracking-wider text-lg text-amber-200">
-                  Arcana AI Dungeon Master
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <h2 className="font-serif font-black tracking-wider text-base sm:text-lg text-amber-200 truncate">
+                  Arcana AI DM
                 </h2>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold uppercase tracking-wider">
+                <span className="text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold uppercase tracking-wider">
                   Mestre Supremo
                 </span>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 ${
+                <span className={`text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full font-bold flex items-center gap-1 ${
                   provider === 'groq'
                     ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                     : provider === 'pollinations'
                     ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
                     : 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
                 }`}>
-                  {provider === 'groq' && '⚡ Groq (Ultra-rápido)'}
-                  {provider === 'pollinations' && '🌸 Modo Livre (Sem Chave)'}
-                  {provider === 'gemini' && '✨ Google Gemini'}
+                  {provider === 'groq' && '⚡ Groq'}
+                  {provider === 'pollinations' && '🌸 Grátis'}
+                  {provider === 'gemini' && '✨ Gemini'}
                 </span>
               </div>
-              <p className="text-xs text-slate-400 flex items-center gap-2">
-                <span>Inteligência Artificial Narrativa para D&D 5e</span>
+              <p className="text-[11px] sm:text-xs text-slate-400 flex items-center gap-2 truncate">
+                <span className="hidden sm:inline">Inteligência Artificial Narrativa para D&D 5e</span>
                 {activeCharacter && (
-                  <span className="text-amber-400 font-medium">
-                    • 🧙‍♂️ {activeCharacter.name} (Nv. {activeCharacter.level} {activeCharacter.characterClass})
+                  <span className="text-amber-400 font-medium truncate">
+                    🧙‍♂️ {activeCharacter.name} (Nv. {activeCharacter.level})
                   </span>
                 )}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             {/* Abas */}
-            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+            <div className="flex items-center gap-0.5 sm:gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
               <button
                 type="button"
                 onClick={() => setActiveTab('adventure')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                   activeTab === 'adventure'
                     ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
+                title="Aventura Solo"
               >
-                <Swords size={14} />
-                <span>Aventura Solo</span>
+                <Swords size={13} />
+                <span className="hidden xs:inline sm:inline">Aventura</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setActiveTab('oracle')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                   activeTab === 'oracle'
                     ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
+                title="Oráculo (Co-DM)"
               >
-                <Wand2 size={14} />
-                <span>Oráculo (Co-DM)</span>
+                <Wand2 size={13} />
+                <span className="hidden xs:inline sm:inline">Oráculo</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setActiveTab('settings')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                   activeTab === 'settings'
                     ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
+                title="Configuração"
               >
-                <Sliders size={14} />
-                <span>Configuração</span>
+                <Sliders size={13} />
+                <span className="hidden sm:inline">Config</span>
               </button>
             </div>
 
@@ -504,19 +507,18 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
               <button
                 type="button"
                 onClick={() => onOpenVttWithAdventure(history)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md shadow-amber-500/20 cursor-pointer"
+                className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md shadow-amber-500/20 cursor-pointer"
                 title="Continuar esta aventura diretamente no Mapa Tático com miniaturas e dados 3D"
               >
-                <Map size={14} />
-                <span className="hidden sm:inline">Abrir no</span>
-                <span>Mapa Tático (VTT)</span>
+                <Map size={13} />
+                <span className="hidden sm:inline">Mapa Tático</span>
               </button>
             )}
 
             <button
               type="button"
               onClick={onClose}
-              className="p-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
+              className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
               title="Fechar Janela"
             >
               <X size={18} />
@@ -603,7 +605,7 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
                       <Feather size={16} />
                       Ou comece em qualquer lugar que imaginar:
                     </h4>
-                    <div className="flex gap-2">
+                    <div className="flex flex-col sm:flex-row gap-2">
                       <input
                         type="text"
                         value={customPremiseText}
@@ -614,27 +616,29 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
                           if (e.key === 'Enter') handleStartCustomPremise();
                         }}
                       />
-                      <button
-                        type="button"
-                        onClick={handleStartCustomPremise}
-                        disabled={!customPremiseText.trim()}
-                        className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 font-bold text-xs rounded-xl transition border border-slate-700"
-                        title="Iniciar apenas em texto nesta janela"
-                      >
-                        Iniciar (Texto)
-                      </button>
-                      {onStartSoloAdventureOnMap && (
+                      <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => onStartSoloAdventureOnMap(AI_ADVENTURE_SCENARIOS[0], customPremiseText)}
+                          onClick={handleStartCustomPremise}
                           disabled={!customPremiseText.trim()}
-                          className="px-4 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold text-xs rounded-xl transition shadow-md flex items-center gap-1.5 cursor-pointer"
-                          title="Iniciar com Mapa Tático e miniaturas"
+                          className="flex-1 sm:flex-initial px-3.5 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 font-bold text-xs rounded-xl transition border border-slate-700 text-center"
+                          title="Iniciar apenas em texto nesta janela"
                         >
-                          <Map size={14} />
-                          <span>Iniciar no Mapa</span>
+                          Texto
                         </button>
-                      )}
+                        {onStartSoloAdventureOnMap && (
+                          <button
+                            type="button"
+                            onClick={() => onStartSoloAdventureOnMap(AI_ADVENTURE_SCENARIOS[0], customPremiseText)}
+                            disabled={!customPremiseText.trim()}
+                            className="flex-1 sm:flex-initial px-4 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold text-xs rounded-xl transition shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+                            title="Iniciar com Mapa Tático e miniaturas"
+                          >
+                            <Map size={14} />
+                            <span>No Mapa</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -642,23 +646,23 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
                 /* Chat Narrativo com a IA */
                 <div className="flex-1 flex flex-col h-full overflow-hidden">
                   {/* Barra de Ações Rápidas do Topo */}
-                  <div className="px-4 py-2 bg-slate-950/90 border-b border-slate-800 flex items-center justify-between text-xs text-slate-400">
-                    <div className="flex items-center gap-2">
+                  <div className="px-3 sm:px-4 py-2 bg-slate-950/90 border-b border-slate-800 flex items-center justify-between text-xs text-slate-400 gap-2 overflow-x-auto">
+                    <div className="flex items-center gap-1.5 shrink-0">
                       <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                      <span className="font-bold text-slate-300">Crônica Ativa</span>
-                      <span>• {history.length} turnos</span>
+                      <span className="font-bold text-slate-300">Crônica</span>
+                      <span className="text-[11px] text-slate-500">• {history.length}t</span>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 shrink-0">
                       {onOpenVttWithAdventure && (
                         <button
                           type="button"
                           onClick={() => onOpenVttWithAdventure(history)}
-                          className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold transition flex items-center gap-1.5 text-[11px] shadow-sm shadow-amber-500/20 cursor-pointer"
+                          className="px-2 sm:px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold transition flex items-center gap-1 text-[11px] shadow-sm shadow-amber-500/20 cursor-pointer"
                           title="Continuar esta crônica diretamente no Mapa Tático com miniaturas e dados 3D"
                         >
                           <Map size={12} className="shrink-0" />
-                          <span>🗺️ Jogar no Mapa Tático</span>
+                          <span>Mapa Tático</span>
                         </button>
                       )}
 
@@ -666,7 +670,7 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
                         <button
                           type="button"
                           onClick={() => setAutoBroadcastToRoom(!autoBroadcastToRoom)}
-                          className={`px-2.5 py-1 rounded-lg border transition flex items-center gap-1.5 text-[11px] font-bold ${
+                          className={`px-2 sm:px-2.5 py-1 rounded-lg border transition flex items-center gap-1 text-[11px] font-bold ${
                             autoBroadcastToRoom
                               ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/50 shadow-sm shadow-emerald-500/20'
                               : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
@@ -674,28 +678,28 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
                           title="Transmite automaticamente as narrações do Mestre IA para a mesa online multiplayer"
                         >
                           <Wifi size={12} className={autoBroadcastToRoom ? 'text-emerald-400' : 'text-slate-400'} />
-                          <span>{autoBroadcastToRoom ? 'Mesa Online: Ativa' : 'Mesa Online: Pausada'}</span>
+                          <span className="hidden sm:inline">{autoBroadcastToRoom ? 'Mesa: Ativa' : 'Mesa: Pausa'}</span>
                         </button>
                       )}
 
                       <button
                         type="button"
                         onClick={handleCopyHistory}
-                        className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition flex items-center gap-1 text-[11px]"
+                        className="px-2 sm:px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition flex items-center gap-1 text-[11px]"
                         title="Copiar toda a crônica da aventura"
                       >
                         <Copy size={12} />
-                        <span>Copiar Crônica</span>
+                        <span className="hidden sm:inline">Copiar</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={handleClearHistory}
-                        className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-red-950/50 text-slate-400 hover:text-red-400 border border-slate-700 hover:border-red-500/30 transition flex items-center gap-1 text-[11px]"
+                        className="px-2 sm:px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-red-950/50 text-slate-400 hover:text-red-400 border border-slate-700 hover:border-red-500/30 transition flex items-center gap-1 text-[11px]"
                         title="Reiniciar e escolher outro cenário"
                       >
                         <RefreshCw size={12} />
-                        <span>Reiniciar</span>
+                        <span className="hidden sm:inline">Reiniciar</span>
                       </button>
                     </div>
                   </div>
@@ -1123,7 +1127,7 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
                     </a>
                   </div>
 
-                  <div className="flex gap-2">
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <input
                       type="password"
                       value={groqApiKey}
@@ -1135,7 +1139,7 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
                       type="button"
                       onClick={handleTestKey}
                       disabled={testStatus.loading}
-                      className="px-3.5 py-2 bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 font-bold text-xs rounded-xl border border-emerald-500/40 transition shrink-0 flex items-center gap-1.5"
+                      className="px-3.5 py-2 bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 font-bold text-xs rounded-xl border border-emerald-500/40 transition shrink-0 flex items-center justify-center gap-1.5"
                     >
                       {testStatus.loading ? <RefreshCw size={13} className="animate-spin" /> : <Wifi size={13} />}
                       <span>{testStatus.loading ? 'Testando...' : 'Testar Conexão'}</span>
@@ -1220,7 +1224,7 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
                     </a>
                   </div>
 
-                  <div className="flex gap-2">
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <input
                       type="password"
                       value={apiKey}
@@ -1232,7 +1236,7 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
                       type="button"
                       onClick={handleTestKey}
                       disabled={testStatus.loading}
-                      className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-xs rounded-xl border border-amber-500/30 transition shrink-0 flex items-center gap-1.5"
+                      className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-xs rounded-xl border border-amber-500/30 transition shrink-0 flex items-center justify-center gap-1.5"
                     >
                       {testStatus.loading ? <RefreshCw size={13} className="animate-spin" /> : <Wifi size={13} />}
                       <span>{testStatus.loading ? 'Testando...' : 'Testar Conexão'}</span>

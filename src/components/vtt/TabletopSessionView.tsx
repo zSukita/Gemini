@@ -23,7 +23,9 @@ import {
   Crown,
   ChevronDown,
   ChevronUp,
-  Flag
+  Flag,
+  ScrollText,
+  Map
 } from 'lucide-react';
 import type { AiAdventureScenario } from '../../data/aiAdventureScenarios';
 import type { AiLootReward } from '../../types/aiDm';
@@ -174,6 +176,8 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
   const [isMapFocusOnly, setIsMapFocusOnly] = useState(false);
   const [selectedCombatantId, setSelectedCombatantId] = useState<string | null>(null);
   const [isBottomDockOpen, setIsBottomDockOpen] = useState(false);
+  // Aba ativa na visão de celular (Crônica/Chat, Mapa Tático ou Combate)
+  const [mobileTab, setMobileTab] = useState<'chat' | 'map' | 'combat'>('chat');
 
   // Determina o combatente/alvo ativo para inspeção
   const activeTarget: Combatant | null = useMemo(() => {
@@ -390,12 +394,12 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
         </div>
 
         {/* Controles da Mesa & Alternador de Foco */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           {/* Status Multiplayer */}
           <button
             type="button"
             onClick={onOpenMultiplayerModal}
-            className={`px-3 py-1.5 rounded-xl border text-xs font-serif font-bold flex items-center gap-1.5 transition ${
+            className={`px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl border text-xs font-serif font-bold flex items-center gap-1.5 transition ${
               isConnected
                 ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-200'
                 : 'bg-slate-900/80 border-slate-700 text-slate-300 hover:border-amber-500/40'
@@ -411,7 +415,7 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
             ) : (
               <Globe size={14} className={isConnected ? 'text-emerald-400' : 'text-slate-400'} />
             )}
-            <span>
+            <span className="hidden sm:inline">
               {isConnected ? `Online (${connectedPeers.length + 1})` : 'Multiplayer'}
             </span>
           </button>
@@ -420,11 +424,11 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
           <button
             type="button"
             onClick={onOpenAiDmModal}
-            className="px-3 py-1.5 rounded-xl bg-amber-950/60 border border-amber-500/50 text-amber-200 text-xs font-serif font-bold flex items-center gap-1.5 hover:bg-amber-900/60 transition shadow"
+            className="px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl bg-amber-950/60 border border-amber-500/50 text-amber-200 text-xs font-serif font-bold flex items-center gap-1.5 hover:bg-amber-900/60 transition shadow"
             title="Abrir Oráculo IA / Gerador de Aventuras"
           >
             <Sparkles size={14} className="text-amber-400 animate-pulse" />
-            <span>Mestre IA</span>
+            <span className="hidden sm:inline">Mestre IA</span>
           </button>
 
           {/* Finalizar / Nova Mesa */}
@@ -432,11 +436,11 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
             <button
               type="button"
               onClick={onOpenEndSessionModal}
-              className="px-3 py-1.5 rounded-xl bg-red-950/40 hover:bg-red-900/60 border border-red-500/40 hover:border-red-400 text-red-200 text-xs font-serif font-bold flex items-center gap-1.5 transition shadow"
+              className="px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl bg-red-950/40 hover:bg-red-900/60 border border-red-500/40 hover:border-red-400 text-red-200 text-xs font-serif font-bold flex items-center gap-1.5 transition shadow"
               title="Finalizar esta mesa ou iniciar uma nova aventura"
             >
               <Flag size={14} className="text-red-400" />
-              <span>Finalizar Mesa</span>
+              <span className="hidden md:inline">Finalizar</span>
             </button>
           )}
 
@@ -448,26 +452,26 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
               className="p-1.5 rounded-xl bg-[#2a170d] border border-[#8a633b] text-amber-200 hover:text-white transition"
               title="Trilha Sonora & Músicas"
             >
-              <Music size={16} />
+              <Music size={15} />
             </button>
           )}
 
-          {/* Alternar Foco: Mesa Completa vs Apenas Mapa */}
+          {/* Alternar Foco: Mesa Completa vs Apenas Mapa (Desktop) */}
           <button
             type="button"
             onClick={() => setIsMapFocusOnly(!isMapFocusOnly)}
-            className="px-3 py-1.5 rounded-xl bg-[#3c2214] hover:bg-[#52301c] border border-[#a17849] text-amber-100 text-xs font-serif font-bold flex items-center gap-1.5 shadow"
+            className="hidden md:flex px-3 py-1.5 rounded-xl bg-[#3c2214] hover:bg-[#52301c] border border-[#a17849] text-amber-100 text-xs font-serif font-bold items-center gap-1.5 shadow"
             title={isMapFocusOnly ? 'Voltar para Mesa Completa (Fantasy Grounds)' : 'Maximizar apenas o Mapa Tático'}
           >
             {isMapFocusOnly ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
             <span>{isMapFocusOnly ? 'Mesa Completa' : 'Foco no Mapa'}</span>
           </button>
 
-          {/* Atalho Rápido para Painel de Combate */}
+          {/* Atalho Rápido para Painel de Combate (Desktop) */}
           <button
             type="button"
             onClick={() => setIsBottomDockOpen(!isBottomDockOpen)}
-            className={`px-3 py-1.5 rounded-xl border text-xs font-serif font-bold flex items-center gap-1.5 transition shadow ${
+            className={`hidden md:flex px-3 py-1.5 rounded-xl border text-xs font-serif font-bold items-center gap-1.5 transition shadow ${
               encounter.isRunning
                 ? 'bg-rose-950/80 border-rose-500 text-rose-200 animate-pulse'
                 : isBottomDockOpen
@@ -483,35 +487,88 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
         </div>
       </div>
 
+      {/* SELETOR DE ABAS MOBILE (Celulares e Telas Menores que MD) */}
+      <div className="flex md:hidden items-center justify-around bg-[#1c0f08] border-b border-[#5c3a1d] px-2 py-1.5 shrink-0 z-20 gap-1.5 shadow-md">
+        <button
+          type="button"
+          onClick={() => setMobileTab('chat')}
+          className={`flex-1 py-1.5 px-2 flex items-center justify-center gap-1.5 rounded-lg text-xs font-serif font-bold transition cursor-pointer ${
+            mobileTab === 'chat'
+              ? 'bg-amber-600 text-amber-50 shadow-md ring-1 ring-amber-400/50'
+              : 'bg-[#2a170d] text-amber-200/70 hover:text-amber-100 border border-[#5c3a1d]'
+          }`}
+        >
+          <ScrollText size={14} />
+          <span>Crônica</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMobileTab('map')}
+          className={`flex-1 py-1.5 px-2 flex items-center justify-center gap-1.5 rounded-lg text-xs font-serif font-bold transition cursor-pointer ${
+            mobileTab === 'map'
+              ? 'bg-amber-600 text-amber-50 shadow-md ring-1 ring-amber-400/50'
+              : 'bg-[#2a170d] text-amber-200/70 hover:text-amber-100 border border-[#5c3a1d]'
+          }`}
+        >
+          <Map size={14} />
+          <span>Mapa Tático</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMobileTab('combat')}
+          className={`flex-1 py-1.5 px-2 flex items-center justify-center gap-1.5 rounded-lg text-xs font-serif font-bold transition cursor-pointer ${
+            mobileTab === 'combat'
+              ? 'bg-amber-600 text-amber-50 shadow-md ring-1 ring-amber-400/50'
+              : 'bg-[#2a170d] text-amber-200/70 hover:text-amber-100 border border-[#5c3a1d]'
+          }`}
+        >
+          <Sword size={14} className={encounter.isRunning ? 'text-rose-400 animate-pulse' : ''} />
+          <span>Combate ({encounter.combatants.length})</span>
+        </button>
+      </div>
+
       {/* 2. ÁREA PRINCIPAL DA MESA VIRTUAL */}
-      <div className="flex-1 flex overflow-hidden p-3 gap-3 relative">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden p-1 sm:p-3 gap-2 sm:gap-3 relative">
         
-        {/* COLUNA ESQUERDA: PERGAMINHO DE AVENTURA & CHAT IA (32% da tela) */}
-        {!isMapFocusOnly && (
-          <div className="w-[33%] min-w-[340px] max-w-[480px] h-full flex flex-col shrink-0 animate-in slide-in-from-left duration-150">
-            <TabletopParchmentChat
-              chatLog={chatLog}
-              currentUserName={currentUserName}
-              character={character}
-              isAiResponding={isAiResponding}
-              encounter={encounter}
-              tokens={tokens}
-              onMoveToken={onMoveToken}
-              onHpDelta={onHpDelta}
-              onOpenEndSessionModal={onOpenEndSessionModal}
-              onStartScenario={onStartScenario}
-              onSendMessage={onSendMessage}
-              onCollectLoot={onCollectLoot}
-              onUpdateCharacter={onUpdateCharacter}
-            />
-          </div>
-        )}
+        {/* COLUNA ESQUERDA: PERGAMINHO DE AVENTURA & CHAT IA */}
+        <div
+          className={`${
+            mobileTab === 'chat' ? 'flex' : 'hidden'
+          } md:flex w-full md:w-[33%] md:min-w-[340px] md:max-w-[480px] h-full flex-col shrink-0 animate-in fade-in md:slide-in-from-left duration-150 ${
+            isMapFocusOnly ? 'md:hidden' : ''
+          }`}
+        >
+          <TabletopParchmentChat
+            chatLog={chatLog}
+            currentUserName={currentUserName}
+            character={character}
+            isAiResponding={isAiResponding}
+            encounter={encounter}
+            tokens={tokens}
+            onMoveToken={onMoveToken}
+            onHpDelta={onHpDelta}
+            onOpenEndSessionModal={onOpenEndSessionModal}
+            onStartScenario={onStartScenario}
+            onSendMessage={onSendMessage}
+            onCollectLoot={onCollectLoot}
+            onUpdateCharacter={onUpdateCharacter}
+          />
+        </div>
 
         {/* COLUNA CENTRAL / DIREITA: MAPA TÁTICO + INSPEÇÃO + COMBAT TRACKER */}
-        <div className="flex-1 flex flex-col h-full gap-2 overflow-hidden">
-          
-          {/* TOPO: TABULEIRO TÁTICO (BATTLEMAP) - OCUPA O MÁXIMO DE ESPAÇO */}
-          <div className="flex-1 w-full rounded-xl overflow-hidden border-2 border-[#5c3a1d] shadow-2xl relative min-h-0 bg-slate-950">
+        <div
+          className={`${
+            mobileTab !== 'chat' ? 'flex' : 'hidden'
+          } md:flex flex-1 flex-col h-full gap-2 overflow-hidden`}
+        >
+          {/* TOPO: TABULEIRO TÁTICO (BATTLEMAP) */}
+          <div
+            className={`${
+              mobileTab === 'map' ? 'flex' : mobileTab === 'combat' ? 'hidden md:flex' : 'flex'
+            } flex-1 w-full rounded-xl overflow-hidden border-2 border-[#5c3a1d] shadow-2xl relative min-h-0 bg-slate-950`}
+          >
             <BattleMap
               mapConfig={mapConfig}
               tokens={tokens}
@@ -544,41 +601,51 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
             />
           </div>
 
-          {/* INFERIOR: PAINÉIS DE FICHA DO ALVO & COMBAT TRACKER (estilo Fantasy Grounds - Colapsável) */}
-          {!isMapFocusOnly && (
+          {/* INFERIOR: PAINÉIS DE FICHA DO ALVO & COMBAT TRACKER (em mobile na aba combat, ou dock no desktop) */}
+          <div
+            className={`${
+              mobileTab === 'combat'
+                ? 'flex flex-1 h-full'
+                : isMapFocusOnly
+                ? 'hidden'
+                : 'hidden md:flex'
+            } transition-all duration-300 ease-in-out shrink-0 flex-col bg-[#1a0e07] border border-[#5c3a1d] rounded-xl shadow-2xl overflow-hidden ${
+              mobileTab === 'combat'
+                ? 'h-full'
+                : isBottomDockOpen
+                ? 'md:h-[250px]'
+                : 'md:h-8'
+            }`}
+          >
+            {/* Barra de Título / Alternador do Dock */}
             <div
-              className={`transition-all duration-300 ease-in-out shrink-0 flex flex-col bg-[#1a0e07] border border-[#5c3a1d] rounded-xl shadow-2xl overflow-hidden ${
-                isBottomDockOpen ? 'h-[250px]' : 'h-8'
-              }`}
+              onClick={() => setIsBottomDockOpen(!isBottomDockOpen)}
+              className="h-8 px-3 flex items-center justify-between bg-[#2a170d] hover:bg-[#3d2214] cursor-pointer border-b border-[#4a2e18] transition select-none text-xs text-amber-200"
             >
-              {/* Barra de Título / Alternador do Dock */}
-              <div
-                onClick={() => setIsBottomDockOpen(!isBottomDockOpen)}
-                className="h-8 px-3 flex items-center justify-between bg-[#2a170d] hover:bg-[#3d2214] cursor-pointer border-b border-[#4a2e18] transition select-none text-xs text-amber-200"
-              >
-                <div className="flex items-center gap-2 font-serif font-bold">
-                  <Sword size={13} className="text-amber-400" />
-                  <span>
-                    Combate & Alvo ({encounter.combatants.length} combatentes
-                    {encounter.isRunning ? ` · Rodada ${encounter.round}` : ''})
+              <div className="flex items-center gap-2 font-serif font-bold truncate">
+                <Sword size={13} className="text-amber-400 shrink-0" />
+                <span className="truncate">
+                  Combate & Alvo ({encounter.combatants.length} combatentes
+                  {encounter.isRunning ? ` · R${encounter.round}` : ''})
+                </span>
+                {activeTarget && (
+                  <span className="hidden sm:inline-block text-[11px] font-sans font-normal text-amber-300/90 bg-black/40 px-2 py-0.5 rounded-full border border-amber-900/50 truncate">
+                    Alvo: <strong>{activeTarget.name}</strong> ({activeTarget.currentHp}/{activeTarget.maxHp} PV)
                   </span>
-                  {activeTarget && (
-                    <span className="text-[11px] font-sans font-normal text-amber-300/90 bg-black/40 px-2 py-0.5 rounded-full border border-amber-900/50">
-                      Alvo: <strong>{activeTarget.name}</strong> ({activeTarget.currentHp}/{activeTarget.maxHp} PV)
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-1 text-[11px] text-amber-400 font-sans font-semibold">
-                  <span>{isBottomDockOpen ? 'Recolher Painel' : 'Expandir Painel'}</span>
-                  {isBottomDockOpen ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-                </div>
+                )}
               </div>
+              <div className="hidden md:flex items-center gap-1 text-[11px] text-amber-400 font-sans font-semibold shrink-0">
+                <span>{isBottomDockOpen ? 'Recolher Painel' : 'Expandir Painel'}</span>
+                {isBottomDockOpen ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+              </div>
+            </div>
 
-              {/* Conteúdo Expansível: TargetCard e CombatTracker */}
-              {isBottomDockOpen && (
-                <div className="flex-1 flex gap-2 p-2 overflow-hidden animate-in fade-in duration-200">
-                  {/* Painel Inferior Esquerdo: Ficha de Atributos do Alvo / Monstro */}
-                  <div className="flex-1 h-full overflow-hidden">
+            {/* Conteúdo Expansível: TargetCard e CombatTracker */}
+            {(mobileTab === 'combat' || isBottomDockOpen) && (
+              <div className="flex-1 flex flex-col md:flex-row gap-2 p-2 overflow-hidden animate-in fade-in duration-200">
+                {/* Painel Inferior Esquerdo: Ficha de Atributos do Alvo / Monstro */}
+                {activeTarget && (
+                  <div className="flex-1 md:flex-1 h-[190px] md:h-full overflow-hidden shrink-0 md:shrink">
                     <TabletopTargetCard
                       target={activeTarget}
                       onClose={() => {
@@ -589,35 +656,35 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
                       onRollDamage={onRollMonsterDamage}
                     />
                   </div>
+                )}
 
-                  {/* Painel Inferior Direito: Rastreador de Combate & Iniciativa */}
-                  <div className="flex-1 h-full overflow-hidden">
-                    <TabletopCombatTracker
-                      encounter={encounter}
-                      charactersList={charactersList}
-                      selectedCombatantId={selectedCombatantId}
-                      onSelectCombatant={(c) => setSelectedCombatantId(c.id)}
-                      onStartEncounter={onStartEncounter}
-                      onNextTurn={onNextTurn}
-                      onPreviousTurn={onPreviousTurn}
-                      onSortInitiative={onSortInitiative}
-                      onResetEncounter={onResetEncounter}
-                      onHpDelta={onHpDelta}
-                      onToggleCondition={onToggleCondition}
-                      onUpdateInitiative={onUpdateInitiative}
-                      onRemoveCombatant={onRemoveCombatant}
-                      onOpenBestiary={onOpenBestiary}
-                      onAiMonsterAttack={onAiMonsterAttack}
-                    />
-                  </div>
+                {/* Painel Inferior Direito: Rastreador de Combate & Iniciativa */}
+                <div className="flex-1 h-full overflow-hidden">
+                  <TabletopCombatTracker
+                    encounter={encounter}
+                    charactersList={charactersList}
+                    selectedCombatantId={selectedCombatantId}
+                    onSelectCombatant={(c) => setSelectedCombatantId(c.id)}
+                    onStartEncounter={onStartEncounter}
+                    onNextTurn={onNextTurn}
+                    onPreviousTurn={onPreviousTurn}
+                    onSortInitiative={onSortInitiative}
+                    onResetEncounter={onResetEncounter}
+                    onHpDelta={onHpDelta}
+                    onToggleCondition={onToggleCondition}
+                    onUpdateInitiative={onUpdateInitiative}
+                    onRemoveCombatant={onRemoveCombatant}
+                    onOpenBestiary={onOpenBestiary}
+                    onAiMonsterAttack={onAiMonsterAttack}
+                  />
                 </div>
-              )}
-            </div>
-          )}
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* BARRA LATERAL DIREITA: TOMOS MÁGICOS & ATALHOS RÁPIDOS (Estilo Fantasy Grounds) */}
-        <div className="flex flex-col gap-2 shrink-0 py-1 justify-start">
+        {/* BARRA LATERAL DIREITA: TOMOS MÁGICOS & ATALHOS RÁPIDOS (Desktop) */}
+        <div className="hidden md:flex flex-col gap-2 shrink-0 py-1 justify-start">
           <button
             type="button"
             onClick={onOpenCharacterSheet}

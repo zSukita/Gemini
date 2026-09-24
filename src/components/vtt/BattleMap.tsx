@@ -225,10 +225,14 @@ export const BattleMap: React.FC<BattleMapProps> = ({
 
   // Início de clique/toque no tabuleiro
   const handlePointerDown = (e: React.PointerEvent) => {
-    // Se for botão do meio (1) ou espaço pressionado, inicia pan
-    if (e.button === 1 || isSpacePressed) {
+    // Se for botão do meio (1), espaço pressionado, ou toque em tela no fundo com a ferramenta select, inicia pan
+    const isTouchOnBackground = e.pointerType === 'touch' && activeTool === 'select' && !draggingTokenId;
+    if (e.button === 1 || isSpacePressed || isTouchOnBackground) {
       setIsPanning(true);
       setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+      if (isTouchOnBackground) {
+        onSelectToken(null);
+      }
       return;
     }
 

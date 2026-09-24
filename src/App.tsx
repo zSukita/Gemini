@@ -393,6 +393,10 @@ export function App() {
     [isDiceAnimationEnabled]
   );
 
+  const handleCloseDiceAnimation = useCallback(() => {
+    setActiveRollAnimation(null);
+  }, []);
+
   const [isAiResponding, setIsAiResponding] = useState(false);
   const triggerAiDmRef = useRef<((promptText: string) => Promise<void>) | undefined>(undefined);
   const executeAiMonsterAttackRef = useRef<((attack: MonsterAttackAction) => void) | undefined>(undefined);
@@ -532,15 +536,13 @@ export function App() {
       const combatant = encounterRef.current?.combatants.find((c) => c.id === id);
       if (combatant) {
         const newHp = Math.max(0, Math.min(combatant.maxHp, combatant.currentHp + delta));
-        const cBase = combatant.name.toLowerCase().replace(/\s*\d+$/, '').trim();
 
         setTokens((prev) => {
           const updated = prev.map((t) => {
-            const tBase = t.name.toLowerCase().replace(/\s*\d+$/, '').trim();
             const isMatch =
               t.combatantId === id ||
-              t.name.toLowerCase() === combatant.name.toLowerCase() ||
-              (tBase === cBase && t.type === combatant.type);
+              t.id === id ||
+              t.name.toLowerCase() === combatant.name.toLowerCase();
 
             if (isMatch) {
               return {
@@ -569,17 +571,13 @@ export function App() {
       toggleCombatantCondition(id, condition);
 
       const combatant = encounterRef.current?.combatants.find((c) => c.id === id);
-      const cBase = combatant?.name.toLowerCase().replace(/\s*\d+$/, '').trim();
 
       setTokens((prev) => {
         const updated = prev.map((t) => {
-          const tBase = t.name.toLowerCase().replace(/\s*\d+$/, '').trim();
           const isMatch =
             t.combatantId === id ||
             t.id === id ||
-            (combatant &&
-              (t.name.toLowerCase() === combatant.name.toLowerCase() ||
-                (cBase && tBase === cBase && t.type === combatant.type)));
+            (combatant && t.name.toLowerCase() === combatant.name.toLowerCase());
 
           if (isMatch) {
             const exists = t.conditions.includes(condition);
@@ -660,11 +658,9 @@ export function App() {
         // 1. Inserir novos monstros no encontro e tokens no mapa (SPAWN)
         if (aiReply.monsterSpawns && aiReply.monsterSpawns.length > 0) {
           aiReply.monsterSpawns.forEach((spawn) => {
-            const spawnBase = spawn.monsterName.toLowerCase().replace(/\s*\d+$/, '').trim();
-            // Verifica se este monstro já existe no encontro ativo para evitar duplicações a cada turno
-            const alreadyExists = encounterRef.current?.combatants.some((c) => {
-              const cBase = c.name.toLowerCase().replace(/\s*\d+$/, '').trim();
-              return c.name.toLowerCase() === spawn.monsterName.toLowerCase() || cBase === spawnBase;
+            // Se o monstro exato com count=1 já existe no encontro ativo, evita duplicações desnecessárias
+            const alreadyExists = spawn.count <= 1 && encounterRef.current?.combatants.some((c) => {
+              return c.name.toLowerCase() === spawn.monsterName.toLowerCase();
             });
 
             if (alreadyExists) {
@@ -1674,18 +1670,21 @@ export function App() {
       // 1. Notificação de início do ataque
       showNotification(`🐉 ${attack.monsterName} ataca com ${attack.attackName}!`);
 
-      // 2. Rolagem de Ataque com d20 (aciona animação 3D e broadcast P2P)
+      // 2. Rolagem de Ataque com d20 único (aciona animação 3D e broadcast P2P)
       const targetName = attack.target || character.name || 'o Herói';
       const targetAc = character.armorClass || 10;
       const attackLabel = `${attack.monsterName}: ${attack.attackName}${attack.target ? ` (vs ${attack.target})` : ''}`;
       
-      const d20 = Math.floor(Math.random() * 20) + 1;
-      const totalAttack = d20 + (attack.attackBonus || 0);
-      const isNat20 = d20 === 20;
-      const isNat1 = d20 === 1;
-      const isHit = isNat20 || (!isNat1 && totalAttack >= targetAc);
+      const attackRoll = rollD20(attackLabel, attack.attackBonus || 0, 'normal');
+      addRollResult(attackRoll);
+      if (isConnected) {
+        broadcastDiceRoll(attackRoll, attack.monsterName);
+      }
 
-      handleRollD20(attackLabel, attack.attackBonus);
+      const natural = attackRoll.rolls?.[0] ?? attackRoll.selectedRoll;
+      const isNat20 = natural === 20 || Boolean(attackRoll.isCriticalSuccess);
+      const isNat1 = natural === 1 || Boolean(attackRoll.isCriticalFailure);
+      const isHit = isNat20 || (!isNat1 && attackRoll.total >= targetAc);
 
       // 3. Intervalo de suspense (1.6s) para os jogadores conferirem se acertou a CA antes do dano
       setTimeout(() => {
@@ -1714,7 +1713,7 @@ export function App() {
           }
         }
 
-        const breakdown = `1d20+${attack.attackBonus} = ${d20}+${attack.attackBonus} = ${totalAttack}`;
+        const breakdown = attackRoll.breakdown;
         const outcome = isNat20
           ? '💥 ACERTO CRÍTICO!'
           : isHit
@@ -1745,7 +1744,7 @@ export function App() {
         showNotification(`⚔️ ${attack.monsterName} finalizou o ataque! Você já pode passar o turno no combate.`);
       }, 1600);
     },
-    [character, applyDamage, handleRollD20, setTokens, sendChatMessage, showNotification]
+    [character, applyDamage, addRollResult, isConnected, broadcastDiceRoll, setTokens, sendChatMessage, showNotification]
   );
   executeAiMonsterAttackRef.current = executeAiMonsterAttack;
 
@@ -2508,7 +2507,7 @@ export function App() {
       {activeRollAnimation && (
         <DiceRollAnimation
           roll={activeRollAnimation}
-          onClose={() => setActiveRollAnimation(null)}
+          onClose={handleCloseDiceAnimation}
           onReroll={handleReroll}
         />
       )}

@@ -74,9 +74,7 @@ export function useBattleMap(
       const updated = prevTokens.map((token) => {
         const matchingCombatant = encounter.combatants.find((c) => {
           if (token.combatantId && token.combatantId === c.id) return true;
-          const tokBase = token.name.toLowerCase().replace(/\s*\d+$/, '').trim();
-          const comBase = c.name.toLowerCase().replace(/\s*\d+$/, '').trim();
-          return tokBase === comBase;
+          return token.name.toLowerCase() === c.name.toLowerCase();
         });
 
         if (matchingCombatant) {
@@ -102,9 +100,7 @@ export function useBattleMap(
       encounter.combatants.forEach((c, index) => {
         const exists = updated.some((t) => {
           if (t.combatantId === c.id) return true;
-          const tokBase = t.name.toLowerCase().replace(/\s*\d+$/, '').trim();
-          const comBase = c.name.toLowerCase().replace(/\s*\d+$/, '').trim();
-          return tokBase === comBase && t.type === c.type;
+          return t.name.toLowerCase() === c.name.toLowerCase() && t.type === c.type;
         });
 
         if (!exists) {
@@ -116,8 +112,10 @@ export function useBattleMap(
 
           const isPlayer = c.type === 'player';
           const size = c.monsterData?.size === 'Grande' ? 2 : c.monsterData?.size === 'Enorme' ? 3 : 1;
-          const startX = isPlayer ? 550 + (index % 4) * 65 : 450 + (index % 4) * 75;
-          const startY = isPlayer ? 550 + Math.floor(index / 4) * 65 : 180 + Math.floor(index / 4) * 75;
+          const col = index % 4;
+          const row = Math.floor(index / 4);
+          const startX = isPlayer ? 550 + col * 65 : 420 + col * 75;
+          const startY = isPlayer ? 550 + row * 65 : 160 + row * 75;
 
           updated.push({
             id: `token-${c.id}`,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { DiceRollResult } from '../types/dnd5e';
 import {
   playDiceRattle,
@@ -23,12 +23,19 @@ export const DiceRollAnimation: React.FC<DiceRollAnimationProps> = ({
   const [displayNumber, setDisplayNumber] = useState<number>(20);
   const [soundMuted, setSoundMuted] = useState<boolean>(() => isDiceSoundMuted());
 
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const lastAnimatedRollIdRef = useRef<string | null>(null);
+
   const isCritSuccess = Boolean(roll?.isCriticalSuccess);
   const isCritFail = Boolean(roll?.isCriticalFailure);
+  const rollSignature = roll ? `${roll.id || ''}_${roll.total}_${roll.breakdown}_${roll.timestamp || ''}` : null;
 
   // Inicializa e executa a sequência de animação toda vez que um novo roll chega
   useEffect(() => {
-    if (!roll) return;
+    if (!roll || !rollSignature) return;
+    if (lastAnimatedRollIdRef.current === rollSignature) return;
+    lastAnimatedRollIdRef.current = rollSignature;
 
     setPhase('rolling');
     playDiceRattle();
@@ -52,7 +59,7 @@ export const DiceRollAnimation: React.FC<DiceRollAnimationProps> = ({
 
     // Auto fechar suavemente após 3.2 segundos
     const autoCloseTimer = setTimeout(() => {
-      onClose();
+      onCloseRef.current();
     }, 3200);
 
     return () => {
@@ -60,19 +67,19 @@ export const DiceRollAnimation: React.FC<DiceRollAnimationProps> = ({
       clearTimeout(impactTimer);
       clearTimeout(autoCloseTimer);
     };
-  }, [roll, isCritSuccess, isCritFail, onClose]);
+  }, [roll, rollSignature, isCritSuccess, isCritFail]);
 
   // Atalho de teclado: Espaço ou Esc fecha imediatamente
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' || e.key === ' ') {
         e.preventDefault();
-        onClose();
+        onCloseRef.current();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  }, []);
 
   const handleToggleSound = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();

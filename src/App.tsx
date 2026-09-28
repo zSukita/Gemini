@@ -17,6 +17,7 @@ import { PlayerSheetPage } from './pages/PlayerSheetPage';
 const DmScreenPage = lazy(() => import('./pages/DmScreenPage').then((m) => ({ default: m.DmScreenPage })));
 const VttSessionPage = lazy(() => import('./pages/VttSessionPage').then((m) => ({ default: m.VttSessionPage })));
 import { AppModals } from './components/modals/AppModals';
+import { LegalNoticeModal } from './components/LegalNoticeModal';
 import { useModalManager } from './hooks/useModalManager';
 import { useNotification } from './hooks/useNotification';
 import { useGlobalShortcuts } from './hooks/useGlobalShortcuts';
@@ -150,6 +151,7 @@ export function App() {
       return true;
     }
   });
+  const [isLegalModalOpen, setIsLegalModalOpen] = useState(false);
   const {
     isHistoryOpen,
     setIsHistoryOpen,
@@ -2723,6 +2725,23 @@ export function App() {
         isSpellCompendiumOpen={isSpellCompendiumOpen}
         setIsSpellCompendiumOpen={setIsSpellCompendiumOpen}
         onAddSpell={addSpell}
+      />
+
+      {/* Rodapé Institucional & Aviso Legal SRD 5.1 */}
+      <footer className="mt-auto pt-8 pb-4 text-center text-xs text-slate-500 font-sans border-t border-slate-800/60 flex flex-col sm:flex-row items-center justify-between gap-3 px-2">
+        <p>ArcanaSheet • VTT & Ficha de RPG D&D 5e</p>
+        <button
+          type="button"
+          onClick={() => setIsLegalModalOpen(true)}
+          className="text-amber-500/80 hover:text-amber-300 underline underline-offset-2 transition cursor-pointer"
+        >
+          Aviso Legal & Licença SRD 5.1 (WotC / CC-BY-4.0)
+        </button>
+      </footer>
+
+      <LegalNoticeModal
+        isOpen={isLegalModalOpen}
+        onClose={() => setIsLegalModalOpen(false)}
       />
 
     </div>

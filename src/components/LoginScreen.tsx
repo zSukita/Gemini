@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Eye, EyeOff, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
+import { LegalNoticeModal } from './LegalNoticeModal';
 
 interface LoginScreenProps {
   onLogin: (email: string, password: string) => Promise<void>;
@@ -152,6 +153,7 @@ export function LoginScreen({
   const [resetSent, setResetSent] = useState(false);
   const [showResetForm, setShowResetForm] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
+  const [isLegalModalOpen, setIsLegalModalOpen] = useState(false);
   const { bgRef, panelRef } = useParallax();
 
   const switchTab = (newTab: AuthTab) => {
@@ -453,9 +455,33 @@ export function LoginScreen({
           </div>
         </div>
 
-        <p style={{ marginTop:18, fontSize:'0.62rem', color:'rgba(80,60,28,0.55)', fontFamily:'Inter,sans-serif', textAlign:'center' }}>
-          ArcanaSheet — Seus dados protegidos pelo Google Firebase
-        </p>
+        <div style={{ marginTop: 18, fontSize: '0.65rem', color: 'rgba(150,115,50,0.7)', fontFamily: 'Inter,sans-serif', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span>ArcanaSheet — Seus dados protegidos pelo Google Firebase</span>
+          <span style={{ opacity: 0.5 }}>•</span>
+          <button
+            type="button"
+            onClick={() => setIsLegalModalOpen(true)}
+            style={{
+              color: '#fbbf24',
+              textDecoration: 'underline',
+              textUnderlineOffset: 2,
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: 0,
+              font: 'inherit',
+              fontSize: 'inherit',
+              transition: 'color 0.2s',
+            }}
+          >
+            Aviso Legal & Licença SRD 5.1
+          </button>
+        </div>
+
+        <LegalNoticeModal
+          isOpen={isLegalModalOpen}
+          onClose={() => setIsLegalModalOpen(false)}
+        />
       </div>
     </div>
   );

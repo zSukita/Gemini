@@ -12,6 +12,7 @@
     "lint": "oxlint",
     "test": "vitest run",
     "preview": "vite preview",
+    "deploy": "npm run build && npx -y firebase-tools deploy --only hosting",
     "electron:dev": "concurrently -k \"vite\" \"wait-on tcp:5173 && electron .\"",
     "electron:preview": "npm run build && cross-env NODE_ENV=production electron .",
     "electron:pack": "npm run build && npx electron-builder --dir",

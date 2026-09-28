@@ -63,9 +63,21 @@ export class P2PNetworkManager {
     this.roomCode = code;
 
     return new Promise((resolve, reject) => {
+      let isResolved = false;
+      const timeoutId = setTimeout(() => {
+        if (!isResolved) {
+          isResolved = true;
+          this.disconnect();
+          reject(new Error('Tempo limite para inicializar a sala excedido. Verifique sua conexão com a internet.'));
+        }
+      }, 15000);
+
       this.peer = new Peer(fullPeerId, PEER_CONFIG);
 
       this.peer.on('open', () => {
+        if (isResolved) return;
+        isResolved = true;
+        clearTimeout(timeoutId);
         this.activePeers = [
           {
             peerId: fullPeerId,
@@ -84,13 +96,22 @@ export class P2PNetworkManager {
       });
 
       this.peer.on('error', (err) => {
+        if (isResolved) return;
         console.warn('Erro PeerJS Host:', err);
+        clearTimeout(timeoutId);
         if (err.type === 'unavailable-id') {
           // Se já existir esse ID, tenta outro aleatório
           this.createRoom(userName)
-            .then(resolve)
-            .catch(reject);
+            .then((res) => {
+              isResolved = true;
+              resolve(res);
+            })
+            .catch((rej) => {
+              isResolved = true;
+              reject(rej);
+            });
         } else {
+          isResolved = true;
           reject(err);
         }
       });
@@ -116,10 +137,19 @@ export class P2PNetworkManager {
     this.roomCode = cleanCode;
 
     return new Promise((resolve, reject) => {
+      let isResolved = false;
+      const timeoutId = setTimeout(() => {
+        if (!isResolved) {
+          isResolved = true;
+          this.disconnect();
+          reject(new Error(`Não foi possível conectar à sala "${cleanCode}". Verifique se o código está correto e se o Mestre está online.`));
+        }
+      }, 15000);
+
       this.peer = new Peer(PEER_CONFIG);
 
       this.peer.on('open', () => {
-        if (!this.peer) return;
+        if (!this.peer || isResolved) return;
         const conn = this.peer.connect(targetPeerId, {
           metadata: {
             name: this.currentUserName,
@@ -140,6 +170,10 @@ export class P2PNetworkManager {
         this.setupConnection(conn);
 
         conn.on('open', () => {
+          if (isResolved) return;
+          isResolved = true;
+          clearTimeout(timeoutId);
+
           const selfUser: PeerUser = {
             peerId: this.peer?.id || 'player',
             name: this.currentUserName,
@@ -188,12 +222,24 @@ export class P2PNetworkManager {
         });
 
         conn.on('error', (err) => {
+          if (isResolved) return;
+          isResolved = true;
+          clearTimeout(timeoutId);
+          this.disconnect();
           reject(err);
         });
       });
 
-      this.peer.on('error', (err) => {
-        reject(err);
+      this.peer.on('error', (err: { type?: string }) => {
+        if (isResolved) return;
+        isResolved = true;
+        clearTimeout(timeoutId);
+        this.disconnect();
+        if (err?.type === 'peer-unavailable') {
+          reject(new Error(`A mesa "${cleanCode}" não foi encontrada. O Mestre pode estar offline.`));
+        } else {
+          reject(err);
+        }
       });
     });
   }

@@ -86,3 +86,12 @@ export const CONDITIONS: Record<ConditionKey, ConditionInfo> = {
     color: 'bg-red-950 text-red-200 border-red-600',
   },
 };
+
+export const EXHAUSTION_LEVELS: { level: number; effect: string }[] = [
+  { level: 1, effect: 'Desvantagem em todos os testes de habilidade.' },
+  { level: 2, effect: 'Deslocamento reduzido pela metade.' },
+  { level: 3, effect: 'Desvantagem em jogadas de ataque e salvaguardas.' },
+  { level: 4, effect: 'Pontos de Vida máximos reduzidos pela metade.' },
+  { level: 5, effect: 'Deslocamento reduzido a 0 metros.' },
+  { level: 6, effect: 'Morte imediata do personagem.' },
+];

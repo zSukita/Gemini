@@ -78,11 +78,11 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
   const [isSubmittingFriend, setIsSubmittingFriend] = useState(false);
   const [invitedFriends, setInvitedFriends] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    if (initialTab) {
-      setActiveTab(initialTab);
-    }
-  }, [initialTab]);
+  const [prevInitialTab, setPrevInitialTab] = useState(initialTab);
+  if (initialTab && initialTab !== prevInitialTab) {
+    setPrevInitialTab(initialTab);
+    setActiveTab(initialTab);
+  }
 
   useEffect(() => {
     if (!isOpen) return;
@@ -131,7 +131,7 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
             userId: p.peerId,
             name: p.name,
             characterName: p.name,
-            lastSeen: Date.now(),
+            lastSeen: p.joinedAt || 0,
             status: 'in_game',
             currentRoomCode: currentRoomCode,
           });

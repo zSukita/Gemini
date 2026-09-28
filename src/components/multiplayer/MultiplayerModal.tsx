@@ -84,8 +84,8 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
 
   // Sincroniza o nome do usuário/personagem se mudar ou se estiver no padrão
   useEffect(() => {
-    if (currentUserName && (!nameInput || nameInput === 'Aventureiro')) {
-      setNameInput(currentUserName);
+    if (currentUserName) {
+      setNameInput((prev) => (!prev || prev === 'Aventureiro' ? currentUserName : prev));
     }
   }, [currentUserName]);
 
@@ -141,7 +141,8 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
     setErrorMsg(null);
     try {
       await onCreateRoom(nameInput.trim() || 'Mestre');
-    } catch (e) {
+    } catch (err) {
+      console.warn('Falha ao criar sala:', err);
       setErrorMsg('Falha ao criar sala. Verifique sua conexão.');
     }
   };
@@ -189,7 +190,8 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
           await onCreateRoom(nameInput.trim() || 'Jogador');
         }
       }
-    } catch (e) {
+    } catch (err) {
+      console.warn('Falha ao iniciar mesa com IA:', err);
       setErrorMsg('Falha ao iniciar mesa com Mestre IA. Verifique sua conexão.');
     } finally {
       setIsCreatingAi(false);

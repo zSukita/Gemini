@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CONDITIONS } from '../data/conditions';
+import { CONDITIONS, EXHAUSTION_LEVELS } from '../data/conditions';
 import type { ConditionKey } from '../types/combat';
 import { Plus, X, ShieldAlert, HelpCircle } from 'lucide-react';
 
@@ -8,15 +8,6 @@ interface ConditionsTrackerProps {
   onToggleCondition: (conditionKey: string) => void;
   onClearConditions?: () => void;
 }
-
-export const EXHAUSTION_LEVELS: { level: number; effect: string }[] = [
-  { level: 1, effect: 'Desvantagem em todos os testes de habilidade.' },
-  { level: 2, effect: 'Deslocamento reduzido pela metade.' },
-  { level: 3, effect: 'Desvantagem em jogadas de ataque e salvaguardas.' },
-  { level: 4, effect: 'Pontos de Vida máximos reduzidos pela metade.' },
-  { level: 5, effect: 'Deslocamento reduzido a 0 metros.' },
-  { level: 6, effect: 'Morte imediata do personagem.' },
-];
 
 export const ConditionsTracker: React.FC<ConditionsTrackerProps> = ({
   activeConditions = [],

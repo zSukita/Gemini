@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CONDITIONS } from '../data/conditions';
-import { EXHAUSTION_LEVELS } from '../components/ConditionsTracker';
+import { CONDITIONS, EXHAUSTION_LEVELS } from '../data/conditions';
 
 describe('conditions and exhaustion rules', () => {
   it('defines all 14 core D&D 5e conditions with descriptive mechanical rules', () => {

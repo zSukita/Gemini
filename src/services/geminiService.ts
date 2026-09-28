@@ -368,7 +368,10 @@ export async function sendToAiDungeonMaster(
   // 1. Provedor GROQ (Llama 3.3 70B - Ultra Rápido)
   if (provider === 'groq') {
     if (!groqKey) {
-      throw new Error('Chave de API do Groq não configurada. Por favor, adicione sua chave gratuita do console.groq.com nas configurações do Mestre IA.');
+      if (geminiKey) {
+        return await callGeminiEngine(geminiKey, DEFAULT_GEMINI_MODEL, systemInstruction, history, userAction);
+      }
+      return await callPollinationsChat(systemInstruction, history, userAction);
     }
     try {
       return await callGroqChat(groqKey, fullConfig.model || DEFAULT_GROQ_MODEL, systemInstruction, history, userAction);
@@ -376,10 +379,20 @@ export async function sendToAiDungeonMaster(
       console.warn('[Groq] Falha na chamada principal:', err);
       // Se houver chave Gemini como fallback secundário, tenta Gemini
       if (geminiKey) {
-        console.info('[Groq Fallback] Acionando Google Gemini como reserva...');
-        return await callGeminiEngine(geminiKey, DEFAULT_GEMINI_MODEL, systemInstruction, history, userAction);
+        try {
+          console.info('[Groq Fallback] Acionando Google Gemini como reserva...');
+          return await callGeminiEngine(geminiKey, DEFAULT_GEMINI_MODEL, systemInstruction, history, userAction);
+        } catch (geminiErr: unknown) {
+          console.warn('[Gemini Fallback] Também falhou:', geminiErr);
+        }
       }
-      throw err;
+      // Último recurso: Modo Livre (Pollinations) sem chave
+      try {
+        console.info('[Groq Fallback] Acionando Modo Livre (Pollinations) para manter a partida ativa...');
+        return await callPollinationsChat(systemInstruction, history, userAction);
+      } catch {
+        throw err;
+      }
     }
   }
 
@@ -390,10 +403,18 @@ export async function sendToAiDungeonMaster(
     } catch (err: unknown) {
       console.warn('[Pollinations] Falha na chamada:', err);
       if (groqKey) {
-        return await callGroqChat(groqKey, DEFAULT_GROQ_MODEL, systemInstruction, history, userAction);
+        try {
+          return await callGroqChat(groqKey, DEFAULT_GROQ_MODEL, systemInstruction, history, userAction);
+        } catch {
+          // ignore and try next
+        }
       }
       if (geminiKey) {
-        return await callGeminiEngine(geminiKey, DEFAULT_GEMINI_MODEL, systemInstruction, history, userAction);
+        try {
+          return await callGeminiEngine(geminiKey, DEFAULT_GEMINI_MODEL, systemInstruction, history, userAction);
+        } catch {
+          // ignore
+        }
       }
       throw new Error('Falha ao conectar com o serviço público do Modo Livre. Tente novamente em instantes.');
     }
@@ -404,17 +425,27 @@ export async function sendToAiDungeonMaster(
     if (groqKey) {
       return await callGroqChat(groqKey, DEFAULT_GROQ_MODEL, systemInstruction, history, userAction);
     }
-    throw new Error('Chave de API do Google Gemini não encontrada. Adicione sua chave nas configurações do Mestre IA ou use o Modo Livre.');
+    return await callPollinationsChat(systemInstruction, history, userAction);
   }
 
   try {
     return await callGeminiEngine(geminiKey, fullConfig.model, systemInstruction, history, userAction);
   } catch (err: unknown) {
     if (groqKey) {
-      console.info('[Gemini Fallback] Google indisponível, acionando Groq como backup transparente...');
-      return await callGroqChat(groqKey, DEFAULT_GROQ_MODEL, systemInstruction, history, userAction);
+      try {
+        console.info('[Gemini Fallback] Google indisponível, acionando Groq como backup transparente...');
+        return await callGroqChat(groqKey, DEFAULT_GROQ_MODEL, systemInstruction, history, userAction);
+      } catch (groqErr: unknown) {
+        console.warn('[Groq Backup] Também falhou:', groqErr);
+      }
     }
-    throw err;
+    // Último recurso: Modo Livre (Pollinations) sem chave
+    try {
+      console.info('[Gemini Fallback] Acionando Modo Livre (Pollinations) para manter a partida ativa...');
+      return await callPollinationsChat(systemInstruction, history, userAction);
+    } catch {
+      throw err;
+    }
   }
 }
 

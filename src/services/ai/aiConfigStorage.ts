@@ -1,4 +1,5 @@
 import type { AiDmConfig, AiMessage, AiProvider } from '../../types/aiDm';
+import { safeSetItem, safeSetJson, safeGetJson } from '../../utils/safeStorage';
 
 export const API_KEY_STORAGE_KEY = 'arcanasheet_gemini_api_key';
 export const GROQ_API_KEY_STORAGE_KEY = 'arcanasheet_groq_api_key';
@@ -158,13 +159,7 @@ export function getStoredCampaignSummary(): string {
 }
 
 export function saveStoredCampaignSummary(summary: string): void {
-  try {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(CAMPAIGN_SUMMARY_STORAGE_KEY, summary.trim());
-    }
-  } catch (err) {
-    console.error('Falha ao salvar resumo da campanha', err);
-  }
+  safeSetItem(CAMPAIGN_SUMMARY_STORAGE_KEY, summary.trim());
 }
 
 export function getStoredAiConfig(): AiDmConfig {
@@ -249,27 +244,11 @@ export function saveStoredAiConfig(config: AiDmConfig): void {
 }
 
 export function getStoredChatHistory(): AiMessage[] {
-  try {
-    if (typeof localStorage !== 'undefined') {
-      const raw = localStorage.getItem(CHAT_HISTORY_STORAGE_KEY);
-      if (raw) {
-        return JSON.parse(raw);
-      }
-    }
-  } catch {
-    // fallback
-  }
-  return [];
+  return safeGetJson<AiMessage[]>(CHAT_HISTORY_STORAGE_KEY, []);
 }
 
 export function saveStoredChatHistory(history: AiMessage[]): void {
-  try {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(CHAT_HISTORY_STORAGE_KEY, JSON.stringify(history));
-    }
-  } catch (err) {
-    console.error('Falha ao salvar histórico da aventura com a IA', err);
-  }
+  safeSetJson(CHAT_HISTORY_STORAGE_KEY, history);
 }
 
 export function clearStoredChatHistory(): void {

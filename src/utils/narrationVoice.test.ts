@@ -4,6 +4,11 @@ import {
   isAutoNarrationEnabled,
   setAutoNarrationEnabled,
   toggleAutoNarration,
+  splitIntoSentences,
+  isNarratableMessage,
+  getVoiceNarrationMode,
+  setVoiceNarrationMode,
+  toggleVoiceNarrationMode,
 } from './narrationVoice';
 
 describe('narrationVoice utility', () => {
@@ -52,6 +57,42 @@ Ele sussurra: *"Vocês nunca sairão vivos daqui!"*`;
     expect(cleaned).toContain('Vocês nunca sairão vivos daqui!');
   });
 
+  it('deve limpar fórmulas de dados crus e tags de prompt @mestre', () => {
+    const input = `@mestre [RESULTADO DO ATAQUE]: 🎯 ACERTOU! [1d20+5] = 18 (vs CA 14) causando 8 PV de dano!`;
+    const cleaned = cleanNarrativeForSpeech(input);
+
+    expect(cleaned).not.toContain('@mestre');
+    expect(cleaned).not.toContain('[RESULTADO DO ATAQUE]');
+    expect(cleaned).not.toContain('[1d20+5]');
+    expect(cleaned).not.toContain('= 18');
+    expect(cleaned).toContain('pontos de vida');
+    expect(cleaned).toContain('classe de armadura 14');
+  });
+
+  it('deve dividir textos longos em sentenças (chunking)', () => {
+    const longText = 'O ar na masmorra fica subitamente gélido. Uma sombra emerge do sarcófago de pedra! Os aventureiros sacam suas lâminas em guarda. O que vocês fazem agora?';
+    const sentences = splitIntoSentences(longText);
+
+    expect(sentences.length).toBeGreaterThanOrEqual(3);
+    expect(sentences[0]).toContain('O ar na masmorra fica subitamente gélido.');
+    expect(sentences[1]).toContain('Uma sombra emerge do sarcófago de pedra!');
+  });
+
+  it('deve filtrar corretamente mensagens narráveis vs logs mecânicos', () => {
+    // Logs mecânicos não devem ser narrados
+    expect(isNarratableMessage({ text: '⚠️ **Reforços Inimigos:** 2x Carniçal entraram no combate!' })).toBe(false);
+    expect(isNarratableMessage({ text: '👣 **Movimentação:** Carniçal deslocou-se 4 casas no mapa!' })).toBe(false);
+    expect(isNarratableMessage({ text: '💀 **Derrota:** Carniçal foi abatido!' })).toBe(false);
+    expect(isNarratableMessage({ text: '⏳ **Turno de Carniçal 1!**' })).toBe(false);
+    expect(isNarratableMessage({ text: '🎲 **Iniciativa de Combate:** Iniciando...' })).toBe(false);
+    expect(isNarratableMessage({ text: '🎯 ACERTOU! [1d20+4] = 18 (vs CA 12)' })).toBe(false);
+    expect(isNarratableMessage({ text: '⚔️ **Carniçal** desferiu **Mordida** contra **Herói**!\n\n🎲 **Rolagem de Ataque:** [1d20+4] ➜ **⚔️ ACERTOU!**' })).toBe(false);
+
+    // Narrativas do Mestre IA devem ser narradas
+    expect(isNarratableMessage({ text: 'A névoa espessa se abre revelando a entrada de uma cripta ancestral envolta por runas arcanas.' })).toBe(true);
+    expect(isNarratableMessage({ text: 'O carniçal recua sibilando de dor enquanto o fogo da tocha ilumina suas presas ensanguentadas.' })).toBe(true);
+  });
+
   it('deve gerenciar estado de auto-narração no localStorage', () => {
     expect(isAutoNarrationEnabled()).toBe(false);
 
@@ -61,5 +102,16 @@ Ele sussurra: *"Vocês nunca sairão vivos daqui!"*`;
     const toggled = toggleAutoNarration();
     expect(toggled).toBe(false);
     expect(isAutoNarrationEnabled()).toBe(false);
+  });
+
+  it('deve gerenciar modo de narração (story_only vs all)', () => {
+    expect(getVoiceNarrationMode()).toBe('story_only');
+
+    setVoiceNarrationMode('all');
+    expect(getVoiceNarrationMode()).toBe('all');
+
+    const toggled = toggleVoiceNarrationMode();
+    expect(toggled).toBe('story_only');
+    expect(getVoiceNarrationMode()).toBe('story_only');
   });
 });

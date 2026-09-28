@@ -20,6 +20,7 @@ import {
   saveCharactersToCloud,
   syncOnChange,
 } from '../firebase/characterSync';
+import { safeSetItem, safeSetJson } from '../utils/safeStorage';
 
 const STORAGE_KEY_ACTIVE = 'arcanasheet_active_character_id';
 const STORAGE_KEY_CHARACTERS = 'arcanasheet_characters_list';
@@ -119,8 +120,8 @@ export function useCharacter(userId?: string | null) {
       const storageKey = userId ? `arcanasheet_characters_${userId}` : STORAGE_KEY_CHARACTERS;
       const activeKey = userId ? `arcanasheet_active_${userId}` : STORAGE_KEY_ACTIVE;
 
-      localStorage.setItem(storageKey, JSON.stringify(characters));
-      localStorage.setItem(activeKey, activeId);
+      safeSetJson(storageKey, characters);
+      safeSetItem(activeKey, activeId);
 
       // Sincroniza com a nuvem (Firestore) com debounce se estiver logado
       if (userId) {

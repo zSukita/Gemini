@@ -24,6 +24,7 @@ import {
   BookOpen,
   Volume2,
   VolumeX,
+  Square,
 } from 'lucide-react';
 import { AI_ADVENTURE_SCENARIOS, type AiAdventureScenario } from '../../data/aiAdventureScenarios';
 import {
@@ -37,6 +38,11 @@ import {
   isAutoNarrationEnabled,
   toggleAutoNarration,
   isSpeechSynthesisSupported,
+  isNarratableMessage,
+  getVoiceNarrationMode,
+  toggleVoiceNarrationMode,
+  onSpeakingStateChange,
+  type VoiceNarrationMode,
 } from '../../utils/narrationVoice';
 
 interface TabletopParchmentChatProps {
@@ -96,9 +102,11 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
   const [isSynthesizingMemory, setIsSynthesizingMemory] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Narração de Voz (TTS Gratuito)
+  // Narração de Voz (TTS Gratuito com Fila Inteligente)
   const [autoVoice, setAutoVoice] = useState<boolean>(() => isAutoNarrationEnabled());
+  const [voiceMode, setVoiceMode] = useState<VoiceNarrationMode>(() => getVoiceNarrationMode());
   const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
+  const [isSpeakingAny, setIsSpeakingAny] = useState(false);
   const lastSpokenMsgIdRef = useRef<string | null>(null);
 
   // Estados e Regras de Turno D&D 5e
@@ -124,28 +132,51 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
     'Recuar com Desengajar e avaliar o campo de batalha',
   ];
 
-  // Interrompe voz ao desmontar componente
+  // Sincroniza estado de fala global e interrompe ao desmontar componente
   useEffect(() => {
+    const unsub = onSpeakingStateChange((isSpeaking, activeId) => {
+      setIsSpeakingAny(isSpeaking);
+      if (!isSpeaking) {
+        setSpeakingMsgId(null);
+      } else if (activeId) {
+        setSpeakingMsgId(activeId);
+      }
+    });
+
     return () => {
+      unsub();
       stopNarrativeVoice();
     };
   }, []);
 
-  // Leitura automática por voz de novas mensagens narrativas da IA
+  // Leitura automática inteligente de novas mensagens narrativas da IA (em fila, sem cortes)
   useEffect(() => {
     if (!autoVoice || !isSpeechSynthesisSupported()) return;
     const aiMessages = chatLog.filter((m) => m.type === 'AI_DM' || m.senderName.includes('IA'));
     if (aiMessages.length === 0) return;
     const latestAi = aiMessages[aiMessages.length - 1];
+
     if (latestAi && latestAi.id !== lastSpokenMsgIdRef.current) {
       lastSpokenMsgIdRef.current = latestAi.id;
-      speakNarrative(latestAi.text, {
-        onStart: () => setSpeakingMsgId(latestAi.id),
-        onEnd: () => setSpeakingMsgId(null),
-        onError: () => setSpeakingMsgId(null),
-      });
+
+      // Filtro inteligente de narrabilidade:
+      // No modo 'story_only' (padrão recomendado), ignora logs de movimentação, reforços, dados puros e avisos mecânicos
+      // No modo 'all', aceita qualquer mensagem que possua texto legível
+      const canNarrate = voiceMode === 'all'
+        ? Boolean(latestAi.text && latestAi.text.trim().length > 3)
+        : isNarratableMessage(latestAi);
+
+      if (canNarrate) {
+        speakNarrative(latestAi.text, {
+          id: latestAi.id,
+          queue: true, // Enfileira em vez de interromper subitamente
+          onStart: () => setSpeakingMsgId(latestAi.id),
+          onEnd: () => setSpeakingMsgId(null),
+          onError: () => setSpeakingMsgId(null),
+        });
+      }
     }
-  }, [chatLog, autoVoice]);
+  }, [chatLog, autoVoice, voiceMode]);
 
   const handleToggleAutoVoice = () => {
     const next = toggleAutoNarration();
@@ -153,16 +184,25 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
     if (!next) {
       stopNarrativeVoice();
       setSpeakingMsgId(null);
+      setIsSpeakingAny(false);
     }
+  };
+
+  const handleToggleVoiceMode = () => {
+    const nextMode = toggleVoiceNarrationMode();
+    setVoiceMode(nextMode);
   };
 
   const handleToggleSpeak = (msgId: string, text: string) => {
     if (speakingMsgId === msgId) {
       stopNarrativeVoice();
       setSpeakingMsgId(null);
+      setIsSpeakingAny(false);
     } else {
-      stopNarrativeVoice();
+      // Clique manual tem prioridade máxima: interrompe o áudio atual e lê a mensagem clicada
       const started = speakNarrative(text, {
+        id: msgId,
+        interrupt: true,
         onStart: () => setSpeakingMsgId(msgId),
         onEnd: () => setSpeakingMsgId(null),
         onError: () => setSpeakingMsgId(null),
@@ -815,6 +855,35 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
             {autoVoice ? <Volume2 size={11} className="text-amber-300 animate-pulse" /> : <VolumeX size={11} />}
             <span>{autoVoice ? 'Voz ON' : 'Voz OFF'}</span>
           </button>
+          {autoVoice && (
+            <button
+              type="button"
+              onClick={handleToggleVoiceMode}
+              className="text-[10px] font-serif font-bold text-amber-950 hover:text-amber-900 bg-amber-900/10 hover:bg-amber-900/20 px-2 py-0.5 rounded border border-amber-900/30 flex items-center gap-1 transition shadow-xs cursor-pointer"
+              title={
+                voiceMode === 'story_only'
+                  ? 'Modo: Apenas História e Falas (Recomendado). Clique para narrar também rolagens.'
+                  : 'Modo: Narrar Tudo (História e Rolagens em fila). Clique para narrar apenas história.'
+              }
+            >
+              <span>{voiceMode === 'story_only' ? '📖 Apenas História' : '🎲 Narrar Tudo'}</span>
+            </button>
+          )}
+          {isSpeakingAny && (
+            <button
+              type="button"
+              onClick={() => {
+                stopNarrativeVoice();
+                setSpeakingMsgId(null);
+                setIsSpeakingAny(false);
+              }}
+              className="text-[10px] font-serif font-bold text-rose-100 bg-rose-800 hover:bg-rose-700 px-2 py-0.5 rounded border border-rose-600 flex items-center gap-1 transition shadow-xs cursor-pointer animate-pulse"
+              title="Interromper fala atual do Mestre IA"
+            >
+              <Square size={9} fill="currentColor" />
+              <span>Silenciar</span>
+            </button>
+          )}
           <span className="text-[10px] font-serif font-bold text-amber-900/80 bg-amber-900/10 px-2 py-0.5 rounded border border-amber-900/20">
             Mestre IA Ativo
           </span>
@@ -1087,9 +1156,9 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                       <div className="space-y-1">
                         {msg.suggestedActions.map((act, i) => {
                           const cleanAct = act
-                            .replace(/^[\s\-*•\d\.\)\[\]\(\)\uFE0F\u20E3\u{1F51F}\u{0030}-\u{0039}\u{FE0F}\u{20E3}]+/u, '')
-                            .replace(/^[*_~`\s\[\]]+/, '')
-                            .replace(/[*_~`\s\[\]]+$/, '')
+                            .replace(/^[\s\-*•\d.)([\]]+/g, '')
+                            .replace(/^[*_~`\s[\]]+/, '')
+                            .replace(/[*_~`\s[\]]+$/, '')
                             .trim();
                           return (
                             <button
@@ -1175,9 +1244,9 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                 <div className="space-y-1">
                   {activeActions.map((act, i) => {
                     const cleanAct = act
-                      .replace(/^[\s\-*•\d\.\)\[\]\(\)\uFE0F\u20E3\u{1F51F}\u{0030}-\u{0039}\u{FE0F}\u{20E3}]+/u, '')
-                      .replace(/^[*_~`\s\[\]]+/, '')
-                      .replace(/[*_~`\s\[\]]+$/, '')
+                      .replace(/^[\s\-*•\d.)([\]]+/g, '')
+                      .replace(/^[*_~`\s[\]]+/, '')
+                      .replace(/[*_~`\s[\]]+$/, '')
                       .trim();
                     return (
                       <button

@@ -239,7 +239,7 @@ export function App() {
     });
 
     return () => unsubscribe();
-  }, [activeCampaignId]);
+  }, [activeCampaignId, setActiveHandout, setIsHandoutViewerOpen]);
 
   useEffect(() => {
     try {
@@ -272,7 +272,7 @@ export function App() {
       }
       setIsWizardOpen(true);
     }
-  }, [isAuthenticated, isCloudLoaded, charactersList, user?.uid]);
+  }, [isAuthenticated, isCloudLoaded, charactersList, user?.uid, setIsWizardOpen]);
 
   const handleTogglePinOnlineList = useCallback(() => {
     setIsOnlineListPinned(!isOnlineListPinned);
@@ -1252,6 +1252,7 @@ export function App() {
       startEncounter,
       sendChatMessage,
       showNotification,
+      setIsMultiplayerOpen,
     ]
   );
 
@@ -1278,7 +1279,7 @@ export function App() {
       setCurrentMode('vtt');
       showNotification('🗺️ Aventura Solo transferida para o Mapa Tático! O Mestre IA continuará narrando pelo chat.');
     },
-    [character.id, character.name, setChatLog, showNotification]
+    [character.id, character.name, setChatLog, showNotification, setIsAiDmOpen]
   );
 
   // Iniciar Aventura Solo Diretamente no Mapa Tático (VTT)
@@ -1360,6 +1361,7 @@ export function App() {
       startEncounter,
       setChatLog,
       showNotification,
+      setIsAiDmOpen,
     ]
   );
 
@@ -1372,14 +1374,14 @@ export function App() {
     setIsEndSessionOpen(false);
     setIsMultiplayerOpen(true);
     showNotification('✨ Memória da IA limpa! Escolha um cenário ou inicie uma nova aventura.');
-  }, [clearChatLog, resetEncounter, setTokens, showNotification]);
+  }, [clearChatLog, resetEncounter, setTokens, showNotification, setIsEndSessionOpen, setIsMultiplayerOpen]);
 
   const handleClearMonstersAndCombat = useCallback(() => {
     resetEncounter();
     setTokens((prev) => prev.filter((t) => t.type === 'player'));
     setIsEndSessionOpen(false);
     showNotification('🧹 Monstros e combate limpos! O mapa atual foi mantido.');
-  }, [resetEncounter, setTokens, showNotification]);
+  }, [resetEncounter, setTokens, showNotification, setIsEndSessionOpen]);
 
   const handleDisconnectAndExit = useCallback(() => {
     if (isConnected) {
@@ -1392,7 +1394,7 @@ export function App() {
     setIsEndSessionOpen(false);
     setCurrentMode('player');
     showNotification('🚪 Sessão finalizada. Retornando à ficha do personagem.');
-  }, [isConnected, disconnect, clearChatLog, resetEncounter, setTokens, showNotification]);
+  }, [isConnected, disconnect, clearChatLog, resetEncounter, setTokens, showNotification, setIsEndSessionOpen]);
 
   // Hook de Presença Social, Quem Está Online e Lista de Amigos
   const {
@@ -1619,98 +1621,112 @@ export function App() {
   );
 
   // Rolagens com d20 (Testes, Salvaguardas, Perícias, Ataques)
-  const handleRollD20 = (label: string, modifier: number) => {
-    const res = rollD20(label, modifier, advantageMode);
-    if (isSecretRoll) {
-      res.isSecret = true;
-    }
-    addRollResult(res);
-
-    // Se estiver conectado em sala multiplayer, transmite para todos na mesa (ou oculta se for secreto)
-    if (isConnected) {
+  const handleRollD20 = useCallback(
+    (label: string, modifier: number) => {
+      const res = rollD20(label, modifier, advantageMode);
       if (isSecretRoll) {
-        sendChatMessage({
-          text: 'Rolou um d20 em segredo...',
-          senderName: character.name,
-          type: 'GM_ROLL',
-          diceRoll: res,
+        res.isSecret = true;
+      }
+      addRollResult(res);
+
+      // Se estiver conectado em sala multiplayer, transmite para todos na mesa (ou oculta se for secreto)
+      if (isConnected) {
+        if (isSecretRoll) {
+          sendChatMessage({
+            text: 'Rolou um d20 em segredo...',
+            senderName: character.name,
+            type: 'GM_ROLL',
+            diceRoll: res,
+          });
+        } else {
+          broadcastDiceRoll(res, character.name);
+        }
+      }
+
+      // Se for iniciativa do jogador, sincroniza com o DM Screen local
+      if (label === 'Iniciativa' && character) {
+        broadcastSyncMessage({
+          type: 'PLAYER_INITIATIVE_ROLLED',
+          payload: {
+            playerId: character.id,
+            initiative: res.total,
+          },
         });
-      } else {
-        broadcastDiceRoll(res, character.name);
+        showNotification(`Iniciativa (${res.total}) enviada para o combate do Mestre!`);
       }
-    }
 
-    // Se for iniciativa do jogador, sincroniza com o DM Screen local
-    if (label === 'Iniciativa' && character) {
-      broadcastSyncMessage({
-        type: 'PLAYER_INITIATIVE_ROLLED',
-        payload: {
-          playerId: character.id,
-          initiative: res.total,
-        },
-      });
-      showNotification(`Iniciativa (${res.total}) enviada para o combate do Mestre!`);
-    }
+      // Regras Oficiais de D&D 5e: Salvaguardas contra a Morte automáticas
+      const isDeathSave = /salvamento de morte|salvaguarda da morte|death save/i.test(label);
+      if (isDeathSave && character) {
+        const d20Roll = res.selectedRoll ?? res.total;
+        const currentSuccesses = character.deathSaves?.successes || 0;
+        const currentFailures = character.deathSaves?.failures || 0;
 
-    // Regras Oficiais de D&D 5e: Salvaguardas contra a Morte automáticas
-    const isDeathSave = /salvamento de morte|salvaguarda da morte|death save/i.test(label);
-    if (isDeathSave && character) {
-      const d20Roll = res.selectedRoll ?? res.total;
-      const currentSuccesses = character.deathSaves?.successes || 0;
-      const currentFailures = character.deathSaves?.failures || 0;
-
-      if (d20Roll === 20) {
-        // 20 Natural: Recupera 1 PV e acorda consciente imediatamente!
-        updateCharacter((prev) => ({
-          ...prev,
-          currentHp: Math.max(1, prev.currentHp || 0) + 1,
-          deathSaves: { successes: 0, failures: 0 },
-        }));
-        showNotification('🌟 20 NATURAL! Você recuperou 1 PV e recobrou a consciência!');
-      } else if (d20Roll >= 10) {
-        // Sucesso
-        const newSuccesses = Math.min(3, currentSuccesses + 1);
-        updateCharacter((prev) => ({
-          ...prev,
-          deathSaves: { ...prev.deathSaves, successes: newSuccesses },
-        }));
-        if (newSuccesses >= 3) {
-          showNotification('🛡️ 3 Sucessos! Você se estabilizou contra a morte!');
+        if (d20Roll === 20) {
+          // 20 Natural: Recupera 1 PV e acorda consciente imediatamente!
+          updateCharacter((prev) => ({
+            ...prev,
+            currentHp: Math.max(1, prev.currentHp || 0) + 1,
+            deathSaves: { successes: 0, failures: 0 },
+          }));
+          showNotification('🌟 20 NATURAL! Você recuperou 1 PV e recobrou a consciência!');
+        } else if (d20Roll >= 10) {
+          // Sucesso
+          const newSuccesses = Math.min(3, currentSuccesses + 1);
+          updateCharacter((prev) => ({
+            ...prev,
+            deathSaves: { ...prev.deathSaves, successes: newSuccesses },
+          }));
+          if (newSuccesses >= 3) {
+            showNotification('🛡️ 3 Sucessos! Você se estabilizou contra a morte!');
+          } else {
+            showNotification(`🛡️ Sucesso no teste de morte (${newSuccesses}/3)!`);
+          }
+        } else if (d20Roll === 1) {
+          // 1 Natural: 2 Falhas imediatas!
+          const newFailures = Math.min(3, currentFailures + 2);
+          updateCharacter((prev) => ({
+            ...prev,
+            deathSaves: { ...prev.deathSaves, failures: newFailures },
+          }));
+          if (newFailures >= 3) {
+            showNotification('💀 1 NATURAL! 2 Falhas adicionadas. Você acumulou 3 falhas de morte!');
+          } else {
+            showNotification(`💔 1 Natural! 2 Falhas de morte sofridas (${newFailures}/3)!`);
+          }
         } else {
-          showNotification(`🛡️ Sucesso no teste de morte (${newSuccesses}/3)!`);
-        }
-      } else if (d20Roll === 1) {
-        // 1 Natural: 2 Falhas imediatas!
-        const newFailures = Math.min(3, currentFailures + 2);
-        updateCharacter((prev) => ({
-          ...prev,
-          deathSaves: { ...prev.deathSaves, failures: newFailures },
-        }));
-        if (newFailures >= 3) {
-          showNotification('💀 1 NATURAL! 2 Falhas adicionadas. Você acumulou 3 falhas de morte!');
-        } else {
-          showNotification(`💔 1 Natural! 2 Falhas de morte sofridas (${newFailures}/3)!`);
-        }
-      } else {
-        // Falha normal (< 10)
-        const newFailures = Math.min(3, currentFailures + 1);
-        updateCharacter((prev) => ({
-          ...prev,
-          deathSaves: { ...prev.deathSaves, failures: newFailures },
-        }));
-        if (newFailures >= 3) {
-          showNotification('💀 3 Falhas acumuladas nas salvaguardas da morte!');
-        } else {
-          showNotification(`💔 Falha no teste de morte (${newFailures}/3)!`);
+          // Falha normal (< 10)
+          const newFailures = Math.min(3, currentFailures + 1);
+          updateCharacter((prev) => ({
+            ...prev,
+            deathSaves: { ...prev.deathSaves, failures: newFailures },
+          }));
+          if (newFailures >= 3) {
+            showNotification('💀 3 Falhas acumuladas nas salvaguardas da morte!');
+          } else {
+            showNotification(`💔 Falha no teste de morte (${newFailures}/3)!`);
+          }
         }
       }
-    }
 
-    // Reset para modo normal após rolar com vantagem/desvantagem
-    if (advantageMode !== 'normal') {
-      setAdvantageMode('normal');
-    }
-  };
+      // Reset para modo normal após rolar com vantagem/desvantagem
+      if (advantageMode !== 'normal') {
+        setAdvantageMode('normal');
+      }
+    },
+    [
+      advantageMode,
+      isSecretRoll,
+      addRollResult,
+      isConnected,
+      sendChatMessage,
+      character,
+      broadcastDiceRoll,
+      showNotification,
+      updateCharacter,
+      setAdvantageMode,
+    ]
+  );
 
   // Alternar Condição Ativa na Ficha
   const handleToggleCondition = useCallback(
@@ -1751,62 +1767,68 @@ export function App() {
   );
 
   // Rolar qualquer dado rápido (d4, d6, d8, etc.)
-  const handleRollDie = (sides: number) => {
-    if (sides === 20) {
-      handleRollD20('d20 Puro', 0);
-      return;
-    }
-    const val = rollDie(sides);
-    const res: DiceRollResult = {
-      id: `roll-${Date.now()}`,
-      label: `d${sides}`,
-      dieType: `d${sides}`,
-      rolls: [val],
-      selectedRoll: val,
-      modifier: 0,
-      total: val,
-      advantageMode: 'normal',
-      breakdown: `d${sides} (${val})`,
-      timestamp: new Date().toLocaleTimeString('pt-BR'),
-      isSecret: isSecretRoll,
-    };
-    addRollResult(res);
-
-    if (isConnected) {
-      if (isSecretRoll) {
-        sendChatMessage({
-          text: `Rolou d${sides} em segredo...`,
-          senderName: character.name,
-          type: 'GM_ROLL',
-          diceRoll: res,
-        });
-      } else {
-        broadcastDiceRoll(res, character.name);
+  const handleRollDie = useCallback(
+    (sides: number) => {
+      if (sides === 20) {
+        handleRollD20('d20 Puro', 0);
+        return;
       }
-    }
-  };
+      const val = rollDie(sides);
+      const res: DiceRollResult = {
+        id: `roll-${Date.now()}`,
+        label: `d${sides}`,
+        dieType: `d${sides}`,
+        rolls: [val],
+        selectedRoll: val,
+        modifier: 0,
+        total: val,
+        advantageMode: 'normal',
+        breakdown: `d${sides} (${val})`,
+        timestamp: new Date().toLocaleTimeString('pt-BR'),
+        isSecret: isSecretRoll,
+      };
+      addRollResult(res);
+
+      if (isConnected) {
+        if (isSecretRoll) {
+          sendChatMessage({
+            text: `Rolou d${sides} em segredo...`,
+            senderName: character.name,
+            type: 'GM_ROLL',
+            diceRoll: res,
+          });
+        } else {
+          broadcastDiceRoll(res, character.name);
+        }
+      }
+    },
+    [handleRollD20, isSecretRoll, addRollResult, isConnected, sendChatMessage, character.name, broadcastDiceRoll]
+  );
 
   // Rolar fórmula personalizada ou dano
-  const handleRollFormula = (formula: string, label: string, isCrit = false) => {
-    const res = rollFormula(formula, label, isCrit);
-    if (isSecretRoll) {
-      res.isSecret = true;
-    }
-    addRollResult(res);
-
-    if (isConnected) {
+  const handleRollFormula = useCallback(
+    (formula: string, label: string, isCrit = false) => {
+      const res = rollFormula(formula, label, isCrit);
       if (isSecretRoll) {
-        sendChatMessage({
-          text: `Rolou ${formula} em segredo...`,
-          senderName: character.name,
-          type: 'GM_ROLL',
-          diceRoll: res,
-        });
-      } else {
-        broadcastDiceRoll(res, character.name);
+        res.isSecret = true;
       }
-    }
-  };
+      addRollResult(res);
+
+      if (isConnected) {
+        if (isSecretRoll) {
+          sendChatMessage({
+            text: `Rolou ${formula} em segredo...`,
+            senderName: character.name,
+            type: 'GM_ROLL',
+            diceRoll: res,
+          });
+        } else {
+          broadcastDiceRoll(res, character.name);
+        }
+      }
+    },
+    [isSecretRoll, addRollResult, isConnected, sendChatMessage, character.name, broadcastDiceRoll]
+  );
 
   // Rolar novamente a última rolagem ativa (Re-roll na animação 3D)
   const handleReroll = useCallback(() => {

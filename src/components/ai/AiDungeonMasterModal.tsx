@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Character, CampaignNpc } from '../../types/dnd5e';
 import type { CampaignHandout } from '../../firebase/campaignSync';
 import { 
@@ -162,8 +162,9 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
       stopNarrativeVoice();
       setSpeakingMsgId(null);
     } else {
-      stopNarrativeVoice();
       const started = speakNarrative(text, {
+        id: msgId,
+        interrupt: true,
         onStart: () => setSpeakingMsgId(msgId),
         onEnd: () => setSpeakingMsgId(null),
         onError: () => setSpeakingMsgId(null),
@@ -223,8 +224,6 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
     }
   }, [history, isAiLoading, activeTab, showPremisePicker]);
 
-  if (!isOpen) return null;
-
   // Salvar configurações
   const handleSaveSettings = () => {
     saveStoredAiProvider(provider);
@@ -272,16 +271,17 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
   };
 
   // Iniciar aventura com premissa escolhida
-  const handleStartPremise = async (premise: StartingPremise) => {
+  const handleStartPremise = useCallback(async (premise: StartingPremise) => {
     setShowPremisePicker(false);
     setIsAiLoading(true);
     setTone(premise.tone);
 
+    const now = Date.now();
     const introMessage: AiMessage = {
-      id: `msg_intro_${Date.now()}`,
+      id: `msg_intro_${now}`,
       role: 'narrator',
       content: premise.initialPrompt,
-      timestamp: Date.now(),
+      timestamp: now,
       suggestedActions: [
         'Examinar os arredores cautelosamente',
         'Sacar suas armas e assumir postura de combate',
@@ -308,22 +308,25 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
 
     if (autoVoice && isSpeechSynthesisSupported()) {
       speakNarrative(introMessage.content, {
+        id: introMessage.id,
+        queue: true,
         onStart: () => setSpeakingMsgId(introMessage.id),
         onEnd: () => setSpeakingMsgId(null),
         onError: () => setSpeakingMsgId(null),
       });
     }
-  };
+  }, [onBroadcastToRoom, autoBroadcastToRoom, autoVoice]);
 
   // Iniciar com premissa customizada
-  const handleStartCustomPremise = () => {
+  const handleStartCustomPremise = useCallback(() => {
     if (!customPremiseText.trim()) return;
     setShowPremisePicker(false);
+    const now = Date.now();
     const introMessage: AiMessage = {
-      id: `msg_intro_${Date.now()}`,
+      id: `msg_intro_${now}`,
       role: 'narrator',
       content: customPremiseText.trim(),
-      timestamp: Date.now(),
+      timestamp: now,
       suggestedActions: [
         'Olhar ao redor e avaliar perigos',
         'Interagir com o ambiente',
@@ -349,15 +352,17 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
 
     if (autoVoice && isSpeechSynthesisSupported()) {
       speakNarrative(introMessage.content, {
+        id: introMessage.id,
+        queue: true,
         onStart: () => setSpeakingMsgId(introMessage.id),
         onEnd: () => setSpeakingMsgId(null),
         onError: () => setSpeakingMsgId(null),
       });
     }
-  };
+  }, [customPremiseText, onBroadcastToRoom, autoBroadcastToRoom, autoVoice]);
 
   // Enviar ação do jogador para a IA
-  const handleSendAction = async (actionText: string) => {
+  const handleSendAction = useCallback(async (actionText: string) => {
     const trimmed = actionText.trim();
     if (!trimmed || isAiLoading) return;
 
@@ -378,11 +383,12 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
       return;
     }
 
+    const now = Date.now();
     const playerMessage: AiMessage = {
-      id: `player_${Date.now()}`,
+      id: `player_${now}`,
       role: 'player',
       content: trimmed,
-      timestamp: Date.now(),
+      timestamp: now,
     };
 
     const updatedHistory = [...history, playerMessage];
@@ -406,6 +412,8 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
 
       if (autoVoice && isSpeechSynthesisSupported()) {
         speakNarrative(response.content, {
+          id: response.id,
+          queue: true,
           onStart: () => setSpeakingMsgId(response.id),
           onEnd: () => setSpeakingMsgId(null),
           onError: () => setSpeakingMsgId(null),
@@ -434,35 +442,50 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
     } finally {
       setIsAiLoading(false);
     }
-  };
+  }, [
+    isAiLoading,
+    provider,
+    groqApiKey,
+    apiKey,
+    history,
+    activeCharacter,
+    tone,
+    customInstructions,
+    includeStats,
+    autoVoice,
+    onBroadcastToRoom,
+    autoBroadcastToRoom,
+  ]);
 
   // Rolar teste solicitado pela IA no d20
-  const handleRollRequested = (rollReq: { skillOrAbility: string; dc?: number; reason: string }) => {
-    // Rolar d20
-    const roll = rollD20('normal');
-    
-    // Tentar encontrar modificador do personagem se aplicável
-    let modifier = 0;
-    const label = rollReq.skillOrAbility;
+  const handleRollRequested = useCallback(
+    (rollReq: { skillOrAbility: string; dc?: number; reason: string }) => {
+      // Tentar encontrar modificador do personagem se aplicável
+      let modifier = 0;
+      const label = rollReq.skillOrAbility;
 
-    if (activeCharacter) {
-      const getMod = (score: number) => Math.floor((score - 10) / 2);
-      const lower = rollReq.skillOrAbility.toLowerCase();
-      if (lower.includes('forç') || lower.includes('atletismo')) modifier = getMod(activeCharacter.abilities.str.score);
-      else if (lower.includes('destr') || lower.includes('acrobacia') || lower.includes('furtiv')) modifier = getMod(activeCharacter.abilities.dex.score);
-      else if (lower.includes('const')) modifier = getMod(activeCharacter.abilities.con.score);
-      else if (lower.includes('intel') || lower.includes('arcan') || lower.includes('histór') || lower.includes('investig')) modifier = getMod(activeCharacter.abilities.int.score);
-      else if (lower.includes('sabi') || lower.includes('percep') || lower.includes('intuiç') || lower.includes('sobreviv')) modifier = getMod(activeCharacter.abilities.wis.score);
-      else if (lower.includes('caris') || lower.includes('atuaç') || lower.includes('enganaç') || lower.includes('intimid') || lower.includes('persuas')) modifier = getMod(activeCharacter.abilities.cha.score);
-    }
+      if (activeCharacter) {
+        const getMod = (score: number) => Math.floor((score - 10) / 2);
+        const lower = rollReq.skillOrAbility.toLowerCase();
+        if (lower.includes('forç') || lower.includes('atletismo')) modifier = getMod(activeCharacter.abilities.str.score);
+        else if (lower.includes('destr') || lower.includes('acrobacia') || lower.includes('furtiv')) modifier = getMod(activeCharacter.abilities.dex.score);
+        else if (lower.includes('const')) modifier = getMod(activeCharacter.abilities.con.score);
+        else if (lower.includes('intel') || lower.includes('arcan') || lower.includes('histór') || lower.includes('investig')) modifier = getMod(activeCharacter.abilities.int.score);
+        else if (lower.includes('sabi') || lower.includes('percep') || lower.includes('intuiç') || lower.includes('sobreviv')) modifier = getMod(activeCharacter.abilities.wis.score);
+        else if (lower.includes('caris') || lower.includes('atuaç') || lower.includes('enganaç') || lower.includes('intimid') || lower.includes('persuas')) modifier = getMod(activeCharacter.abilities.cha.score);
+      }
 
-    const total = roll.total + modifier;
-    const dcInfo = rollReq.dc ? ` contra CD ${rollReq.dc}` : '';
-    const successInfo = rollReq.dc ? (total >= rollReq.dc ? ' (SUCESSO!)' : ' (FALHA)') : '';
-    const resultNarrative = `[ROLAGEM DE DADO: ${label}]: Tirei ${roll.total}${modifier !== 0 ? (modifier >= 0 ? `+${modifier}` : modifier) : ''} = TOTAL ${total}${dcInfo}${successInfo}. ${rollReq.reason}`;
+      // Rolar d20 com label e modifier
+      const roll = rollD20(label, modifier, 'normal');
+      const total = roll.total;
+      const dcInfo = rollReq.dc ? ` contra CD ${rollReq.dc}` : '';
+      const successInfo = rollReq.dc ? (total >= rollReq.dc ? ' (SUCESSO!)' : ' (FALHA)') : '';
+      const resultNarrative = `[ROLAGEM DE DADO: ${label}]: Tirei ${roll.selectedRoll ?? (roll.total - modifier)}${modifier !== 0 ? (modifier >= 0 ? `+${modifier}` : modifier) : ''} = TOTAL ${total}${dcInfo}${successInfo}. ${rollReq.reason}`;
 
-    handleSendAction(resultNarrative);
-  };
+      handleSendAction(resultNarrative);
+    },
+    [activeCharacter, handleSendAction]
+  );
 
   // Transmitir Handout encontrado como Pergaminho
   const handleTransmitHandoutFromAi = (handout: { title: string; content: string; authorOrOrigin?: string }) => {
@@ -528,6 +551,8 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
     if (premiseId === 'whispering_woods') return AI_ADVENTURE_SCENARIOS.find((s) => s.id === 'forest_ambush') || AI_ADVENTURE_SCENARIOS[1];
     return AI_ADVENTURE_SCENARIOS[0];
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in">

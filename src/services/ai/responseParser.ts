@@ -41,14 +41,14 @@ export function parseAiResponse(rawText: string): {
     const rawActions = actionsMatch[1];
     suggestedActions = rawActions
       .split('\n')
-      .map(line =>
+      .map((line) =>
         line
-          .replace(/^[\s\-*•\d\.\)\[\]\(\)\uFE0F\u20E3\u{1F51F}\u{0030}-\u{0039}\u{FE0F}\u{20E3}]+/u, '')
-          .replace(/^[*_~`\s\[\]]+/, '')
-          .replace(/[*_~`\s\[\]]+$/, '')
+          .replace(/^(?:\d\uFE0F?\u20E3|\p{Extended_Pictographic}|[0-9\s\-*•.()[\]])+/gu, '')
+          .replace(/^[\s*_~`[\]]+/, '')
+          .replace(/[\s*_~`[\]]+$/, '')
           .trim()
       )
-      .filter(line => line.length > 0)
+      .filter((line) => line.length > 0)
       .slice(0, 3);
     cleanText = cleanText.replace(actionsRegex, '').trim();
   }
@@ -163,25 +163,30 @@ export function parseAiResponse(rawText: string): {
 
     const isCoinOnly = (chunk: string) => {
       return (
-        /^\s*\d+\s*(?:po|gp|pp|sp|pc|cp|pe|ep|pl)\b/i.test(chunk) ||
-        /^\s*\d+\s*(?:peças?|moedas?)\s+de\s+(?:ouro|prata|cobre|electro|platina)\b/i.test(chunk)
+        /\b\d+\s*(?:po|gp|pp|sp|pc|cp|pe|ep|pl|pt)(?![a-záàâãéêíóôõúçA-ZÀ-ÚÇ])/i.test(chunk) ||
+        /\b\d+\s*(?:peças?|moedas?)\s+de\s+(?:ouro|prata|cobre|electro|platina)\b/i.test(chunk)
       );
     };
 
     const parseCoinStr = (str: string) => {
-      const gpMatch = str.match(/(\d+)\s*(?:po|gp|\bpeças?\s+de\s+ouro|\bmoedas?\s+de\s+ouro)/i);
+      const gpMatch = str.match(/(\d+)\s*(?:po|gp|\bpeças?\s+de\s+ouro|\bmoedas?\s+de\s+ouro)(?![a-záàâãéêíóôõúçA-ZÀ-ÚÇ])/i);
       if (gpMatch) coins.gp = (coins.gp || 0) + parseInt(gpMatch[1], 10);
 
-      const spMatch = str.match(/(\d+)\s*(?:pp|sp|\bpeças?\s+de\s+prata|\bmoedas?\s+de\s+prata)/i);
+      const spMatch = str.match(/(\d+)\s*(?:sp|\bpeças?\s+de\s+prata|\bmoedas?\s+de\s+prata)(?![a-záàâãéêíóôõúçA-ZÀ-ÚÇ])/i);
       if (spMatch) coins.sp = (coins.sp || 0) + parseInt(spMatch[1], 10);
 
-      const cpMatch = str.match(/(\d+)\s*(?:pc|cp|\bpeças?\s+de\s+cobre|\bmoedas?\s+de\s+cobre)/i);
+      const ppMatch = str.match(/(\d+)\s*(?:pp)(?![a-záàâãéêíóôõúçA-ZÀ-ÚÇ])/i);
+      if (ppMatch && !spMatch) {
+        coins.sp = (coins.sp || 0) + parseInt(ppMatch[1], 10);
+      }
+
+      const cpMatch = str.match(/(\d+)\s*(?:pc|cp|\bpeças?\s+de\s+cobre|\bmoedas?\s+de\s+cobre)(?![a-záàâãéêíóôõúçA-ZÀ-ÚÇ])/i);
       if (cpMatch) coins.cp = (coins.cp || 0) + parseInt(cpMatch[1], 10);
 
-      const epMatch = str.match(/(\d+)\s*(?:pe|ep|\bpeças?\s+de\s+electro|\bmoedas?\s+de\s+electro)/i);
+      const epMatch = str.match(/(\d+)\s*(?:pe|ep|\bpeças?\s+de\s+electro|\bmoedas?\s+de\s+electro)(?![a-záàâãéêíóôõúçA-ZÀ-ÚÇ])/i);
       if (epMatch) coins.ep = (coins.ep || 0) + parseInt(epMatch[1], 10);
 
-      const plMatch = str.match(/(\d+)\s*(?:pl|\bpeças?\s+de\s+platina|\bmoedas?\s+de\s+platina)/i);
+      const plMatch = str.match(/(\d+)\s*(?:pl|pt|\bpeças?\s+de\s+platina|\bmoedas?\s+de\s+platina)(?![a-záàâãéêíóôõúçA-ZÀ-ÚÇ])/i);
       if (plMatch) coins.pp = (coins.pp || 0) + parseInt(plMatch[1], 10);
     };
 
@@ -207,34 +212,9 @@ export function parseAiResponse(rawText: string): {
       });
     };
 
-    if (parts.length >= 2) {
-      if (isCoinOnly(parts[0]) || /\b(?:po|gp|pp|sp|pc|cp|pe|ep|pl)\b/i.test(parts[0])) {
-        parseCoinStr(parts[0]);
-      } else {
-        parseItemStr(parts[0]);
-      }
-      parseItemStr(parts[1]);
-    } else {
-      const chunks = parts[0].split(',').map((c) => c.trim()).filter(Boolean);
-      chunks.forEach((chunk) => {
-        if (isCoinOnly(chunk)) {
-          parseCoinStr(chunk);
-        } else {
-          const qtyMatch = chunk.match(/^(\d+)x?\s*(.+)$/i);
-          if (qtyMatch) {
-            items.push({
-              quantity: parseInt(qtyMatch[1], 10) || 1,
-              name: qtyMatch[2].trim(),
-            });
-          } else {
-            items.push({
-              quantity: 1,
-              name: chunk.trim(),
-            });
-          }
-        }
-      });
-    }
+    parts.forEach((part) => {
+      parseItemStr(part);
+    });
 
     lootReward = {
       coins: Object.keys(coins).length > 0 ? coins : undefined,

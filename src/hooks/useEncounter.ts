@@ -93,10 +93,14 @@ export function useEncounter() {
     return unsubscribe;
   }, []);
 
-  // Ordenar combatentes por Iniciativa decrescente
+  // Ordenar combatentes por Iniciativa (jogadores agem antes de monstros)
   const sortCombatantsByInitiative = useCallback(() => {
     setEncounter((prev) => {
-      const sorted = [...prev.combatants].sort((a, b) => b.initiative - a.initiative);
+      const sorted = [...prev.combatants].sort((a, b) => {
+        if (a.type === 'player' && b.type !== 'player') return -1;
+        if (a.type !== 'player' && b.type === 'player') return 1;
+        return b.initiative - a.initiative;
+      });
       return {
         ...prev,
         combatants: sorted,
@@ -172,7 +176,8 @@ export function useEncounter() {
         .filter((char) => !existingPlayerIds.has(char.id))
         .map((char) => {
           const dexMod = getAbilityModifier(char.abilities.dex.score);
-          const init = dexMod + (char.initiativeBonus || 0);
+          const roll = rollDie(20);
+          const init = roll + dexMod + (char.initiativeBonus || 0);
 
           return {
             id: `combatant-player-${char.id}`,
@@ -246,15 +251,22 @@ export function useEncounter() {
     });
   };
 
-  // Iniciar combate
+  // Iniciar combate (jogadores sempre agem primeiro)
   const startEncounter = () => {
-    sortCombatantsByInitiative();
-    setEncounter((prev) => ({
-      ...prev,
-      isRunning: true,
-      round: 1,
-      activeCombatantIndex: 0,
-    }));
+    setEncounter((prev) => {
+      const sorted = [...prev.combatants].sort((a, b) => {
+        if (a.type === 'player' && b.type !== 'player') return -1;
+        if (a.type !== 'player' && b.type === 'player') return 1;
+        return b.initiative - a.initiative;
+      });
+      return {
+        ...prev,
+        combatants: sorted,
+        isRunning: true,
+        round: 1,
+        activeCombatantIndex: 0,
+      };
+    });
   };
 
   // Próximo Turno

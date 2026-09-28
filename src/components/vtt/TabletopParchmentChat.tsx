@@ -21,7 +21,9 @@ import {
   Coins,
   PackagePlus,
   CheckCircle2,
-  BookOpen
+  BookOpen,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import { AI_ADVENTURE_SCENARIOS, type AiAdventureScenario } from '../../data/aiAdventureScenarios';
 import {
@@ -29,6 +31,13 @@ import {
   saveStoredCampaignSummary,
   generateCampaignSummaryUpdate,
 } from '../../services/geminiService';
+import {
+  speakNarrative,
+  stopNarrativeVoice,
+  isAutoNarrationEnabled,
+  toggleAutoNarration,
+  isSpeechSynthesisSupported,
+} from '../../utils/narrationVoice';
 
 interface TabletopParchmentChatProps {
   chatLog: ChatMessage[];
@@ -87,6 +96,11 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
   const [isSynthesizingMemory, setIsSynthesizingMemory] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  // Narração de Voz (TTS Gratuito)
+  const [autoVoice, setAutoVoice] = useState<boolean>(() => isAutoNarrationEnabled());
+  const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
+  const lastSpokenMsgIdRef = useRef<string | null>(null);
+
   // Estados e Regras de Turno D&D 5e
   const isCombatActive = Boolean(encounter?.isRunning && encounter.combatants.length > 0);
   const activeCombatant = isCombatActive && encounter
@@ -96,6 +110,129 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
   const isMyTurn = !isCombatActive || Boolean(isPlayerTurn && activeCombatant?.name.toLowerCase() === currentUserName.toLowerCase());
   const isOtherPlayerTurn = Boolean(isCombatActive && isPlayerTurn && !isMyTurn);
   const isMonsterTurn = Boolean(isCombatActive && activeCombatant?.type === 'monster');
+
+  // Localiza a mensagem da IA mais recente e as ações sugeridas ativas
+  const lastAiMessage = [...chatLog].reverse().find(
+    (m) => m.type === 'AI_DM' || m.senderName.includes('IA')
+  );
+  const latestActionMsg = [...chatLog].reverse().find(
+    (m) => m.suggestedActions && m.suggestedActions.length > 0
+  );
+  const activeActions = latestActionMsg?.suggestedActions || [
+    'Desferir um ataque com arma ou magia no inimigo mais próximo',
+    'Mover-se para cobertura tática e assumir postura de Esquiva',
+    'Recuar com Desengajar e avaliar o campo de batalha',
+  ];
+
+  // Interrompe voz ao desmontar componente
+  useEffect(() => {
+    return () => {
+      stopNarrativeVoice();
+    };
+  }, []);
+
+  // Leitura automática por voz de novas mensagens narrativas da IA
+  useEffect(() => {
+    if (!autoVoice || !isSpeechSynthesisSupported()) return;
+    const aiMessages = chatLog.filter((m) => m.type === 'AI_DM' || m.senderName.includes('IA'));
+    if (aiMessages.length === 0) return;
+    const latestAi = aiMessages[aiMessages.length - 1];
+    if (latestAi && latestAi.id !== lastSpokenMsgIdRef.current) {
+      lastSpokenMsgIdRef.current = latestAi.id;
+      speakNarrative(latestAi.text, {
+        onStart: () => setSpeakingMsgId(latestAi.id),
+        onEnd: () => setSpeakingMsgId(null),
+        onError: () => setSpeakingMsgId(null),
+      });
+    }
+  }, [chatLog, autoVoice]);
+
+  const handleToggleAutoVoice = () => {
+    const next = toggleAutoNarration();
+    setAutoVoice(next);
+    if (!next) {
+      stopNarrativeVoice();
+      setSpeakingMsgId(null);
+    }
+  };
+
+  const handleToggleSpeak = (msgId: string, text: string) => {
+    if (speakingMsgId === msgId) {
+      stopNarrativeVoice();
+      setSpeakingMsgId(null);
+    } else {
+      stopNarrativeVoice();
+      const started = speakNarrative(text, {
+        onStart: () => setSpeakingMsgId(msgId),
+        onEnd: () => setSpeakingMsgId(null),
+        onError: () => setSpeakingMsgId(null),
+      });
+      if (started) {
+        setSpeakingMsgId(msgId);
+      }
+    }
+  };
+
+  const handleExecuteAction = (act: string) => {
+    if (isCombatActive && !isMyTurn) return;
+    const actLower = act.toLowerCase();
+    const isMoveOrAttack =
+      /avan[çc]ar|flanquear|atacar|aproximar|investir|esgueirar|golpear|correr|bloquear|decapitar|finalizar|miseric[oó]rdia/i.test(actLower);
+
+    const isFinishingBlow =
+      /miseric[oó]rdia|decapitar|finalizar|executar|abater|degolar|acabar com/i.test(actLower);
+
+    if (isFinishingBlow && encounter && onHpDelta) {
+      const monsterCandidates = encounter.combatants.filter(
+        (c) => (c.type === 'monster' || c.type === 'npc') && c.currentHp > 0
+      );
+      let targetMonster = monsterCandidates.find((m) => {
+        const cName = m.name.toLowerCase().replace(/\s*\([^)]*\)/g, '').trim();
+        const cBase = cName.replace(/\s*\d+$/, '').trim();
+        return actLower.includes(cName) || (cBase.length >= 3 && actLower.includes(cBase));
+      });
+      if (!targetMonster && monsterCandidates.length > 0) {
+        targetMonster = [...monsterCandidates].sort((a, b) => a.currentHp - b.currentHp)[0];
+      }
+      if (targetMonster) {
+        onHpDelta(targetMonster.id, -targetMonster.currentHp);
+      }
+    }
+
+    if (isMoveOrAttack && tokens && onMoveToken) {
+      const playerToken = tokens.find(
+        (t) =>
+          (character?.id && t.id === character.id) ||
+          t.name.toLowerCase() === (character?.name || '').toLowerCase() ||
+          t.name.toLowerCase() === currentUserName.toLowerCase() ||
+          t.type === 'player'
+      );
+      const targetToken =
+        tokens.find((t) => {
+          if (t.type !== 'monster' || (t.currentHp ?? 1) <= 0) return false;
+          const tClean = t.name.toLowerCase().replace(/\s*\([^)]*\)/g, '').trim();
+          const tBase = tClean.replace(/\s*\d+$/, '').trim();
+          return actLower.includes(tClean) || (tBase.length >= 3 && actLower.includes(tBase));
+        }) || tokens.find((t) => t.type === 'monster' && (t.currentHp ?? 1) > 0);
+
+      if (playerToken && targetToken && playerToken.id !== targetToken.id) {
+        const dx = targetToken.x - playerToken.x;
+        const dy = targetToken.y - playerToken.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 55) {
+          let targetX = targetToken.x;
+          let targetY = targetToken.y;
+          if (Math.abs(dx) >= Math.abs(dy)) {
+            targetX += dx > 0 ? -50 : 50;
+          } else {
+            targetY += dy > 0 ? -50 : 50;
+          }
+          onMoveToken(playerToken.id, Math.max(0, targetX), Math.max(0, targetY));
+        }
+      }
+    }
+    onSendMessage(`@mestre Escolho: ${act}`, currentUserName);
+  };
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -665,6 +802,19 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
             <BookOpen size={10} />
             <span>Memória IA</span>
           </button>
+          <button
+            type="button"
+            onClick={handleToggleAutoVoice}
+            className={`text-[10px] font-serif font-bold px-2 py-0.5 rounded border flex items-center gap-1 transition shadow-xs cursor-pointer ${
+              autoVoice
+                ? 'bg-amber-800 text-amber-100 border-amber-900 shadow-sm'
+                : 'text-amber-950 hover:text-amber-900 bg-amber-900/10 hover:bg-amber-900/20 border-amber-900/30'
+            }`}
+            title={autoVoice ? 'Voz do Mestre IA Ativada (Clique para silenciar)' : 'Ativar Narração por Voz do Mestre IA (TTS Gratuito)'}
+          >
+            {autoVoice ? <Volume2 size={11} className="text-amber-300 animate-pulse" /> : <VolumeX size={11} />}
+            <span>{autoVoice ? 'Voz ON' : 'Voz OFF'}</span>
+          </button>
           <span className="text-[10px] font-serif font-bold text-amber-900/80 bg-amber-900/10 px-2 py-0.5 rounded border border-amber-900/20">
             Mestre IA Ativo
           </span>
@@ -885,7 +1035,21 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                       <Sparkles size={14} className="text-amber-700" />
                       <span>{msg.senderName}</span>
                     </div>
-                    <span className="text-[10px] text-amber-900/60 font-mono">[{timeStr}]</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleSpeak(msg.id, msg.text)}
+                        className={`p-1 rounded transition cursor-pointer ${
+                          speakingMsgId === msg.id
+                            ? 'bg-amber-800 text-amber-200 animate-pulse'
+                            : 'text-amber-800/70 hover:text-amber-950 hover:bg-amber-900/10'
+                        }`}
+                        title={speakingMsgId === msg.id ? 'Parar leitura de voz' : 'Ouvir narração do Mestre em voz alta'}
+                      >
+                        {speakingMsgId === msg.id ? <VolumeX size={12} /> : <Volume2 size={12} />}
+                      </button>
+                      <span className="text-[10px] text-amber-900/60 font-mono">[{timeStr}]</span>
+                    </div>
                   </div>
 
                   {/* Texto Narrativo */}
@@ -914,136 +1078,32 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                     </div>
                   )}
 
-                  {/* Ações Sugeridas */}
-                  {msg.suggestedActions && msg.suggestedActions.length > 0 && (
+                  {/* Ações Sugeridas (Apenas fora de combate e apenas na mensagem mais recente) */}
+                  {!isCombatActive && msg.id === lastAiMessage?.id && msg.suggestedActions && msg.suggestedActions.length > 0 && (
                     <div className="mt-2 space-y-1.5 pt-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] uppercase font-bold text-amber-900 tracking-wider block">
-                          {isCombatActive
-                            ? isMyTurn
-                              ? '⚔️ Seu Turno — Opções de Ação:'
-                              : isOtherPlayerTurn
-                              ? `⏳ Turno de ${activeCombatant?.name} — Opções:`
-                              : `👹 Turno de ${activeCombatant?.name} — Opções:`
-                            : 'Opções Sugeridas:'}
-                        </span>
-                        {isCombatActive && isOtherPlayerTurn && (
-                          <span className="text-[9px] text-amber-800/80 font-mono italic">
-                            Aguardando iniciativa
-                          </span>
-                        )}
-                      </div>
-
-                      {isCombatActive && isOtherPlayerTurn && (
-                        <div className="p-1.5 rounded bg-amber-900/10 border border-amber-900/20 text-[10px] text-amber-900 italic">
-                          ⏳ É a vez de <strong>{activeCombatant?.name}</strong> agir segundo a ordem de iniciativa D&D 5e.
-                        </div>
-                      )}
-
-                      {isCombatActive && isMonsterTurn && (
-                        <div className="p-1.5 rounded bg-rose-950/10 border border-rose-900/30 text-[10px] text-rose-900 italic">
-                          👹 <strong>{activeCombatant?.name}</strong> está executando sua ação com o Mestre IA.
-                        </div>
-                      )}
-
+                      <span className="text-[10px] uppercase font-bold text-amber-900 tracking-wider block">
+                        Opções Sugeridas:
+                      </span>
                       <div className="space-y-1">
-                        {msg.suggestedActions.map((act, i) => (
-                          <button
-                            key={i}
-                            type="button"
-                            disabled={isCombatActive && !isMyTurn}
-                            onClick={() => {
-                              if (isCombatActive && !isMyTurn) return;
-                              const actLower = act.toLowerCase();
-                              const isMoveOrAttack =
-                                /avan[çc]ar|flanquear|atacar|aproximar|investir|esgueirar|golpear|correr|bloquear|decapitar|finalizar|miseric[oó]rdia/i.test(actLower);
-
-                              const isFinishingBlow =
-                                /miseric[oó]rdia|decapitar|finalizar|executar|abater|degolar|acabar com/i.test(actLower);
-
-                              if (isFinishingBlow && encounter && onHpDelta) {
-                                const monsterCandidates = encounter.combatants.filter(
-                                  (c) => (c.type === 'monster' || c.type === 'npc') && c.currentHp > 0
-                                );
-                                let targetMonster = monsterCandidates.find((m) => {
-                                  const cName = m.name.toLowerCase().replace(/\s*\([^)]*\)/g, '').trim();
-                                  const cBase = cName.replace(/\s*\d+$/, '').trim();
-                                  return actLower.includes(cName) || (cBase.length >= 3 && actLower.includes(cBase));
-                                });
-                                if (!targetMonster && monsterCandidates.length > 0) {
-                                  targetMonster = [...monsterCandidates].sort((a, b) => a.currentHp - b.currentHp)[0];
-                                }
-                                if (targetMonster) {
-                                  onHpDelta(targetMonster.id, -targetMonster.currentHp);
-                                }
-                              }
-
-                              if (isMoveOrAttack && tokens && onMoveToken) {
-                                const playerToken = tokens.find(
-                                  (t) =>
-                                    (character?.id && t.id === character.id) ||
-                                    t.name.toLowerCase() === (character?.name || '').toLowerCase() ||
-                                    t.name.toLowerCase() === currentUserName.toLowerCase() ||
-                                    t.type === 'player'
-                                );
-                                const targetToken =
-                                  tokens.find((t) => {
-                                    if (t.type !== 'monster' || (t.currentHp ?? 1) <= 0) return false;
-                                    const tClean = t.name.toLowerCase().replace(/\s*\([^)]*\)/g, '').trim();
-                                    const tBase = tClean.replace(/\s*\d+$/, '').trim();
-                                    return actLower.includes(tClean) || (tBase.length >= 3 && actLower.includes(tBase));
-                                  }) || tokens.find((t) => t.type === 'monster' && (t.currentHp ?? 1) > 0);
-
-                                if (playerToken && targetToken && playerToken.id !== targetToken.id) {
-                                  const dx = targetToken.x - playerToken.x;
-                                  const dy = targetToken.y - playerToken.y;
-                                  const dist = Math.hypot(dx, dy);
-                                  if (dist > 55) {
-                                    let targetX = targetToken.x;
-                                    let targetY = targetToken.y;
-                                    if (Math.abs(dx) >= Math.abs(dy)) {
-                                      targetX += dx > 0 ? -50 : 50;
-                                    } else {
-                                      targetY += dy > 0 ? -50 : 50;
-                                    }
-                                    onMoveToken(playerToken.id, Math.max(0, targetX), Math.max(0, targetY));
-                                  }
-                                }
-                              }
-                              onSendMessage(`@mestre Escolho: ${act}`, currentUserName);
-                            }}
-                            className={`w-full text-left p-1.5 rounded border text-[11px] font-medium transition flex items-center gap-1.5 shadow-xs ${
-                              isCombatActive && !isMyTurn
-                                ? 'bg-[#e0d3ba]/50 border-[#cca97f]/40 text-amber-900/50 cursor-not-allowed opacity-60'
-                                : 'bg-[#f0e3c5] hover:bg-[#e4d1aa] border-[#cfb48c] text-amber-950 cursor-pointer active:scale-98'
-                            }`}
-                            title={
-                              isCombatActive && !isMyTurn
-                                ? `Aguardando a vez de ${activeCombatant?.name} na iniciativa`
-                                : undefined
-                            }
-                          >
-                            <ArrowRight size={11} className={isCombatActive && !isMyTurn ? 'text-amber-700/40 shrink-0' : 'text-amber-800 shrink-0'} />
-                            <span>{act}</span>
-                          </button>
-                        ))}
+                        {msg.suggestedActions.map((act, i) => {
+                          const cleanAct = act
+                            .replace(/^[\s\-*•\d\.\)\[\]\(\)\uFE0F\u20E3\u{1F51F}\u{0030}-\u{0039}\u{FE0F}\u{20E3}]+/u, '')
+                            .replace(/^[*_~`\s\[\]]+/, '')
+                            .replace(/[*_~`\s\[\]]+$/, '')
+                            .trim();
+                          return (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() => handleExecuteAction(cleanAct)}
+                              className="w-full text-left p-1.5 rounded border text-[11px] font-medium transition flex items-center gap-1.5 shadow-xs bg-[#f0e3c5] hover:bg-[#e4d1aa] border-[#cfb48c] text-amber-950 cursor-pointer active:scale-98"
+                            >
+                              <ArrowRight size={11} className="text-amber-800 shrink-0" />
+                              <span>{cleanAct}</span>
+                            </button>
+                          );
+                        })}
                       </div>
-
-                      {/* Botão de Finalizar Turno para o Jogador Ativo */}
-                      {isCombatActive && isMyTurn && onNextTurn && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onSendMessage(`⚔️ ${currentUserName} concluiu o seu turno no combate.`, currentUserName);
-                            onNextTurn();
-                          }}
-                          className="w-full mt-2 py-1.5 px-3 rounded bg-amber-800 hover:bg-amber-900 text-amber-100 font-bold text-[11px] transition flex items-center justify-center gap-1.5 shadow cursor-pointer active:scale-98"
-                          title="Finalizar turno e passar para o próximo combatente na iniciativa"
-                        >
-                          <span>⚔️ Finalizar Meu Turno</span>
-                          <ArrowRight size={12} />
-                        </button>
-                      )}
                     </div>
                   )}
 
@@ -1089,6 +1149,79 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
               </div>
             );
           })
+        )}
+
+        {/* Painel Tático de Ações da Rodada Atual / Próxima Rodada (Sempre por último após o log de combate) */}
+        {isCombatActive && activeCombatant && (
+          <div className="p-3 rounded-xl bg-[#faeed8] border-2 border-[#b89569] shadow-sm space-y-2 select-none">
+            <div className="flex items-center justify-between border-b border-[#cca97f]/60 pb-1.5">
+              <div className="flex items-center gap-1.5 text-amber-950 font-bold text-xs uppercase tracking-wider">
+                <Swords size={14} className={isMyTurn ? 'text-emerald-700' : isMonsterTurn ? 'text-rose-700' : 'text-amber-700'} />
+                <span>
+                  {isMyTurn
+                    ? `⚔️ Seu Turno · Rodada ${encounter?.round ?? 1} — Opções:`
+                    : isOtherPlayerTurn
+                    ? `⏳ Turno de ${activeCombatant.name} · Rodada ${encounter?.round ?? 1}:`
+                    : `👹 Turno de ${activeCombatant.name} · Rodada ${encounter?.round ?? 1}:`}
+                </span>
+              </div>
+              <span className="text-[10px] font-mono font-bold text-amber-900 bg-amber-900/10 px-1.5 py-0.5 rounded border border-amber-900/20">
+                Inic. {activeCombatant.initiative}
+              </span>
+            </div>
+
+            {isMyTurn && (
+              <div className="space-y-1.5">
+                <div className="space-y-1">
+                  {activeActions.map((act, i) => {
+                    const cleanAct = act
+                      .replace(/^[\s\-*•\d\.\)\[\]\(\)\uFE0F\u20E3\u{1F51F}\u{0030}-\u{0039}\u{FE0F}\u{20E3}]+/u, '')
+                      .replace(/^[*_~`\s\[\]]+/, '')
+                      .replace(/[*_~`\s\[\]]+$/, '')
+                      .trim();
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => handleExecuteAction(cleanAct)}
+                        className="w-full text-left p-2 rounded-lg border text-[11px] font-medium transition flex items-center gap-2 shadow-xs bg-[#f0e3c5] hover:bg-[#e4d1aa] border-[#cfb48c] text-amber-950 cursor-pointer active:scale-98"
+                      >
+                        <ArrowRight size={12} className="text-amber-800 shrink-0" />
+                        <span>{cleanAct}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {onNextTurn && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSendMessage(`⚔️ ${currentUserName} concluiu o seu turno no combate.`, currentUserName);
+                      onNextTurn();
+                    }}
+                    className="w-full mt-2 py-1.5 px-3 rounded-lg bg-amber-800 hover:bg-amber-900 text-amber-100 font-bold text-xs transition flex items-center justify-center gap-1.5 shadow cursor-pointer active:scale-98"
+                    title="Finalizar turno e passar para o próximo combatente na iniciativa"
+                  >
+                    <span>⚔️ Finalizar Meu Turno</span>
+                    <ArrowRight size={13} />
+                  </button>
+                )}
+              </div>
+            )}
+
+            {isOtherPlayerTurn && (
+              <div className="p-2 rounded bg-amber-900/10 border border-amber-900/20 text-xs text-amber-900 italic">
+                ⏳ É a vez de <strong>{activeCombatant.name}</strong> agir segundo a ordem de iniciativa D&D 5e.
+              </div>
+            )}
+
+            {isMonsterTurn && (
+              <div className="p-2 rounded bg-rose-950/10 border border-rose-900/30 text-xs text-rose-900 italic animate-pulse">
+                👹 <strong>{activeCombatant.name}</strong> está executando sua ação com o Mestre IA...
+              </div>
+            )}
+          </div>
         )}
 
         {/* Indicador de Carregamento da IA */}

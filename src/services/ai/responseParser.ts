@@ -41,7 +41,13 @@ export function parseAiResponse(rawText: string): {
     const rawActions = actionsMatch[1];
     suggestedActions = rawActions
       .split('\n')
-      .map(line => line.replace(/^[\s\-*•\d\.\)]+/, '').trim())
+      .map(line =>
+        line
+          .replace(/^[\s\-*•\d\.\)\[\]\(\)\uFE0F\u20E3\u{1F51F}\u{0030}-\u{0039}\u{FE0F}\u{20E3}]+/u, '')
+          .replace(/^[*_~`\s\[\]]+/, '')
+          .replace(/[*_~`\s\[\]]+$/, '')
+          .trim()
+      )
       .filter(line => line.length > 0)
       .slice(0, 3);
     cleanText = cleanText.replace(actionsRegex, '').trim();

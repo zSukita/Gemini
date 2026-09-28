@@ -25,6 +25,7 @@ import {
   Volume2,
   VolumeX,
   Square,
+  Flame,
 } from 'lucide-react';
 import { AI_ADVENTURE_SCENARIOS, type AiAdventureScenario } from '../../data/aiAdventureScenarios';
 import {
@@ -359,19 +360,18 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
     );
   };
 
-  const handleRollRequested = (req: { skillOrAbility: string; dc?: number; reason: string }) => {
+  const getRequestedRollMeta = (skillOrAbility: string) => {
     let mod = 0;
-    const target = req.skillOrAbility.toLowerCase();
-    const formulaMatch = req.skillOrAbility.match(/(\d+d\d+(?:\s*[+-]\s*\d+)?)/i);
+    const target = skillOrAbility.toLowerCase();
+    const formulaMatch = skillOrAbility.match(/(\d+d\d+(?:\s*[+-]\s*\d+)?)/i);
     let formula = '';
-    let label = `Teste de ${req.skillOrAbility}`;
+    let label = `Teste de ${skillOrAbility}`;
     let isAttack = false;
     let isDamage = false;
 
     if (formulaMatch && (target.includes('dano') || target.includes('damage') || target.includes('rolagem'))) {
-      // Pedido de dano com fórmula explícita (ex: 1d12+3, 2d6, 1d8)
       formula = formulaMatch[1].replace(/\s+/g, '');
-      label = `Dano: ${req.skillOrAbility}`;
+      label = `Dano: ${skillOrAbility}`;
       isDamage = true;
     } else if (target.includes('ataque') || target.includes('attack') || target.includes('golpe')) {
       isAttack = true;
@@ -386,9 +386,8 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
         mod = abilityMod + profBonus;
       }
       formula = mod === 0 ? '1d20' : mod > 0 ? `1d20+${mod}` : `1d20${mod}`;
-      label = `Ataque: ${req.skillOrAbility}`;
+      label = `Ataque: ${skillOrAbility}`;
     } else {
-      // Teste padrão de perícia ou atributo D&D 5e
       if (character) {
         const profBonus = Math.floor(((character.level || 1) - 1) / 4) + 2;
 
@@ -418,6 +417,14 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
       }
       formula = mod === 0 ? '1d20' : mod > 0 ? `1d20+${mod}` : `1d20${mod}`;
     }
+
+    return { mod, label, isAttack, isDamage, formula };
+  };
+
+  const handleRollRequested = (req: { skillOrAbility: string; dc?: number; reason: string }) => {
+    const target = req.skillOrAbility.toLowerCase();
+    const meta = getRequestedRollMeta(req.skillOrAbility);
+    const { mod, label, isAttack, isDamage, formula } = meta;
 
     const rollRes = isDamage
       ? rollFormula(formula, label)
@@ -822,6 +829,61 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
     );
   };
 
+  const renderQuickDamageApplier = (msg: ChatMessage) => {
+    if (!onHpDelta || !encounter?.combatants) return null;
+
+    let dmgAmount: number | null = null;
+    if (msg.diceRoll && (msg.diceRoll.label.toLowerCase().includes('dano') || msg.diceRoll.dieType !== 'd20')) {
+      dmgAmount = msg.diceRoll.total;
+    } else {
+      const match = msg.text.match(/(\d+)\s+de dano/i);
+      if (match) {
+        dmgAmount = parseInt(match[1], 10);
+      }
+    }
+
+    if (!dmgAmount || dmgAmount <= 0) return null;
+
+    const validTargets = encounter.combatants.filter(
+      (c) => (c.type === 'monster' || c.type === 'npc') && c.currentHp > 0
+    );
+
+    if (validTargets.length === 0) return null;
+
+    return (
+      <div className="mt-2 p-1.5 rounded-lg bg-rose-950/15 border border-rose-800/40 flex items-center justify-between gap-1.5 flex-wrap text-xs">
+        <div className="flex items-center gap-1 text-rose-950 font-bold text-[11px]">
+          <Flame size={12} className="text-rose-700 shrink-0" />
+          <span>Aplicar {dmgAmount} de Dano:</span>
+        </div>
+        <div className="flex items-center gap-1 flex-wrap">
+          {validTargets.slice(0, 3).map((mon) => (
+            <button
+              key={mon.id}
+              type="button"
+              onClick={() => {
+                onHpDelta(mon.id, -dmgAmount!);
+                onSendMessage(
+                  {
+                    text: `🩸 **[Dano Aplicado]:** ${dmgAmount} de dano aplicado em **${mon.name}** (PV restante: ${Math.max(0, mon.currentHp - dmgAmount!)}/${mon.maxHp})!`,
+                    senderName: currentUserName,
+                    type: 'PUBLIC',
+                  },
+                  currentUserName
+                );
+              }}
+              className="px-2 py-0.5 rounded bg-rose-800 hover:bg-rose-700 text-rose-50 font-bold text-[10px] transition cursor-pointer active:scale-95 shadow-xs flex items-center gap-1"
+              title={`Reduzir ${dmgAmount} PV de ${mon.name}`}
+            >
+              <span>{mon.name.replace(/\s*\([^)]*\)/g, '').trim()}</span>
+              <span className="text-rose-200/80 font-mono text-[9px]">({mon.currentHp} PV)</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="tabletop-parchment flex flex-col h-full rounded-xl overflow-hidden shadow-2xl">
       {/* Cabeçalho de Pergaminho */}
@@ -1126,26 +1188,51 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                     {msg.text}
                   </div>
 
-                  {/* Teste Solicitado */}
-                  {msg.requestedRoll && (
-                    <div className="mt-2.5 p-2 bg-[#f0deb9] rounded-md border border-[#c4a275] flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5 text-amber-950 font-bold text-[11px]">
-                        <ShieldAlert size={14} className="text-amber-800 shrink-0" />
-                        <span>
-                          Teste: {msg.requestedRoll.skillOrAbility}{' '}
-                          {msg.requestedRoll.dc ? `(CD ${msg.requestedRoll.dc})` : ''}
-                        </span>
+                  {/* Teste Solicitado (Card Interativo com 1-Clique e Bônus Calculado) */}
+                  {msg.requestedRoll && (() => {
+                    const meta = getRequestedRollMeta(msg.requestedRoll.skillOrAbility);
+                    const modStr = meta.isDamage ? '' : meta.mod >= 0 ? `+${meta.mod}` : `${meta.mod}`;
+                    return (
+                      <div className="mt-2.5 p-3 bg-gradient-to-r from-[#f5e7cb] to-[#edd6ab] rounded-xl border-2 border-amber-600/50 shadow-md space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-1.5 text-amber-950 font-bold text-xs">
+                            <ShieldAlert size={16} className="text-amber-800 shrink-0" />
+                            <span>
+                              {meta.isAttack ? '⚔️ Jogada de Ataque:' : '🎲 Teste Solicitado:'}{' '}
+                              <strong className="text-amber-950">{msg.requestedRoll.skillOrAbility}</strong>
+                            </span>
+                          </div>
+                          {msg.requestedRoll.dc && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-900/15 text-amber-950 border border-amber-800/40 shrink-0">
+                              {meta.isAttack ? 'vs CA' : 'Alvo: CD'} {msg.requestedRoll.dc}
+                            </span>
+                          )}
+                        </div>
+
+                        {msg.requestedRoll.reason && (
+                          <p className="text-[11px] text-amber-900/80 italic font-serif leading-tight">
+                            "{msg.requestedRoll.reason}"
+                          </p>
+                        )}
+
+                        <div className="pt-1.5 flex items-center justify-between gap-2 border-t border-amber-800/20 flex-wrap">
+                          <span className="text-[10px] font-semibold text-amber-900/70">
+                            Bônus do seu herói:{' '}
+                            <strong className="text-amber-950 font-mono text-xs">{modStr || '+0'}</strong>
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={() => handleRollRequested(msg.requestedRoll!)}
+                            className="rpg-button bg-gradient-to-r from-amber-700 to-amber-600 hover:from-amber-600 hover:to-amber-500 text-amber-50 hover:text-white font-black text-xs py-1.5 px-3 rounded-lg shadow-md flex items-center gap-1.5 cursor-pointer active:scale-95 transition"
+                          >
+                            <Dices size={13} className="text-amber-300" />
+                            <span>Rolar Agora ({modStr || '+0'})</span>
+                          </button>
+                        </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleRollRequested(msg.requestedRoll!)}
-                        className="rpg-button bg-amber-700 hover:bg-amber-800 text-amber-50 font-bold text-[10px] py-1 px-2.5 rounded shadow"
-                      >
-                        <Dices size={12} />
-                        <span>Rolar</span>
-                      </button>
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   {/* Ações Sugeridas (Apenas fora de combate e apenas na mensagem mais recente) */}
                   {!isCombatActive && msg.id === lastAiMessage?.id && msg.suggestedActions && msg.suggestedActions.length > 0 && (
@@ -1175,6 +1262,9 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                       </div>
                     </div>
                   )}
+
+                  {/* Aplicação Rápida de Dano em Monstros */}
+                  {renderQuickDamageApplier(msg)}
 
                   {/* Baú de Loot / Tesouro Interativo */}
                   {renderLootCard(msg)}
@@ -1212,6 +1302,9 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                     </span>
                   </div>
                 )}
+
+                {/* Aplicação Rápida de Dano em Monstros */}
+                {renderQuickDamageApplier(msg)}
 
                 {/* Baú de Loot / Tesouro Interativo */}
                 {renderLootCard(msg)}

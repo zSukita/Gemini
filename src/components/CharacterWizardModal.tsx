@@ -20,6 +20,7 @@ import {
   Check,
   Award,
   Zap,
+  Play,
 } from 'lucide-react';
 
 interface CharacterWizardModalProps {
@@ -27,6 +28,90 @@ interface CharacterWizardModalProps {
   onClose: () => void;
   onCharacterCreated: (character: Character) => void;
 }
+
+export interface PresetHero {
+  id: string;
+  name: string;
+  title: string;
+  classId: string;
+  raceId: string;
+  background: string;
+  alignment: string;
+  avatarUrl: string;
+  tagline: string;
+  role: string;
+  description: string;
+  highlights: string[];
+  baseAbilities: Record<AbilityKey, number>;
+  difficulty: 'Muito Fácil' | 'Fácil' | 'Equilibrado';
+}
+
+export const PRESET_HEROES: PresetHero[] = [
+  {
+    id: 'preset-paladin',
+    name: 'Valerius da Alvorada',
+    title: 'Paladino Sagrado',
+    classId: 'paladin',
+    raceId: 'human',
+    background: 'Soldado',
+    alignment: 'Leal e Bom',
+    avatarUrl: '/tokens/classes/paladin.png',
+    tagline: 'Defensor Inquebrável & Golpe Sagrado',
+    role: 'Tanque / Linha de Frente / Cura',
+    description: 'Veste cota de malha pesada, escudo de ferro e espada longa. Protege companheiros e purifica monstros malignos.',
+    highlights: ['🛡️ CA 18 (Muito resistente)', '❤️ 12 PVs iniciais', '✨ Imposição de Mãos (Cura)', '⚔️ Espada Longa (+5 / 1d8+3)'],
+    baseAbilities: { str: 15, con: 14, cha: 13, dex: 12, wis: 10, int: 8 },
+    difficulty: 'Muito Fácil',
+  },
+  {
+    id: 'preset-wizard',
+    name: 'Lyra Luaprata',
+    title: 'Maga Arcana',
+    classId: 'wizard',
+    raceId: 'elf',
+    background: 'Sábio',
+    alignment: 'Caótico e Bom',
+    avatarUrl: '/tokens/classes/wizard.png',
+    tagline: 'Mestra dos Elementos & Magias Arcanas',
+    role: 'Dano à Distância / Controle Arcano',
+    description: 'Erudita élfica que domina as leis arcanas. Conhece truques elementais, dispara Mísseis Mágicos certeiros e ergue Escudo Arcano.',
+    highlights: ['✨ Mísseis Mágicos & Escudo', '🎯 Ataques Mágicos à Distância', '👁️ Visão no Escuro (18m)', '🧠 Inteligência 16 (+3 no ataque)'],
+    baseAbilities: { int: 15, dex: 14, con: 13, wis: 12, cha: 10, str: 8 },
+    difficulty: 'Fácil',
+  },
+  {
+    id: 'preset-rogue',
+    name: 'Finnick Pés-Leves',
+    title: 'Ladino Trapaceiro',
+    classId: 'rogue',
+    raceId: 'halfling',
+    background: 'Criminoso',
+    alignment: 'Neutro e Bom',
+    avatarUrl: '/tokens/classes/rogue.png',
+    tagline: 'Furtividade Suprema & Ataque Furtivo',
+    role: 'Dano Crítico / Desarmar Armadilhas',
+    description: 'Ágil e silencioso. Move-se pelas sombras sem ser visto, desarma perigos mortais e golpeia pontos vitais com ataque furtivo devastador.',
+    highlights: ['🗡️ Ataque Furtivo (+1d6 de dano)', '🎲 Sortudo (Rola de novo 1 natural)', '🤫 Furtividade (+5)', '🏹 Rapieira & Arco Curto'],
+    baseAbilities: { dex: 15, con: 14, int: 13, cha: 12, wis: 10, str: 8 },
+    difficulty: 'Muito Fácil',
+  },
+  {
+    id: 'preset-cleric',
+    name: 'Thorin Martelo-de-Ferro',
+    title: 'Clérigo da Guerra & Vida',
+    classId: 'cleric',
+    raceId: 'dwarf',
+    background: 'Acólito',
+    alignment: 'Leal e Bom',
+    avatarUrl: '/tokens/classes/cleric.png',
+    tagline: 'Bênção Divina & Força Implacável',
+    role: 'Suporte Vital / Cura / Combatente',
+    description: 'Sacerdote anão da cura e da forja. Empunha maça de guerra e orações para manter seus companheiros sempre protegidos e vivos.',
+    highlights: ['💚 Magias de Cura Divina', '🛡️ CA 18 (Escudo + Armadura)', '🧪 Resistência Anã a Venenos', '❤️ 11 PVs & Constituição 16 (+3)'],
+    baseAbilities: { wis: 15, con: 14, str: 13, cha: 12, dex: 10, int: 8 },
+    difficulty: 'Fácil',
+  },
+];
 
 const BACKGROUNDS = [
   'Acólito',
@@ -73,6 +158,7 @@ export const CharacterWizardModal: React.FC<CharacterWizardModalProps> = ({
   onClose,
   onCharacterCreated,
 }) => {
+  const [creationMode, setCreationMode] = useState<'presets' | 'custom'>('presets');
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
 
   // Passo 1: Identidade
@@ -175,6 +261,30 @@ export const CharacterWizardModal: React.FC<CharacterWizardModalProps> = ({
     onClose();
   };
 
+  const handleInstantPresetSelect = (preset: PresetHero) => {
+    const character = buildCharacterFromWizard({
+      name: preset.name,
+      classId: preset.classId,
+      raceId: preset.raceId,
+      background: preset.background,
+      alignment: preset.alignment,
+      baseAbilities: preset.baseAbilities,
+    });
+    onCharacterCreated(character);
+    onClose();
+  };
+
+  const handleCustomizePreset = (preset: PresetHero) => {
+    setName(preset.name);
+    setSelectedRaceId(preset.raceId);
+    setSelectedClassId(preset.classId);
+    setBackground(preset.background);
+    setAlignment(preset.alignment);
+    setBaseScores(preset.baseAbilities);
+    setCreationMode('custom');
+    setStep(1);
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -188,57 +298,188 @@ export const CharacterWizardModal: React.FC<CharacterWizardModalProps> = ({
         className="rpg-card w-full max-w-4xl max-h-[92vh] rounded-2xl flex flex-col border border-amber-500/40 shadow-2xl overflow-hidden animate-in zoom-in-95"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Topo / Progresso */}
+        {/* Topo / Progresso & Seleção de Modo */}
         <div className="p-4 border-b border-slate-800 bg-slate-900/95 flex flex-col gap-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <Sparkles className="text-amber-400" size={20} />
               <h2 className="font-serif text-lg font-bold text-amber-200">
-                Assistente de Criação de Herói (D&D 5e)
+                Criar Aventureiro (D&D 5e)
               </h2>
             </div>
+
+            {/* Alternador de Modo: Heróis Prontos vs Passo a Passo */}
+            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setCreationMode('presets')}
+                className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition ${
+                  creationMode === 'presets'
+                    ? 'bg-amber-500 text-slate-950 font-bold shadow'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Zap size={13} className={creationMode === 'presets' ? 'text-slate-950' : 'text-amber-400'} />
+                <span>Heróis Prontos (Rápido)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCreationMode('custom')}
+                className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition ${
+                  creationMode === 'custom'
+                    ? 'bg-amber-500 text-slate-950 font-bold shadow'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Sparkles size={13} className={creationMode === 'custom' ? 'text-slate-950' : 'text-amber-400'} />
+                <span>Criar do Zero</span>
+              </button>
+            </div>
+
             <button
               onClick={onClose}
               className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              title="Fechar"
             >
               <X size={18} />
             </button>
           </div>
 
-          {/* Indicador de Passos */}
-          <div className="grid grid-cols-5 gap-1.5 text-xs font-semibold text-center">
-            {[
-              { num: 1, label: 'Identidade' },
-              { num: 2, label: 'Raça' },
-              { num: 3, label: 'Classe' },
-              { num: 4, label: 'Atributos' },
-              { num: 5, label: 'Resumo' },
-            ].map((p) => (
-              <button
-                key={p.num}
-                type="button"
-                onClick={() => setStep(p.num as any)}
-                className={`py-1.5 px-1 rounded-lg border transition flex items-center justify-center gap-1.5 ${
-                  step === p.num
-                    ? 'bg-amber-500 text-slate-950 border-amber-400 font-bold shadow'
-                    : step > p.num
-                    ? 'bg-amber-950/40 text-amber-300 border-amber-800/60'
-                    : 'bg-slate-950/60 text-slate-500 border-slate-800'
-                }`}
-              >
-                <span className="w-4 h-4 rounded-full bg-black/30 flex items-center justify-center text-[10px]">
-                  {step > p.num ? '✓' : p.num}
-                </span>
-                <span className="hidden sm:inline">{p.label}</span>
-              </button>
-            ))}
-          </div>
+          {/* Se estiver no modo personalizado, exibe indicador de 5 passos */}
+          {creationMode === 'custom' ? (
+            <div className="grid grid-cols-5 gap-1.5 text-xs font-semibold text-center">
+              {[
+                { num: 1, label: 'Identidade' },
+                { num: 2, label: 'Raça' },
+                { num: 3, label: 'Classe' },
+                { num: 4, label: 'Atributos' },
+                { num: 5, label: 'Resumo' },
+              ].map((p) => (
+                <button
+                  key={p.num}
+                  type="button"
+                  onClick={() => setStep(p.num as any)}
+                  className={`py-1.5 px-1 rounded-lg border transition flex items-center justify-center gap-1.5 ${
+                    step === p.num
+                      ? 'bg-amber-500 text-slate-950 border-amber-400 font-bold shadow'
+                      : step > p.num
+                      ? 'bg-amber-950/40 text-amber-300 border-amber-800/60'
+                      : 'bg-slate-950/60 text-slate-500 border-slate-800'
+                  }`}
+                >
+                  <span className="w-4 h-4 rounded-full bg-black/30 flex items-center justify-center text-[10px]">
+                    {step > p.num ? '✓' : p.num}
+                  </span>
+                  <span className="hidden sm:inline">{p.label}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="text-xs text-amber-300/80 bg-amber-950/30 border border-amber-800/40 px-3 py-1.5 rounded-lg flex items-center justify-between gap-2">
+              <span>⚡ <strong>Começo em 1 Clique:</strong> Escolha um arquétipo equilibrado e balanceado para entrar na aventura em segundos!</span>
+              <span className="text-[11px] text-amber-400/90 font-mono hidden sm:inline">1º Nível Oficial D&D 5e</span>
+            </div>
+          )}
         </div>
 
-        {/* Conteúdo Dinâmico por Passo */}
+        {/* Conteúdo Dinâmico por Passo ou Heróis Prontos */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
-          {/* PASSO 1: IDENTIDADE */}
-          {step === 1 && (
+          {creationMode === 'presets' ? (
+            <div className="space-y-4">
+              <div className="text-center max-w-xl mx-auto mb-2">
+                <h3 className="font-serif text-xl font-bold text-amber-100 flex items-center justify-center gap-2">
+                  <Zap className="text-amber-400" size={20} />
+                  <span>Escolha seu Herói Pronto</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Personagens clássicos de 1º Nível balanceados para D&D 5e. Escolha um para começar a jogar imediatamente ou ajuste detalhes do seu jeito.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {PRESET_HEROES.map((preset) => (
+                  <div
+                    key={preset.id}
+                    className="p-4 rounded-xl border border-slate-800 bg-slate-900/80 hover:border-amber-500/60 hover:bg-slate-900/95 transition-all flex flex-col justify-between group shadow-lg"
+                  >
+                    <div className="space-y-3">
+                      {/* Cabeçalho do Card */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center overflow-hidden shrink-0">
+                            <img
+                              src={preset.avatarUrl}
+                              alt={preset.name}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLElement).style.display = 'none';
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <h4 className="font-serif text-base font-bold text-amber-200 group-hover:text-amber-100 transition">
+                              {preset.name}
+                            </h4>
+                            <div className="flex items-center gap-2 text-xs text-slate-300">
+                              <span className="font-semibold text-amber-400">{preset.title}</span>
+                              <span className="text-slate-600">•</span>
+                              <span className="text-[11px] text-slate-400">{preset.background}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-950/80 text-emerald-300 border border-emerald-800/60 shrink-0">
+                          {preset.difficulty}
+                        </span>
+                      </div>
+
+                      {/* Tagline e Descrição */}
+                      <div>
+                        <p className="text-xs font-semibold text-amber-300/90">{preset.tagline}</p>
+                        <p className="text-[11px] text-slate-400 leading-snug mt-0.5">{preset.description}</p>
+                      </div>
+
+                      {/* Destaques em Badges */}
+                      <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-slate-800/60">
+                        {preset.highlights.map((h, i) => (
+                          <div
+                            key={i}
+                            className="text-[10px] bg-slate-950/70 border border-slate-800 px-2 py-1 rounded text-slate-300 flex items-center gap-1 font-medium"
+                          >
+                            <span>{h}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Ações: Jogar Agora vs Ajustar */}
+                    <div className="pt-3 mt-3 border-t border-slate-800/80 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleInstantPresetSelect(preset)}
+                        className="flex-1 rpg-button bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 font-black text-xs py-2 px-3 rounded-lg shadow flex items-center justify-center gap-1.5 cursor-pointer active:scale-98 transition"
+                      >
+                        <Play size={13} className="fill-slate-950" />
+                        <span>⚡ Jogar Agora</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleCustomizePreset(preset)}
+                        className="rpg-button bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs py-2 px-3 rounded-lg flex items-center justify-center gap-1 cursor-pointer transition border border-slate-700 hover:border-slate-500"
+                        title="Personalizar detalhes deste herói no criador passo a passo"
+                      >
+                        <span>✏️ Ajustar</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* PASSO 1: IDENTIDADE */}
+              {step === 1 && (
             <div className="space-y-4 max-w-xl mx-auto">
               <div className="text-center">
                 <h3 className="font-serif text-xl font-bold text-amber-100">
@@ -714,10 +955,28 @@ export const CharacterWizardModal: React.FC<CharacterWizardModalProps> = ({
               </div>
             </div>
           )}
-        </div>
+        </>
+      )}
+    </div>
 
-        {/* Rodapé com Navegação */}
-        <div className="p-4 border-t border-slate-800 bg-slate-900/95 flex items-center justify-between">
+    {/* Rodapé com Navegação */}
+    <div className="p-4 border-t border-slate-800 bg-slate-900/95 flex items-center justify-between">
+      {creationMode === 'presets' ? (
+        <div className="w-full flex items-center justify-between flex-wrap gap-2">
+          <span className="text-xs text-slate-400">
+            Quer escolher cada atributo, talento e histórico por conta própria?
+          </span>
+          <button
+            type="button"
+            onClick={() => setCreationMode('custom')}
+            className="rpg-button bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs py-2 px-4 rounded-xl flex items-center gap-1.5 border border-slate-700 transition"
+          >
+            <Sparkles size={14} />
+            <span>Criar Ficha do Zero Passo a Passo</span>
+          </button>
+        </div>
+      ) : (
+        <>
           {step > 1 ? (
             <button
               type="button"
@@ -728,7 +987,14 @@ export const CharacterWizardModal: React.FC<CharacterWizardModalProps> = ({
               <span>Voltar</span>
             </button>
           ) : (
-            <div />
+            <button
+              type="button"
+              onClick={() => setCreationMode('presets')}
+              className="rpg-button bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-2 px-3 rounded-xl flex items-center gap-1"
+            >
+              <Zap size={13} className="text-amber-400" />
+              <span>Voltar para Heróis Prontos</span>
+            </button>
           )}
 
           {step < 5 ? (
@@ -750,7 +1016,9 @@ export const CharacterWizardModal: React.FC<CharacterWizardModalProps> = ({
               <span>Concluir e Criar Personagem</span>
             </button>
           )}
-        </div>
+        </>
+      )}
+    </div>
       </div>
     </div>
   );

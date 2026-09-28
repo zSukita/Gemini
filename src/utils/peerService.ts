@@ -14,6 +14,28 @@ const PEER_CONFIG = {
   },
 };
 
+export function generateSecureRoomCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const array = new Uint8Array(6);
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(array);
+  } else {
+    for (let i = 0; i < 6; i++) {
+      array[i] = Math.floor(Math.random() * 256);
+    }
+  }
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(array[i] % chars.length);
+  }
+  return `MESA-${code}`;
+}
+
+function sanitizeStat(val: unknown, min: number, max: number, defaultVal?: number): number | undefined {
+  if (typeof val !== 'number' || isNaN(val) || !isFinite(val)) return defaultVal;
+  return Math.min(Math.max(Math.round(val), min), max);
+}
+
 export class P2PNetworkManager {
   private peer: Peer | null = null;
   private connections: Map<string, DataConnection> = new Map();
@@ -54,10 +76,10 @@ export class P2PNetworkManager {
     this.currentUserAvatar = avatarUrl || '';
     this.isHost = true;
 
-    // Gera código legível de 5 dígitos ou usa o customizado (ex: ARCANA-8492)
+    // Gera código seguro de 6 caracteres aleatórios ou usa o customizado (ex: MESA-K9W2P4)
     const code = customCode
       ? customCode.toUpperCase().replace(/[^A-Z0-9-]/g, '')
-      : `MESA-${Math.floor(1000 + Math.random() * 9000)}`;
+      : generateSecureRoomCode();
 
     const fullPeerId = `arcanasheet-room-${code.toLowerCase()}`;
     this.roomCode = code;
@@ -254,22 +276,39 @@ export class P2PNetworkManager {
       const metadata = conn.metadata as
         | (Partial<PeerUser> & { name?: string; role?: 'dm' | 'player'; avatarUrl?: string })
         | undefined;
-      const peerName = metadata?.name?.trim() || 'Aventureiro';
-      const peerRole = metadata?.role || 'player';
-      const peerAvatar = metadata?.avatarUrl;
+
+      // Validação estrita de papel: Participantes externos NUNCA podem usurpar papel de 'dm'.
+      // Apenas o host detém papel de 'dm'.
+      const peerRole: 'dm' | 'player' = this.isHost ? 'player' : (metadata?.role === 'dm' ? 'dm' : 'player');
+
+      // Sanitização de nome
+      const rawName = typeof metadata?.name === 'string' ? metadata.name.trim() : '';
+      const peerName = rawName.slice(0, 40) || 'Aventureiro';
+
+      // Sanitização de avatarUrl
+      let peerAvatar: string | undefined = undefined;
+      if (typeof metadata?.avatarUrl === 'string' && metadata.avatarUrl.length <= 500) {
+        if (/^(https?:\/\/|data:image\/)/.test(metadata.avatarUrl)) {
+          peerAvatar = metadata.avatarUrl;
+        }
+      }
+
+      const characterClass = typeof metadata?.characterClass === 'string'
+        ? metadata.characterClass.trim().slice(0, 30)
+        : undefined;
 
       const peerUser: PeerUser = {
         peerId: conn.peer,
         name: peerName,
         role: peerRole,
         avatarUrl: peerAvatar,
-        currentHp: metadata?.currentHp,
-        maxHp: metadata?.maxHp,
-        armorClass: metadata?.armorClass,
-        characterClass: metadata?.characterClass,
-        characterLevel: metadata?.characterLevel,
-        dexScore: metadata?.dexScore,
-        initiativeBonus: metadata?.initiativeBonus,
+        currentHp: sanitizeStat(metadata?.currentHp, -100, 9999),
+        maxHp: sanitizeStat(metadata?.maxHp, 1, 9999),
+        armorClass: sanitizeStat(metadata?.armorClass, 1, 99),
+        characterClass,
+        characterLevel: sanitizeStat(metadata?.characterLevel, 1, 20),
+        dexScore: sanitizeStat(metadata?.dexScore, 1, 30),
+        initiativeBonus: sanitizeStat(metadata?.initiativeBonus, -20, 50),
         joinedAt: Date.now(),
       };
 
@@ -316,14 +355,79 @@ export class P2PNetworkManager {
       conn.on('open', registerPeer);
     }
 
-    conn.on('data', (data) => {
-      const msg = data as P2PMessage;
+    // Rate Limiting e Validação de Mensagens P2P por Conexão
+    const peerMessageTimestamps: number[] = [];
+    const MAX_MESSAGES_PER_SECOND = 35;
+    const MAX_PAYLOAD_SIZE = 128 * 1024; // 128 KB limite por mensagem
 
-      // Sincronização de lista de participantes
-      if (msg.type === 'PEER_LIST' && Array.isArray(msg.payload)) {
-        this.activePeers = msg.payload as PeerUser[];
-        this.notifyPeerList();
+    conn.on('data', (data) => {
+      // 1. Limite de frequência (Rate limiting anti-flood)
+      const now = Date.now();
+      while (peerMessageTimestamps.length > 0 && peerMessageTimestamps[0] < now - 1000) {
+        peerMessageTimestamps.shift();
+      }
+      if (peerMessageTimestamps.length >= MAX_MESSAGES_PER_SECOND) {
+        console.warn(`[P2P] Taxa de mensagens excedida pelo peer ${conn.peer}. Mensagem descartada.`);
         return;
+      }
+      peerMessageTimestamps.push(now);
+
+      // 2. Validação básica de tamanho
+      if (typeof data === 'string' && data.length > MAX_PAYLOAD_SIZE) {
+        console.warn(`[P2P] Mensagem excessivamente grande recebida do peer ${conn.peer}. Descartada.`);
+        return;
+      }
+
+      const msg = data as P2PMessage;
+      if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') {
+        return;
+      }
+
+      // 3. Proteção contra falsificação de identidade (Anti-Spoofing):
+      // O peer conectado não pode fingir ser o Host ou outro participante
+      if (this.isHost) {
+        // Bloquear tipos de mensagens administrativas exclusivas do Host
+        if (msg.type === 'PEER_LIST' || msg.type === 'ROOM_SYNC') {
+          console.warn(`[P2P] Peer ${conn.peer} tentou enviar mensagem administrativa ${msg.type}. Bloqueado.`);
+          return;
+        }
+
+        // Força o senderId real da conexão (impede forjar senderId de outros)
+        msg.senderId = conn.peer;
+        // Força o senderName registrado para evitar personificação
+        const sender = this.activePeers.find((p) => p.peerId === conn.peer);
+        if (sender) {
+          msg.senderName = sender.name;
+        }
+      }
+
+      // Sincronização de lista de participantes (apenas aceita se vier do Host)
+      if (msg.type === 'PEER_LIST' && Array.isArray(msg.payload)) {
+        if (!this.isHost) {
+          this.activePeers = msg.payload as PeerUser[];
+          this.notifyPeerList();
+        }
+        return;
+      }
+
+      // Validação de sincronização de ficha (CHARACTER_SYNC)
+      if (msg.type === 'CHARACTER_SYNC' && msg.payload && typeof msg.payload === 'object') {
+        const payloadUser = msg.payload as Partial<PeerUser>;
+        if (this.isHost) {
+          const target = this.activePeers.find((p) => p.peerId === conn.peer);
+          if (target) {
+            target.currentHp = sanitizeStat(payloadUser.currentHp, -100, 9999, target.currentHp);
+            target.maxHp = sanitizeStat(payloadUser.maxHp, 1, 9999, target.maxHp);
+            target.armorClass = sanitizeStat(payloadUser.armorClass, 1, 99, target.armorClass);
+            if (typeof payloadUser.characterClass === 'string') {
+              target.characterClass = payloadUser.characterClass.trim().slice(0, 30);
+            }
+            target.characterLevel = sanitizeStat(payloadUser.characterLevel, 1, 20, target.characterLevel);
+            target.dexScore = sanitizeStat(payloadUser.dexScore, 1, 30, target.dexScore);
+            target.initiativeBonus = sanitizeStat(payloadUser.initiativeBonus, -20, 50, target.initiativeBonus);
+            this.notifyPeerList();
+          }
+        }
       }
 
       this.notifyMessage(msg);

@@ -207,7 +207,7 @@ export const CampaignModal: React.FC<CampaignModalProps> = ({
     if (!window.confirm('Tem certeza que deseja encerrar e excluir esta campanha para todos?')) return;
 
     try {
-      await deleteCampaign(activeCampaignId);
+      await deleteCampaign(activeCampaignId, campaign?.code);
       setActiveCampaignId(null);
       setCampaign(null);
       showNotification('Campanha encerrada.');
@@ -499,14 +499,14 @@ export const CampaignModal: React.FC<CampaignModalProps> = ({
                     <Share2 size={16} /> Ingressar com Código da Mesa
                   </div>
                   <p className="text-xs text-slate-400">
-                    Digite o código de 6 caracteres fornecido pelo seu Mestre (ex: <span className="font-mono text-amber-400">ARC-8492</span>). Seu personagem ativo será sincronizado instantaneamente com a mesa dele.
+                    Digite o código de 6 caracteres fornecido pelo seu Mestre (ex: <span className="font-mono text-amber-400">ARC-K9W2P4</span>). Seu personagem ativo será sincronizado instantaneamente com a mesa dele.
                   </p>
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1">Código da Campanha</label>
                     <input
                       type="text"
-                      placeholder="Ex: ARC-9X2Y"
+                      placeholder="Ex: ARC-K9W2P4"
                       value={joinCode}
                       onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
                       className="rpg-input font-mono font-bold text-sm tracking-widest uppercase text-amber-300 w-full py-2 px-3 text-center"

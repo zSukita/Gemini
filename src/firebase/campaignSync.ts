@@ -46,11 +46,19 @@ export interface Campaign {
   activeHandout?: CampaignHandout | null;
 }
 
-function generateCampaignCode(): string {
+export function generateCampaignCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const array = new Uint8Array(6);
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(array);
+  } else {
+    for (let i = 0; i < 6; i++) {
+      array[i] = Math.floor(Math.random() * 256);
+    }
+  }
   let code = '';
-  for (let i = 0; i < 4; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(array[i] % chars.length);
   }
   return `ARC-${code}`;
 }
@@ -101,8 +109,20 @@ export async function createCampaign(
     try {
       const ref = doc(db, 'campaigns', id);
       await setDoc(ref, newCampaign);
+
+      // Registra no índice seguro de códigos para busca por outros jogadores
+      const codeRef = doc(db, 'campaign_codes', code);
+      await setDoc(codeRef, {
+        code,
+        campaignId: id,
+        dmId,
+        name: newCampaign.name,
+        dmName: newCampaign.dmName,
+        createdAt: newCampaign.createdAt,
+      });
     } catch (e) {
-      console.warn('Erro ao salvar campanha no Firestore, usando fallback local:', e);
+      console.error('Erro ao salvar campanha no Firestore:', e);
+      throw new Error(`Falha ao salvar campanha na nuvem: ${(e as Error).message || e}`);
     }
   }
 
@@ -114,13 +134,45 @@ export async function createCampaign(
 }
 
 /**
- * Busca uma campanha pelo código de 6 caracteres (ex: ARC-9X2Y)
+ * Busca uma campanha pelo código de 6 caracteres (ex: ARC-9X2Y8Z)
  */
 export async function findCampaignByCode(code: string): Promise<Campaign | null> {
   const normalizedCode = code.trim().toUpperCase();
 
   if (db) {
     try {
+      // 1. Tenta buscar no índice seguro de códigos
+      const codeDocRef = doc(db, 'campaign_codes', normalizedCode);
+      const codeSnap = await getDoc(codeDocRef);
+      if (codeSnap.exists()) {
+        const codeData = codeSnap.data();
+        const campId = codeData.campaignId;
+
+        // Se o usuário já tiver acesso à campanha completa, busca o documento
+        try {
+          const campRef = doc(db, 'campaigns', campId);
+          const campSnap = await getDoc(campRef);
+          if (campSnap.exists()) {
+            return campSnap.data() as Campaign;
+          }
+        } catch {
+          // Se ainda não for membro participante, retorna metadados para permitir ingresso
+        }
+
+        return {
+          id: campId,
+          code: normalizedCode,
+          name: codeData.name || 'Campanha Arcana',
+          description: codeData.description || '',
+          dmId: codeData.dmId,
+          dmName: codeData.dmName || 'Mestre Arcana',
+          members: {},
+          createdAt: codeData.createdAt || Date.now(),
+          activeHandout: null,
+        };
+      }
+
+      // 2. Consulta fallback caso seja participante ou campanha legada
       const colRef = collection(db, 'campaigns');
       const q = query(colRef, where('code', '==', normalizedCode));
       const snap = await getDocs(q);
@@ -152,7 +204,8 @@ export async function joinCampaign(
       });
       return;
     } catch (e) {
-      console.warn('Erro ao ingressar no Firestore, usando fallback local:', e);
+      console.error('Erro ao ingressar na campanha no Firestore:', e);
+      throw new Error(`Falha ao sincronizar entrada na campanha na nuvem: ${(e as Error).message || e}`);
     }
   }
 
@@ -188,6 +241,13 @@ export async function syncMemberStats(
       return;
     } catch (e) {
       console.warn('Erro ao sincronizar membro no Firestore:', e);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('arcanasheet_cloud_sync_error', {
+            detail: { operation: 'syncMemberStats', error: e },
+          })
+        );
+      }
     }
   }
 
@@ -226,7 +286,8 @@ export async function leaveCampaign(
       }
       return;
     } catch (e) {
-      console.warn('Erro ao sair da campanha no Firestore:', e);
+      console.error('Erro ao sair da campanha no Firestore:', e);
+      throw new Error(`Falha ao sincronizar saída da campanha na nuvem: ${(e as Error).message || e}`);
     }
   }
 
@@ -245,13 +306,21 @@ export async function leaveCampaign(
 /**
  * Mestre encerra/deleta a campanha
  */
-export async function deleteCampaign(campaignId: string): Promise<void> {
+export async function deleteCampaign(campaignId: string, campaignCode?: string): Promise<void> {
   if (db) {
     try {
       const ref = doc(db, 'campaigns', campaignId);
       await deleteDoc(ref);
+
+      // Remove também o código correspondente no índice público, se fornecido ou encontrado
+      const codeToDelete = campaignCode || getLocalCampaigns().find((c) => c.id === campaignId)?.code;
+      if (codeToDelete) {
+        const codeRef = doc(db, 'campaign_codes', codeToDelete);
+        await deleteDoc(codeRef).catch(() => {});
+      }
     } catch (e) {
-      console.warn('Erro ao deletar campanha no Firestore:', e);
+      console.error('Erro ao deletar campanha no Firestore:', e);
+      throw new Error(`Falha ao excluir campanha na nuvem: ${(e as Error).message || e}`);
     }
   }
 
@@ -316,7 +385,8 @@ export async function broadcastHandoutToCampaign(
       });
       return;
     } catch (e) {
-      console.warn('Erro ao transmitir handout no Firestore:', e);
+      console.error('Erro ao transmitir handout no Firestore:', e);
+      throw new Error(`Falha ao transmitir pista na nuvem: ${(e as Error).message || e}`);
     }
   }
 
@@ -337,7 +407,8 @@ export async function dismissCampaignHandout(campaignId: string): Promise<void> 
       });
       return;
     } catch (e) {
-      console.warn('Erro ao fechar handout no Firestore:', e);
+      console.error('Erro ao fechar handout no Firestore:', e);
+      throw new Error(`Falha ao dispensar pista na nuvem: ${(e as Error).message || e}`);
     }
   }
 

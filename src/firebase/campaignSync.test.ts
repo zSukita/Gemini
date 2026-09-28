@@ -30,11 +30,11 @@ describe('Sistema de Campanhas na Nuvem & Pistas (campaignSync)', () => {
     localStorage.clear();
   });
 
-  it('deve criar uma campanha com código no formato ARC-XXXX', async () => {
+  it('deve criar uma campanha com código no formato ARC-XXXXXX (6 caracteres)', async () => {
     const camp = await createCampaign('dm-123', 'Mestre Teste', 'A Mina Perdida', 'Aventura de introdução');
 
     expect(camp.id).toBeDefined();
-    expect(camp.code).toMatch(/^ARC-[A-Z0-9]{4}$/);
+    expect(camp.code).toMatch(/^ARC-[A-Z0-9]{6}$/);
     expect(camp.name).toBe('A Mina Perdida');
     expect(camp.dmId).toBe('dm-123');
     expect(camp.dmName).toBe('Mestre Teste');

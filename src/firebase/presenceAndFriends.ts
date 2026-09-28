@@ -422,6 +422,13 @@ export function subscribeToFriends(
 export async function sendGameInvite(
   invite: Omit<GameInvite, 'id' | 'timestamp' | 'status'>
 ): Promise<string> {
+  if (!invite.toUserId || invite.toUserId === invite.fromUserId) {
+    throw new Error('Destinatário do convite inválido ou igual ao remetente.');
+  }
+  if (!invite.roomCode || !invite.roomCode.trim()) {
+    throw new Error('Código da sala inválido para convite.');
+  }
+
   const inviteId = `invite_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
   const fullInvite: GameInvite = {
     ...invite,
@@ -460,9 +467,8 @@ export async function sendGameInvite(
       const sanitized = sanitizeFirestoreDoc(fullInvite as unknown as Record<string, unknown>);
       await setDoc(ref, sanitized);
     } catch (e: unknown) {
-      if (!isPermissionError(e)) {
-        console.warn('Erro ao criar convite de jogo no Firestore:', e);
-      }
+      console.error('Erro ao criar convite de jogo no Firestore:', e);
+      throw new Error(`Falha ao registrar convite no Firestore: ${(e as Error).message || e}`);
     }
   }
 
@@ -579,9 +585,8 @@ export async function respondToGameInvite(inviteId: string, accept: boolean): Pr
       const ref = doc(db, 'game_invites', inviteId);
       await updateDoc(ref, { status: newStatus });
     } catch (e: unknown) {
-      if (!isPermissionError(e)) {
-        console.warn('Erro ao responder convite no Firestore:', e);
-      }
+      console.error('Erro ao responder convite no Firestore:', e);
+      throw new Error(`Falha ao responder convite no Firestore: ${(e as Error).message || e}`);
     }
   }
 
@@ -595,9 +600,17 @@ export async function respondToGameInvite(inviteId: string, accept: boolean): Pr
 export async function sendDirectMessage(
   msg: Omit<DirectMessage, 'id' | 'timestamp' | 'read'>
 ): Promise<DirectMessage> {
+  if (!msg.toUserId || msg.toUserId === msg.fromUserId) {
+    throw new Error('Destinatário da mensagem inválido ou igual ao remetente.');
+  }
+  if (!msg.content || !msg.content.trim()) {
+    throw new Error('O conteúdo da mensagem não pode ser vazio.');
+  }
+
   const id = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const fullMessage: DirectMessage = {
     ...msg,
+    content: msg.content.trim().slice(0, 2000),
     id,
     timestamp: Date.now(),
     read: false,
@@ -625,9 +638,8 @@ export async function sendDirectMessage(
       const sanitized = sanitizeFirestoreDoc(fullMessage as unknown as Record<string, unknown>);
       await setDoc(ref, sanitized);
     } catch (e: unknown) {
-      if (!isPermissionError(e)) {
-        console.warn('Erro ao salvar mensagem direta no Firestore:', e);
-      }
+      console.error('Erro ao salvar mensagem direta no Firestore:', e);
+      throw new Error(`Falha ao enviar mensagem direta no Firestore: ${(e as Error).message || e}`);
     }
   }
 
@@ -739,7 +751,8 @@ export async function markDirectMessagesAsRead(
         toUpdate.map((id) => updateDoc(doc(firestore, 'direct_messages', id), { read: true }))
       );
     } catch (e) {
-      console.warn('Erro ao marcar mensagens como lidas no Firestore:', e);
+      console.error('Erro ao marcar mensagens como lidas no Firestore:', e);
+      throw new Error(`Falha ao marcar mensagens como lidas no Firestore: ${(e as Error).message || e}`);
     }
   }
 }

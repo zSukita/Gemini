@@ -10,6 +10,9 @@ import {
   deleteCampaign,
   subscribeToCampaign,
   syncMemberStats,
+  createCampaignInvite,
+  getCampaignInvite,
+  acceptCampaignInvite,
 } from '../firebase/campaignSync';
 import { getPassivePerception } from '../utils/calculations';
 import {
@@ -28,6 +31,8 @@ import {
   Heart,
   Share2,
   Compass,
+  UserCheck,
+  UserPlus,
 } from 'lucide-react';
 
 interface CampaignModalProps {
@@ -67,6 +72,11 @@ export const CampaignModal: React.FC<CampaignModalProps> = ({
   // Form de entrada (Jogador)
   const [joinCode, setJoinCode] = useState('');
   const [isJoining, setIsJoining] = useState(false);
+
+  // Autorização e Convites (Mestre e Jogador)
+  const [invitePlayerId, setInvitePlayerId] = useState('');
+  const [isAuthorizing, setIsAuthorizing] = useState(false);
+  const [copiedUserId, setCopiedUserId] = useState(false);
 
   // Assinatura em tempo real da campanha ativa
   useEffect(() => {
@@ -142,6 +152,26 @@ export const CampaignModal: React.FC<CampaignModalProps> = ({
     }
   };
 
+  const handleAuthorizePlayer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!campaign || !invitePlayerId.trim()) return;
+
+    try {
+      setIsAuthorizing(true);
+      await createCampaignInvite(campaign.id, invitePlayerId.trim(), userId, {
+        campaignName: campaign.name,
+        dmName: campaign.dmName,
+      });
+      setInvitePlayerId('');
+      showNotification('Jogador autorizado com sucesso! Ele agora pode ingressar usando o código da mesa.');
+    } catch (err) {
+      console.error(err);
+      showNotification('Erro ao autorizar jogador. Verifique o ID informado.');
+    } finally {
+      setIsAuthorizing(false);
+    }
+  };
+
   const handleJoinCampaign = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!joinCode.trim()) return;
@@ -152,6 +182,23 @@ export const CampaignModal: React.FC<CampaignModalProps> = ({
       if (!camp) {
         showNotification('Nenhuma campanha encontrada com esse código.');
         return;
+      }
+
+      // Se o usuário não for o próprio Mestre e ainda não for membro
+      const isAlreadyMember = Boolean(camp.members && camp.members[userId]);
+      if (!isAlreadyMember && camp.dmId !== userId) {
+        const invite = await getCampaignInvite(camp.id, userId);
+        if (!invite || invite.status === 'used') {
+          showNotification(
+            'Esta mesa exige autorização do Mestre. Solicite ao Mestre para autorizar seu ID de Jogador.'
+          );
+          return;
+        }
+
+        // Se o convite estiver pendente, o jogador aceita antes de ingressar
+        if (invite.status === 'pending') {
+          await acceptCampaignInvite(camp.id, userId);
+        }
       }
 
       const member: CampaignPartyMember = {
@@ -175,7 +222,7 @@ export const CampaignModal: React.FC<CampaignModalProps> = ({
       showNotification(`Você ingressou na campanha "${camp.name}" com sucesso!`);
     } catch (err) {
       console.error(err);
-      showNotification('Erro ao ingressar na campanha.');
+      showNotification('Erro ao ingressar na campanha. Verifique se possui autorização do Mestre.');
     } finally {
       setIsJoining(false);
     }
@@ -333,6 +380,34 @@ export const CampaignModal: React.FC<CampaignModalProps> = ({
                       Encerrar Campanha
                     </button>
                   </div>
+
+                  {/* Autorizar Entrada de Jogador (Fluxo Seguro de Convite) */}
+                  <form onSubmit={handleAuthorizePlayer} className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 space-y-2">
+                    <div className="flex items-center gap-1.5 text-xs font-serif font-bold text-amber-300">
+                      <UserCheck size={14} className="text-amber-400" />
+                      <span>Autorizar Jogador (Convite Seguro)</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Apenas jogadores autorizados por você podem ingressar nesta campanha. Solicite o ID (UID) do jogador e autorize-o abaixo:
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Cole o ID de Jogador (UID) dele aqui..."
+                        value={invitePlayerId}
+                        onChange={(e) => setInvitePlayerId(e.target.value)}
+                        className="rpg-input text-xs flex-1 py-1.5 font-mono"
+                      />
+                      <button
+                        type="submit"
+                        disabled={isAuthorizing || !invitePlayerId.trim()}
+                        className="rpg-button bg-amber-600/30 hover:bg-amber-600/60 text-amber-200 border border-amber-500/50 text-xs py-1.5 px-3 flex items-center gap-1 disabled:opacity-50"
+                      >
+                        <UserPlus size={13} />
+                        <span>{isAuthorizing ? 'Autorizando...' : 'Autorizar'}</span>
+                      </button>
+                    </div>
+                  </form>
 
                   {/* Grid de Personagens do Grupo (Sincronizados em tempo real) */}
                   <div>
@@ -512,6 +587,27 @@ export const CampaignModal: React.FC<CampaignModalProps> = ({
                       className="rpg-input font-mono font-bold text-sm tracking-widest uppercase text-amber-300 w-full py-2 px-3 text-center"
                       required
                     />
+                  </div>
+
+                  {/* Seu ID de Jogador para autorização do Mestre */}
+                  <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800 text-xs flex items-center justify-between">
+                    <div>
+                      <div className="text-[10px] text-slate-400 uppercase font-bold">Seu ID de Jogador (UID)</div>
+                      <div className="font-mono text-xs text-amber-300 select-all">{userId}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(userId);
+                        setCopiedUserId(true);
+                        showNotification('Seu ID foi copiado! Envie para o Mestre da mesa te autorizar.');
+                        setTimeout(() => setCopiedUserId(false), 3000);
+                      }}
+                      className="rpg-button bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs py-1 px-2.5 flex items-center gap-1"
+                    >
+                      {copiedUserId ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                      <span>{copiedUserId ? 'Copiado!' : 'Copiar Meu ID'}</span>
+                    </button>
                   </div>
 
                   <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800 text-xs text-slate-400 flex items-center gap-2">

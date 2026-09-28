@@ -77,20 +77,25 @@ service cloud.firestore {
       );
     }
 
-    function isValidMemberJoin() {
+    function isValidMemberJoin(campaignId) {
       let memberDiff = request.resource.data.members.diff(resource.data.members);
+      let invitePath = /databases/$(database)/documents/campaign_invites/$(campaignId + '_' + request.auth.uid);
       return memberDiff.addedKeys().hasOnly([request.auth.uid]) &&
              memberDiff.addedKeys().size() == 1 &&
-             memberDiff.modifiedKeys().size() == 0 &&
+             memberDiff.changedKeys().size() == 0 &&
              memberDiff.removedKeys().size() == 0 &&
-             request.resource.data.members[request.auth.uid].userId == request.auth.uid;
+             request.resource.data.members[request.auth.uid].userId == request.auth.uid &&
+             exists(invitePath) &&
+             get(invitePath).data.userId == request.auth.uid &&
+             get(invitePath).data.campaignId == campaignId &&
+             get(invitePath).data.status in ['accepted', 'used'];
     }
 
     function isValidMemberUpdate() {
       let memberDiff = request.resource.data.members.diff(resource.data.members);
       return memberDiff.addedKeys().size() == 0 &&
-             memberDiff.modifiedKeys().hasOnly([request.auth.uid]) &&
-             memberDiff.modifiedKeys().size() == 1 &&
+             memberDiff.changedKeys().hasOnly([request.auth.uid]) &&
+             memberDiff.changedKeys().size() == 1 &&
              memberDiff.removedKeys().size() == 0 &&
              request.resource.data.members[request.auth.uid].userId == request.auth.uid;
     }
@@ -98,7 +103,7 @@ service cloud.firestore {
     function isValidMemberLeave() {
       let memberDiff = request.resource.data.members.diff(resource.data.members);
       return memberDiff.addedKeys().size() == 0 &&
-             memberDiff.modifiedKeys().size() == 0 &&
+             memberDiff.changedKeys().size() == 0 &&
              memberDiff.removedKeys().hasOnly([request.auth.uid]) &&
              memberDiff.removedKeys().size() == 1;
     }
@@ -110,12 +115,63 @@ service cloud.firestore {
 
     // 2. Índice Público de Códigos de Campanhas
     match /campaign_codes/{code} {
-      allow read: if isAuthenticated();
+      // Bloqueia listagem da coleção inteira; permite apenas get do documento exato
+      allow get: if isAuthenticated();
+      allow list: if false;
+
+      // Criação validada:
+      // - O documento da campanha indicada realmente deve existir
+      // - O usuário autenticado deve ser o Mestre da campanha
+      // - O código do documento deve corresponder ao código da campanha
       allow create: if isAuthenticated() &&
-        request.resource.data.dmId == request.auth.uid &&
         request.resource.data.code == code &&
-        request.resource.data.campaignId is string;
+        request.resource.data.dmId == request.auth.uid &&
+        request.resource.data.campaignId is string &&
+        exists(/databases/$(database)/documents/campaigns/$(request.resource.data.campaignId)) &&
+        get(/databases/$(database)/documents/campaigns/$(request.resource.data.campaignId)).data.dmId == request.auth.uid &&
+        get(/databases/$(database)/documents/campaigns/$(request.resource.data.campaignId)).data.code == code;
+
       allow delete: if isAuthenticated() && resource.data.dmId == request.auth.uid;
+    }
+
+    // 2.1 Convites Oficiais da Campanha (Controle Estrito de Ingresso)
+    match /campaign_invites/{inviteId} {
+      // Apenas o Mestre da campanha ou o jogador convidado podem ler o convite
+      allow get, list: if isAuthenticated() && (
+        resource.data.dmId == request.auth.uid ||
+        resource.data.userId == request.auth.uid
+      );
+
+      // Criação: Apenas o Mestre da campanha
+      allow create: if isAuthenticated() &&
+        exists(/databases/$(database)/documents/campaigns/$(request.resource.data.campaignId)) &&
+        get(/databases/$(database)/documents/campaigns/$(request.resource.data.campaignId)).data.dmId == request.auth.uid &&
+        request.resource.data.dmId == request.auth.uid &&
+        request.resource.data.id == inviteId &&
+        inviteId == request.resource.data.campaignId + '_' + request.resource.data.userId &&
+        request.resource.data.status in ['pending', 'accepted'];
+
+      // Atualização:
+      // - Jogador convidado aceita o convite ou o marca como usado na entrada
+      // - Mestre pode gerenciar/revogar
+      allow update: if isAuthenticated() && (
+        (
+          resource.data.userId == request.auth.uid &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']) &&
+          (
+            (resource.data.status == 'pending' && request.resource.data.status in ['accepted', 'used']) ||
+            (resource.data.status == 'accepted' && request.resource.data.status == 'used')
+          )
+        ) || (
+          resource.data.dmId == request.auth.uid
+        )
+      );
+
+      // Exclusão: Mestre ou o próprio jogador convidado
+      allow delete: if isAuthenticated() && (
+        resource.data.dmId == request.auth.uid ||
+        resource.data.userId == request.auth.uid
+      );
     }
 
     // 3. Campanhas na Nuvem
@@ -133,7 +189,7 @@ service cloud.firestore {
 
       // Edição: Separada estritamente por operação
       // - Mestre: Controle geral, sem poder alterar campos imutáveis (dmId, id, code)
-      // - Jogador: Apenas entrar (join), atualizar sua própria ficha (sync) ou sair (leave)
+      // - Jogador: Apenas entrar com convite válido (join), atualizar sua própria ficha (sync) ou sair (leave)
       allow update: if isAuthenticated() && (
         (
           resource.data.dmId == request.auth.uid &&
@@ -145,7 +201,7 @@ service cloud.firestore {
           request.resource.data.dmId == resource.data.dmId &&
           request.resource.data.id == resource.data.id &&
           request.resource.data.code == resource.data.code &&
-          (isValidMemberJoin() || isValidMemberUpdate() || isValidMemberLeave())
+          (isValidMemberJoin(campaignId) || isValidMemberUpdate() || isValidMemberLeave())
         )
       );
 

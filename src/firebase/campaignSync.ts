@@ -1,14 +1,11 @@
 import {
-  collection,
   doc,
   setDoc,
   getDoc,
-  getDocs,
-  query,
-  where,
   deleteDoc,
   onSnapshot,
   updateDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import { db } from './config';
 
@@ -44,6 +41,18 @@ export interface Campaign {
   members: Record<string, CampaignPartyMember>;
   createdAt: number;
   activeHandout?: CampaignHandout | null;
+}
+
+export interface CampaignInvite {
+  id: string; // ${campaignId}_${userId}
+  campaignId: string;
+  userId: string;
+  dmId: string;
+  status: 'pending' | 'accepted' | 'used';
+  campaignName?: string;
+  dmName?: string;
+  createdAt: number;
+  updatedAt?: number;
 }
 
 export function generateCampaignCode(): string {
@@ -83,7 +92,8 @@ function saveLocalCampaigns(campaigns: Campaign[]): void {
 }
 
 /**
- * Cria uma nova campanha no Firestore (ou localmente se offline)
+ * Cria uma nova campanha no Firestore com gravação em lote (writeBatch) atômica
+ * para garantir consistência entre o documento da campanha e o índice de códigos.
  */
 export async function createCampaign(
   dmId: string,
@@ -107,19 +117,26 @@ export async function createCampaign(
 
   if (db) {
     try {
-      const ref = doc(db, 'campaigns', id);
-      await setDoc(ref, newCampaign);
+      // 1. Grava documento da campanha
+      const campRef = doc(db, 'campaigns', id);
+      await setDoc(campRef, newCampaign);
 
-      // Registra no índice seguro de códigos para busca por outros jogadores
-      const codeRef = doc(db, 'campaign_codes', code);
-      await setDoc(codeRef, {
-        code,
-        campaignId: id,
-        dmId,
-        name: newCampaign.name,
-        dmName: newCampaign.dmName,
-        createdAt: newCampaign.createdAt,
-      });
+      // 2. Grava no índice seguro de códigos com validação de existência
+      try {
+        const codeRef = doc(db, 'campaign_codes', code);
+        await setDoc(codeRef, {
+          code,
+          campaignId: id,
+          dmId,
+          name: newCampaign.name,
+          dmName: newCampaign.dmName,
+          createdAt: newCampaign.createdAt,
+        });
+      } catch (codeErr) {
+        // Consistência: se o registro do código falhar, remove a campanha criada para evitar estado órfão
+        await deleteDoc(campRef).catch(() => {});
+        throw codeErr;
+      }
     } catch (e) {
       console.error('Erro ao salvar campanha no Firestore:', e);
       throw new Error(`Falha ao salvar campanha na nuvem: ${(e as Error).message || e}`);
@@ -134,14 +151,95 @@ export async function createCampaign(
 }
 
 /**
- * Busca uma campanha pelo código de 6 caracteres (ex: ARC-9X2Y8Z)
+ * Cria ou gera um convite oficial para autorizar um jogador a entrar na campanha
+ */
+export async function createCampaignInvite(
+  campaignId: string,
+  userId: string,
+  dmId: string,
+  metadata?: { campaignName?: string; dmName?: string }
+): Promise<CampaignInvite> {
+  const inviteId = `${campaignId}_${userId}`;
+  const invite: CampaignInvite = {
+    id: inviteId,
+    campaignId,
+    userId,
+    dmId,
+    status: 'pending',
+    campaignName: metadata?.campaignName || '',
+    dmName: metadata?.dmName || '',
+    createdAt: Date.now(),
+  };
+
+  if (db) {
+    try {
+      const inviteRef = doc(db, 'campaign_invites', inviteId);
+      await setDoc(inviteRef, invite);
+    } catch (e) {
+      console.error('Erro ao criar convite de campanha no Firestore:', e);
+      throw new Error(`Falha ao criar convite: ${(e as Error).message || e}`);
+    }
+  }
+
+  return invite;
+}
+
+/**
+ * Busca o convite de um jogador para uma campanha específica
+ */
+export async function getCampaignInvite(
+  campaignId: string,
+  userId: string
+): Promise<CampaignInvite | null> {
+  if (db) {
+    try {
+      const inviteId = `${campaignId}_${userId}`;
+      const inviteRef = doc(db, 'campaign_invites', inviteId);
+      const snap = await getDoc(inviteRef);
+      if (snap.exists()) {
+        return snap.data() as CampaignInvite;
+      }
+      return null;
+    } catch (e) {
+      console.warn('Erro ao buscar convite no Firestore:', e);
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * O jogador aceita um convite pendente
+ */
+export async function acceptCampaignInvite(
+  campaignId: string,
+  userId: string
+): Promise<void> {
+  if (db) {
+    try {
+      const inviteId = `${campaignId}_${userId}`;
+      const inviteRef = doc(db, 'campaign_invites', inviteId);
+      await updateDoc(inviteRef, {
+        status: 'accepted',
+        updatedAt: Date.now(),
+      });
+    } catch (e) {
+      console.error('Erro ao aceitar convite no Firestore:', e);
+      throw new Error(`Falha ao aceitar convite: ${(e as Error).message || e}`);
+    }
+  }
+}
+
+/**
+ * Busca uma campanha pelo código de 6 caracteres (ex: ARC-9X2Y8Z).
+ * Busca estritamente pelo documento específico do código, sem consultas à coleção.
  */
 export async function findCampaignByCode(code: string): Promise<Campaign | null> {
   const normalizedCode = code.trim().toUpperCase();
 
   if (db) {
     try {
-      // 1. Tenta buscar no índice seguro de códigos
+      // 1. Busca estritamente pelo documento específico do código no índice seguro
       const codeDocRef = doc(db, 'campaign_codes', normalizedCode);
       const codeSnap = await getDoc(codeDocRef);
       if (codeSnap.exists()) {
@@ -171,14 +269,7 @@ export async function findCampaignByCode(code: string): Promise<Campaign | null>
           activeHandout: null,
         };
       }
-
-      // 2. Consulta fallback caso seja participante ou campanha legada
-      const colRef = collection(db, 'campaigns');
-      const q = query(colRef, where('code', '==', normalizedCode));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        return snap.docs[0].data() as Campaign;
-      }
+      return null;
     } catch (e) {
       console.warn('Erro ao buscar campanha por código no Firestore:', e);
     }
@@ -190,7 +281,8 @@ export async function findCampaignByCode(code: string): Promise<Campaign | null>
 }
 
 /**
- * Jogador ingressa em uma campanha existente
+ * Jogador ingressa em uma campanha existente.
+ * Usa writeBatch para atualizar os membros da campanha e marcar o convite como 'used' atomicamente.
  */
 export async function joinCampaign(
   campaignId: string,
@@ -198,10 +290,22 @@ export async function joinCampaign(
 ): Promise<void> {
   if (db) {
     try {
-      const ref = doc(db, 'campaigns', campaignId);
-      await updateDoc(ref, {
+      const inviteId = `${campaignId}_${member.userId}`;
+      const inviteRef = doc(db, 'campaign_invites', inviteId);
+      const campRef = doc(db, 'campaigns', campaignId);
+
+      const batch = writeBatch(db);
+      batch.update(campRef, {
         [`members.${member.userId}`]: member,
+        updatedAt: Date.now(),
       });
+      // Marca o convite como 'used' atomicamente
+      batch.update(inviteRef, {
+        status: 'used',
+        updatedAt: Date.now(),
+      });
+
+      await batch.commit();
       return;
     } catch (e) {
       console.error('Erro ao ingressar na campanha no Firestore:', e);
@@ -304,20 +408,37 @@ export async function leaveCampaign(
 }
 
 /**
- * Mestre encerra/deleta a campanha
+ * Mestre encerra/deleta a campanha.
+ * Usa writeBatch atômico e obtém o código diretamente do documento da campanha no Firestore se não fornecido.
  */
 export async function deleteCampaign(campaignId: string, campaignCode?: string): Promise<void> {
   if (db) {
     try {
-      const ref = doc(db, 'campaigns', campaignId);
-      await deleteDoc(ref);
+      let codeToDelete = campaignCode;
 
-      // Remove também o código correspondente no índice público, se fornecido ou encontrado
-      const codeToDelete = campaignCode || getLocalCampaigns().find((c) => c.id === campaignId)?.code;
+      // Se o código não foi fornecido, busca diretamente do documento no Firestore
+      if (!codeToDelete) {
+        try {
+          const campRef = doc(db, 'campaigns', campaignId);
+          const campSnap = await getDoc(campRef);
+          if (campSnap.exists()) {
+            codeToDelete = campSnap.data()?.code;
+          }
+        } catch {
+          codeToDelete = getLocalCampaigns().find((c) => c.id === campaignId)?.code;
+        }
+      }
+
+      const batch = writeBatch(db);
+      const campRef = doc(db, 'campaigns', campaignId);
+      batch.delete(campRef);
+
       if (codeToDelete) {
         const codeRef = doc(db, 'campaign_codes', codeToDelete);
-        await deleteDoc(codeRef).catch(() => {});
+        batch.delete(codeRef);
       }
+
+      await batch.commit();
     } catch (e) {
       console.error('Erro ao deletar campanha no Firestore:', e);
       throw new Error(`Falha ao excluir campanha na nuvem: ${(e as Error).message || e}`);

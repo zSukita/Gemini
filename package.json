@@ -11,6 +11,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "test": "vitest run",
+    "test:rules": "npx firebase-tools emulators:exec --only firestore \"vitest run src/test/firestoreRules.test.ts\"",
+    "test:all": "npx firebase-tools emulators:exec --only firestore \"vitest run\"",
     "preview": "vite preview",
     "deploy": "npm run build && npx -y firebase-tools deploy --only hosting",
     "electron:dev": "concurrently -k \"vite\" \"wait-on tcp:5173 && electron .\"",
@@ -50,6 +52,7 @@
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
     "@testing-library/react": "^16.3.3",
     "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^24.13.3",

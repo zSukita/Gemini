@@ -17,7 +17,9 @@ import {
   Compass,
   Sparkles,
   Users,
+  Smartphone,
 } from 'lucide-react';
+import { usePwaInstall } from '../utils/pwa';
 
 import type { PeerUser } from '../types/vtt';
 
@@ -85,6 +87,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const themeMenuRef = useRef<HTMLDivElement>(null);
+  const { isInstallable, triggerInstall } = usePwaInstall();
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -241,6 +244,19 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Barra de Ferramentas Rápidas (Chat, Impressão, Música, Temas, Tela Dupla) */}
         <div className="flex items-center gap-1 bg-slate-950/70 p-1 rounded-xl border border-slate-800 shrink-0">
+          {/* Botão de Instalar App (PWA) */}
+          {isInstallable && (
+            <button
+              type="button"
+              onClick={triggerInstall}
+              className="p-1.5 px-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition flex items-center gap-1.5 text-xs font-bold animate-pulse cursor-pointer shadow-sm shadow-amber-500/10"
+              title="Instalar ArcanaSheet como aplicativo no seu dispositivo"
+            >
+              <Smartphone size={13} className="text-amber-400" />
+              <span className="hidden xl:inline text-[11px]">Instalar App</span>
+            </button>
+          )}
+
           {/* Botão de Chat Tático */}
           {onToggleChat && (
             <button

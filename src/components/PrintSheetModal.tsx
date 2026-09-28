@@ -8,7 +8,7 @@ import {
   getPassivePerception, 
   getTotalInventoryWeight 
 } from '../utils/calculations';
-import { Printer, X, Shield, Sparkles, Heart, Award, User } from 'lucide-react';
+import { Printer, X, Shield, Sparkles, Heart, Award, User, Download, Copy, Check } from 'lucide-react';
 
 interface PrintSheetModalProps {
   isOpen: boolean;
@@ -22,6 +22,7 @@ export const PrintSheetModal: React.FC<PrintSheetModalProps> = ({
   character,
 }) => {
   const [activePreviewPage, setActivePreviewPage] = useState<'all' | '1' | '2' | '3'>('all');
+  const [copiedJson, setCopiedJson] = useState(false);
 
   if (!isOpen) return null;
 
@@ -47,6 +48,30 @@ export const PrintSheetModal: React.FC<PrintSheetModalProps> = ({
     setTimeout(() => {
       document.title = oldTitle;
     }, 1000);
+  };
+
+  const handleDownloadJson = () => {
+    const jsonStr = JSON.stringify(character, null, 2);
+    const fileName = `${(character.name || 'personagem').toLowerCase().replace(/\s+/g, '_')}_dnd5e.json`;
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleCopyJson = async () => {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(character, null, 2));
+      setCopiedJson(true);
+      setTimeout(() => setCopiedJson(false), 2000);
+    } catch (err) {
+      console.error('Falha ao copiar JSON:', err);
+    }
   };
 
   return (
@@ -117,6 +142,38 @@ export const PrintSheetModal: React.FC<PrintSheetModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Botão Baixar JSON */}
+            <button
+              type="button"
+              onClick={handleDownloadJson}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-amber-300 font-semibold text-xs rounded-xl border border-slate-700 flex items-center gap-1.5 transition cursor-pointer"
+              title="Baixar arquivo JSON completo de backup"
+            >
+              <Download className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">Baixar JSON</span>
+            </button>
+
+            {/* Botão Copiar JSON */}
+            <button
+              type="button"
+              onClick={handleCopyJson}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-amber-300 font-semibold text-xs rounded-xl border border-slate-700 flex items-center gap-1.5 transition cursor-pointer"
+              title="Copiar dados JSON para a área de transferência"
+            >
+              {copiedJson ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="text-emerald-300 text-xs">Copiado!</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="hidden sm:inline">Copiar JSON</span>
+                </>
+              )}
+            </button>
+
+            {/* Botão Salvar em PDF */}
             <button
               type="button"
               onClick={handlePrint}

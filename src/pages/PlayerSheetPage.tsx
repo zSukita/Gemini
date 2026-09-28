@@ -35,6 +35,8 @@ import {
   Moon,
   Eye,
   HelpCircle,
+  Printer,
+  Download,
 } from 'lucide-react';
 import { getAbilityModifier, formatModifier } from '../utils/calculations';
 
@@ -192,11 +194,30 @@ export const PlayerSheetPage: React.FC<PlayerSheetPageProps> = ({
           </button>
         </div>
 
-        <span className="text-[11px] text-slate-400 hidden sm:inline pr-2">
-          {sheetMode === 'adventurer'
-            ? '⚡ Visão rápida com PV, ataques em 1 clique e testes essenciais.'
-            : '📜 Acesso a todas as 6 abas, perícias e inventário completo.'}
-        </span>
+        <div className="flex items-center gap-2">
+          {onOpenPrint && (
+            <button
+              type="button"
+              onClick={onOpenPrint}
+              className="px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-serif font-bold flex items-center gap-1.5 transition cursor-pointer"
+              title="Exportar ficha em PDF oficial A4 para impressão ou mesa física"
+            >
+              <Printer size={13} className="text-amber-400" />
+              <span>PDF Oficial</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={onOpenCharacterManager}
+            className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-200 border border-slate-700 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+            title="Fichas de personagens e Backup JSON"
+          >
+            <Download size={13} className="text-slate-400" />
+            <span className="hidden sm:inline">Backup / Fichas</span>
+            <span className="sm:hidden">Fichas</span>
+          </button>
+        </div>
       </div>
 
       {sheetMode === 'adventurer' ? (

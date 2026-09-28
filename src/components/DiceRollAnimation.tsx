@@ -89,7 +89,114 @@ export const DiceRollAnimation: React.FC<DiceRollAnimationProps> = ({
 
   if (!roll) return null;
 
-  // Renderizador de Face Facetada de Dado Poliédrico (d20 e outros)
+  // Renderizador de Geometria de Dados Poliédricos 3D
+  const renderDieShape = (dieType: string, facetColor: string, facetBorder: string) => {
+    const lower = dieType.toLowerCase();
+    if (lower === 'd4') {
+      return (
+        <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-2xl overflow-visible">
+          <polygon points="50,8 94,84 6,84" fill={facetColor} stroke={facetBorder} strokeWidth="2.5" strokeLinejoin="round" />
+          <polygon points="50,8 50,56 6,84" fill="#000" opacity="0.22" />
+          <polygon points="50,8 50,56 94,84" fill="#fff" opacity="0.18" />
+          <polygon points="6,84 50,56 94,84" fill="#000" opacity="0.32" />
+          <line x1="50" y1="8" x2="50" y2="56" stroke={facetBorder} strokeWidth="2" />
+          <line x1="6" y1="84" x2="50" y2="56" stroke={facetBorder} strokeWidth="2" />
+          <line x1="94" y1="84" x2="50" y2="56" stroke={facetBorder} strokeWidth="2" />
+        </svg>
+      );
+    }
+
+    if (lower === 'd6') {
+      return (
+        <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-2xl overflow-visible">
+          <polygon points="50,10 88,32 50,54 12,32" fill={facetColor} stroke={facetBorder} strokeWidth="2" strokeLinejoin="round" filter="brightness(1.18)" />
+          <polygon points="12,32 50,54 50,94 12,72" fill={facetColor} stroke={facetBorder} strokeWidth="2" strokeLinejoin="round" filter="brightness(0.85)" />
+          <polygon points="88,32 50,54 50,94 88,72" fill={facetColor} stroke={facetBorder} strokeWidth="2" strokeLinejoin="round" filter="brightness(0.68)" />
+          <polygon points="50,10 88,32 50,54 12,32" fill="#fff" opacity="0.12" />
+        </svg>
+      );
+    }
+
+    if (lower === 'd8') {
+      return (
+        <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-2xl overflow-visible">
+          <polygon points="50,6 92,50 50,94 8,50" fill={facetColor} stroke={facetBorder} strokeWidth="2.5" strokeLinejoin="round" />
+          <polygon points="50,6 8,50 50,50" fill="#fff" opacity="0.16" />
+          <polygon points="50,6 92,50 50,50" fill="#fff" opacity="0.25" />
+          <polygon points="8,50 50,94 50,50" fill="#000" opacity="0.28" />
+          <polygon points="92,50 50,94 50,50" fill="#000" opacity="0.38" />
+          <line x1="50" y1="6" x2="50" y2="94" stroke={facetBorder} strokeWidth="1.8" />
+          <line x1="8" y1="50" x2="92" y2="50" stroke={facetBorder} strokeWidth="1.8" />
+        </svg>
+      );
+    }
+
+    if (lower === 'd10' || lower === 'd100') {
+      return (
+        <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-2xl overflow-visible">
+          <polygon points="50,6 92,44 76,88 50,96 24,88 8,44" fill={facetColor} stroke={facetBorder} strokeWidth="2.5" strokeLinejoin="round" />
+          <polygon points="50,6 8,44 50,58" fill="#fff" opacity="0.2" />
+          <polygon points="50,6 92,44 50,58" fill="#fff" opacity="0.3" />
+          <polygon points="8,44 24,88 50,58" fill="#000" opacity="0.25" />
+          <polygon points="92,44 76,88 50,58" fill="#000" opacity="0.32" />
+          <polygon points="24,88 50,96 76,88 50,58" fill="#000" opacity="0.4" />
+          <line x1="50" y1="6" x2="50" y2="58" stroke={facetBorder} strokeWidth="1.8" />
+          <line x1="8" y1="44" x2="50" y2="58" stroke={facetBorder} strokeWidth="1.8" />
+          <line x1="92" y1="44" x2="50" y2="58" stroke={facetBorder} strokeWidth="1.8" />
+          <line x1="24" y1="88" x2="50" y2="58" stroke={facetBorder} strokeWidth="1.8" />
+          <line x1="76" y1="88" x2="50" y2="58" stroke={facetBorder} strokeWidth="1.8" />
+          <line x1="50" y1="96" x2="50" y2="58" stroke={facetBorder} strokeWidth="1.8" />
+        </svg>
+      );
+    }
+
+    if (lower === 'd12') {
+      return (
+        <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-2xl overflow-visible">
+          <polygon points="50,6 78,16 95,40 92,70 72,92 50,96 28,92 8,70 5,40 22,16" fill={facetColor} stroke={facetBorder} strokeWidth="2.5" strokeLinejoin="round" />
+          <polygon points="50,28 75,46 65,74 35,74 25,46" fill={facetColor} stroke={facetBorder} strokeWidth="2" strokeLinejoin="round" filter="brightness(1.15)" />
+          <polygon points="50,6 78,16 75,46 50,28" fill="#fff" opacity="0.22" />
+          <polygon points="50,6 22,16 25,46 50,28" fill="#fff" opacity="0.14" />
+          <polygon points="78,16 95,40 92,70 75,46" fill="#000" opacity="0.18" />
+          <polygon points="22,16 5,40 8,70 25,46" fill="#000" opacity="0.28" />
+          <polygon points="75,46 92,70 72,92 65,74" fill="#000" opacity="0.35" />
+          <polygon points="25,46 8,70 28,92 35,74" fill="#000" opacity="0.38" />
+          <polygon points="35,74 65,74 72,92 50,96 28,92" fill="#000" opacity="0.45" />
+        </svg>
+      );
+    }
+
+    // Padrão d20 Icosaedro
+    return (
+      <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-2xl overflow-visible">
+        <defs>
+          <linearGradient id="facetGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor={facetBorder} stopOpacity="0.9" />
+            <stop offset="100%" stopColor={facetColor} stopOpacity="0.95" />
+          </linearGradient>
+          <linearGradient id="facetGrad2" x1="50%" y1="0%" x2="50%" y2="100%">
+            <stop offset="0%" stopColor="#1e293b" stopOpacity="0.4" />
+            <stop offset="100%" stopColor="#020617" stopOpacity="0.8" />
+          </linearGradient>
+        </defs>
+        <polygon points="50,4 92,27 92,73 50,96 8,73 8,27" fill={facetColor} stroke={facetBorder} strokeWidth="2.5" strokeLinejoin="round" />
+        <polygon points="50,4 8,27 28,50" fill="#000" opacity="0.18" />
+        <polygon points="50,4 92,27 72,50" fill="#fff" opacity="0.22" />
+        <polygon points="8,73 50,96 28,50" fill="#000" opacity="0.35" />
+        <polygon points="92,73 50,96 72,50" fill="#000" opacity="0.28" />
+        <polygon points="50,22 80,72 20,72" fill="url(#facetGrad1)" stroke={facetBorder} strokeWidth="2" strokeLinejoin="round" />
+        <polygon points="50,22 80,72 20,72" fill="url(#facetGrad2)" />
+        <line x1="50" y1="4" x2="50" y2="22" stroke={facetBorder} strokeWidth="1.8" />
+        <line x1="8" y1="27" x2="20" y2="72" stroke={facetBorder} strokeWidth="1.8" />
+        <line x1="92" y1="27" x2="80" y2="72" stroke={facetBorder} strokeWidth="1.8" />
+        <line x1="8" y1="73" x2="20" y2="72" stroke={facetBorder} strokeWidth="1.8" />
+        <line x1="92" y1="73" x2="80" y2="72" stroke={facetBorder} strokeWidth="1.8" />
+        <line x1="50" y1="96" x2="50" y2="72" stroke={facetBorder} strokeWidth="1.8" />
+      </svg>
+    );
+  };
+
+  // Renderizador de Face Facetada de Dado Poliédrico 3D
   const renderPolyhedron = (value: number, isWinner = true, isDiscarded = false) => {
     let themeGlow = 'from-amber-600 via-amber-700 to-amber-950 border-amber-400/80 shadow-amber-500/30';
     let facetColor = '#d97706';
@@ -104,6 +211,8 @@ export const DiceRollAnimation: React.FC<DiceRollAnimationProps> = ({
       facetColor = '#991b1b';
       facetBorder = '#fca5a5';
     }
+
+    const sparkAngles = [0, 25, 50, 75, 100, 130, 160, 190, 220, 250, 280, 310, 335];
 
     return (
       <div
@@ -131,6 +240,36 @@ export const DiceRollAnimation: React.FC<DiceRollAnimationProps> = ({
           />
         )}
 
+        {/* Fagulhas / Partículas Mágicas ao Impactar */}
+        {phase === 'settled' && isWinner && (
+          <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+            {sparkAngles.map((deg, i) => {
+              const rad = (deg * Math.PI) / 180;
+              const dist = 45 + (i % 3) * 15;
+              const tx = `${Math.round(Math.cos(rad) * dist)}px`;
+              const ty = `${Math.round(Math.sin(rad) * dist)}px`;
+              return (
+                <div
+                  key={i}
+                  className={`absolute w-2 h-2 rounded-full animate-spark ${
+                    isCritSuccess
+                      ? 'bg-yellow-300 shadow-[0_0_8px_rgba(253,224,71,0.9)]'
+                      : isCritFail
+                      ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]'
+                      : 'bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]'
+                  }`}
+                  style={
+                    {
+                      '--tx': tx,
+                      '--ty': ty,
+                    } as React.CSSProperties
+                  }
+                />
+              );
+            })}
+          </div>
+        )}
+
         {/* Corpo do Dado Poliédrico 3D */}
         <div
           className={`relative w-28 h-28 sm:w-32 sm:h-32 flex items-center justify-center select-none rounded-2xl ${themeGlow} ${
@@ -142,55 +281,7 @@ export const DiceRollAnimation: React.FC<DiceRollAnimationProps> = ({
           }`}
           style={{ transformStyle: 'preserve-3d' }}
         >
-          {/* Icosaedro Geométrico Facetado SVG com Iluminação 3D */}
-          <svg
-            viewBox="0 0 100 100"
-            className="w-full h-full drop-shadow-2xl overflow-visible"
-          >
-            <defs>
-              <linearGradient id="facetGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor={facetBorder} stopOpacity="0.9" />
-                <stop offset="100%" stopColor={facetColor} stopOpacity="0.95" />
-              </linearGradient>
-              <linearGradient id="facetGrad2" x1="50%" y1="0%" x2="50%" y2="100%">
-                <stop offset="0%" stopColor="#1e293b" stopOpacity="0.4" />
-                <stop offset="100%" stopColor="#020617" stopOpacity="0.8" />
-              </linearGradient>
-            </defs>
-
-            {/* Faceta Exterior d20 Hexágono */}
-            <polygon
-              points="50,4 92,27 92,73 50,96 8,73 8,27"
-              fill={facetColor}
-              stroke={facetBorder}
-              strokeWidth="2.5"
-              strokeLinejoin="round"
-            />
-
-            {/* Facetas Angulares Internas (Triângulos do Icosaedro) */}
-            <polygon points="50,4 8,27 28,50" fill="#000" opacity="0.18" />
-            <polygon points="50,4 92,27 72,50" fill="#fff" opacity="0.22" />
-            <polygon points="8,73 50,96 28,50" fill="#000" opacity="0.35" />
-            <polygon points="92,73 50,96 72,50" fill="#000" opacity="0.28" />
-
-            {/* Triângulo Central Frontal */}
-            <polygon
-              points="50,22 80,72 20,72"
-              fill="url(#facetGrad1)"
-              stroke={facetBorder}
-              strokeWidth="2"
-              strokeLinejoin="round"
-            />
-            <polygon points="50,22 80,72 20,72" fill="url(#facetGrad2)" />
-
-            {/* Arestas de Conexão */}
-            <line x1="50" y1="4" x2="50" y2="22" stroke={facetBorder} strokeWidth="1.8" />
-            <line x1="8" y1="27" x2="20" y2="72" stroke={facetBorder} strokeWidth="1.8" />
-            <line x1="92" y1="27" x2="80" y2="72" stroke={facetBorder} strokeWidth="1.8" />
-            <line x1="8" y1="73" x2="20" y2="72" stroke={facetBorder} strokeWidth="1.8" />
-            <line x1="92" y1="73" x2="80" y2="72" stroke={facetBorder} strokeWidth="1.8" />
-            <line x1="50" y1="96" x2="50" y2="72" stroke={facetBorder} strokeWidth="1.8" />
-          </svg>
+          {renderDieShape(roll.dieType, facetColor, facetBorder)}
 
           {/* Número Central com Tipografia Épica */}
           <div className="absolute inset-0 flex items-center justify-center pt-2 pointer-events-none">

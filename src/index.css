@@ -131,6 +131,21 @@
   animation: critFailTremor 0.5s ease-in-out infinite;
 }
 
+@keyframes sparkBurst {
+  0% {
+    transform: translate(0, 0) scale(1.2);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--tx, 30px), var(--ty, -30px)) scale(0.2);
+    opacity: 0;
+  }
+}
+
+.animate-spark {
+  animation: sparkBurst 0.65s cubic-bezier(0.12, 0.8, 0.32, 1) forwards;
+}
+
 /* Floating Combat Text Animation */
 @keyframes floatCombatText {
   0% {

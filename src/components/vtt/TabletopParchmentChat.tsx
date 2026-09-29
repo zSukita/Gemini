@@ -1488,7 +1488,8 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
               value={campaignSummaryText}
               onChange={(e) => setCampaignSummaryText(e.target.value)}
               rows={6}
-              placeholder="Nenhum resumo da campanha registrado ainda. Clique em 'Sintetizar com IA' ou digite os fatos marcantes da aventura..."
+              aria-label="Memória editável da campanha"
+              placeholder={'Organize os fatos para a próxima sessão:\nPERSONAGENS: objetivos, vínculos e recursos importantes\nLOCAIS: lugares visitados e mudanças\nNPCs: nomes, motivações e relações\nPISTAS E OBJETIVOS: descobertas e perguntas em aberto\nACONTECIMENTOS: resumo em ordem e consequências'}
               className="w-full text-xs p-2.5 rounded bg-[#f8f2e2] text-[#2c1c0d] placeholder-[#8c7457] border border-[#9b784f] font-serif focus:ring-1 focus:ring-amber-700"
             />
 

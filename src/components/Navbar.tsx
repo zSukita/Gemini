@@ -50,6 +50,9 @@ interface NavbarProps {
   onOpenPrint?: () => void;
   onToggleChat?: () => void;
   onOpenMusicPlayer?: () => void;
+  beginnerMode?: boolean;
+  onToggleBeginnerMode?: () => void;
+  onOpenBeginnerGuide?: () => void;
   userName?: string | null;
   onLogout?: () => void;
 }
@@ -84,6 +87,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenPrint,
   onToggleChat,
   onOpenMusicPlayer,
+  beginnerMode = false,
+  onToggleBeginnerMode,
+  onOpenBeginnerGuide,
   userName,
   onLogout,
 }) => {
@@ -240,6 +246,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <X size={15} />
                   <span>Fechar</span>
                 </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                {onToggleBeginnerMode && <button type="button" aria-pressed={beginnerMode} onClick={onToggleBeginnerMode} className="min-h-11 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 text-left text-xs font-bold text-amber-200">{beginnerMode ? '✓ Modo iniciante ativo' : 'Ativar modo iniciante'}</button>}
+                {onOpenBeginnerGuide && <button type="button" onClick={() => { setIsMobileMenuOpen(false); onOpenBeginnerGuide(); }} className="min-h-11 rounded-xl border border-slate-700 bg-slate-900 px-3 text-left text-xs font-bold text-slate-100">Tutorial: primeira aventura</button>}
               </div>
 
               {/* Sala Online P2P */}
@@ -443,6 +454,8 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Seletor de Modos (Ficha, Mestre, Mapa) + Sala Online + Dual Monitor */}
         <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap xl:flex-nowrap">
+          {onToggleBeginnerMode && <button type="button" aria-pressed={beginnerMode} onClick={onToggleBeginnerMode} title="Alternar modo iniciante" className={`min-h-9 rounded-xl border px-2.5 text-xs font-bold ${beginnerMode ? 'border-amber-400 bg-amber-500/20 text-amber-200' : 'border-slate-700 bg-slate-800 text-slate-300'}`}>Iniciante</button>}
+          {onOpenBeginnerGuide && <button type="button" onClick={onOpenBeginnerGuide} title="Abrir tutorial de primeira aventura" aria-label="Abrir tutorial de primeira aventura" className="min-h-9 rounded-xl border border-slate-700 bg-slate-800 px-2.5 text-xs font-semibold text-slate-200">Tutorial</button>}
           {/* Alternador de 3 Modos */}
           <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
             <button

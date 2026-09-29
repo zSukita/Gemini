@@ -84,6 +84,17 @@ export interface Encounter {
   activeCombatantIndex: number;
   combatants: Combatant[];
   isRunning: boolean;
+  actionLog?: CombatLogEntry[];
+  lastHpChange?: { combatantId: string; currentHp: number; tempHp: number; name: string; actor: string };
+}
+
+export interface CombatLogEntry {
+  id: string;
+  timestamp: number;
+  round: number;
+  actor: string;
+  message: string;
+  kind: 'turn' | 'hp' | 'condition' | 'initiative' | 'roll' | 'attack';
 }
 
 export type SyncMessageType =

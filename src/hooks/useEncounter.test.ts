@@ -141,4 +141,20 @@ describe('useEncounter hook', () => {
 
     expect(result.current.encounter.combatants[0].currentHp).toBe(6);
   });
+
+  it('registra a alteração de PV e desfaz exatamente dano absorvido por PV temporários', () => {
+    const { result } = renderHook(() => useEncounter());
+    act(() => result.current.addCustomCombatant({
+      name: 'Paladino', type: 'player', initiative: 12, armorClass: 18,
+      maxHp: 20, currentHp: 20, tempHp: 4, conditions: [],
+    }));
+    const id = result.current.encounter.combatants[0].id;
+    act(() => result.current.applyCombatantHpDelta(id, -6));
+    expect(result.current.encounter.combatants[0]).toMatchObject({ currentHp: 18, tempHp: 0 });
+    expect(result.current.encounter.actionLog?.[0].message).toContain('Paladino');
+    act(() => result.current.undoLastHpChange());
+    expect(result.current.encounter.combatants[0]).toMatchObject({ currentHp: 20, tempHp: 4 });
+    expect(result.current.encounter.lastHpChange).toBeUndefined();
+    expect(result.current.encounter.actionLog?.[0].message).toContain('Correção');
+  });
 });

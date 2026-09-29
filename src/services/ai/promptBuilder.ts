@@ -1,5 +1,5 @@
 import { type Character, SKILLS } from '../../types/dnd5e';
-import type { AdventureTone } from '../../types/aiDm';
+import type { AdventureTone, AiDmStyle } from '../../types/aiDm';
 
 /**
  * Cria o prompt de sistema especializado para o Mestre de RPG D&D 5e
@@ -8,7 +8,8 @@ export function buildSystemPrompt(
   character?: Character | null,
   tone: AdventureTone = 'heroic',
   customInstructions?: string,
-  campaignSummary?: string
+  campaignSummary?: string,
+  dmStyle: AiDmStyle = 'beginner'
 ): string {
   let charContext = 'Nenhum personagem selecionado (Aventureiro Desconhecido).';
 
@@ -55,6 +56,13 @@ DADOS DO PERSONAGEM DO JOGADOR:
     survival: 'Estilo Sobrevivência & Ermos: Desafios com clima hostil, feras territoriais, orientação geográfica e gestão de cansaço e mantimentos.',
   };
 
+  const dmStyleGuidelines: Record<AiDmStyle, string> = {
+    narrative: 'Condução narrativa: priorize cenas evocativas e escolhas abertas; explique rapidamente qualquer regra quando aparecer.',
+    tactical: 'Condução tática: seja conciso, deixe claros distância, terreno, cobertura, iniciativa, custos de ação e consequências mecânicas.',
+    beginner: 'Condução para iniciantes: explique termos em linguagem simples, ofereça um próximo passo concreto e não presuma conhecimento prévio de D&D.',
+    rules_faithful: 'Condução fiel às regras: separe texto narrativo de mecânica, cite a regra aplicável quando conhecida e peça ao Mestre que decida ambiguidades; nunca invente certeza sobre uma regra.',
+  };
+
   return `
 Você é o Mestre Supremo de RPG do ArcanaSheet (Dungeon Master para D&D 5ª Edição).
 Seu objetivo é conduzir uma narrativa interativa de RPG de altíssima qualidade, imersiva, empolgante e totalmente adaptada às escolhas do jogador.
@@ -62,15 +70,16 @@ Seu objetivo é conduzir uma narrativa interativa de RPG de altíssima qualidade
 DIRETRIZES FUNDAMENTAIS DE REGRAS E COMBATE D&D 5e:
 1. Idioma: Português do Brasil impecável, com vocabulário rico de fantasia medieval, descrições sensoriais (sons de passos ecoando, cheiro de ozônio e cinzas, o brilho da tocha nas pedras úmidas).
 2. ${toneGuidelines[tone]}
-3. Conhecimento Estrito das Regras D&D 5e:
+3. ${dmStyleGuidelines[dmStyle]}
+4. Conhecimento Estrito das Regras D&D 5e:
    - NUNCA decida ou narre o sucesso, acerto, dano ou morte de um inimigo ANTES que o jogador role os dados!
    - Se o jogador declarar um ataque, magia ou ação com risco, descreva a postura do personagem, arme o momento e PARE imediatamente solicitando a rolagem apropriada.
    - Em ataques de combate do jogador: Peça a Rolagem de Ataque (1d20 + Bônus de Ataque vs CA do alvo). Use a tag:
      [TESTE: Ataque com {Arma} (Força/Destreza) | CD {CA do Alvo} | Para acertar {Nome do Inimigo}]
      Exemplo: [TESTE: Ataque com Machado Grande (Força) | CD 13 | Para acertar o Orc Guerreiro]
    - Somente após o jogador responder com o resultado da rolagem de ataque você narra se acertou ou errou. Se acertar, peça então a rolagem do dado específico de dano da arma do personagem (1d12 para machado grande, 2d6 para espadão, 1d8 para martelo de guerra ou espada longa, 1d6 para lança/arco curto, 1d4 para adaga, etc.).
-4. Respeite as ações do jogador: Nunca jogue pelo jogador nem decida os pensamentos dele. Descreva o ambiente, os NPCs, as reações do mundo e pergunte: "O que você faz?".
-5. Mantenha os turnos concisos e impactantes (entre 2 e 4 parágrafos bem escritos). Evite respostas excessivamente longas que cansem o leitor.
+5. Respeite as ações do jogador: Nunca jogue pelo jogador nem decida os pensamentos dele. Descreva o ambiente, os NPCs, as reações do mundo e pergunte: "O que você faz?".
+6. Mantenha os turnos concisos e impactantes (entre 2 e 4 parágrafos bem escritos). Evite respostas excessivamente longas que cansem o leitor.
 
 ${charContext}
 

@@ -35,6 +35,17 @@
     .card h3 { margin-top:2px; }
     .small { font-size:9.5pt; color:var(--muted); }
     .pill { display:inline-block; border:1px solid #dbc181; background:#fff8e7; padding:2px 7px; border-radius:5px; font-weight:bold; white-space:nowrap; }
+    .visual { position:relative; max-width:144mm; margin:12px auto 6px; border:1px solid #c7a861; border-radius:10px; overflow:hidden; background:#101827; }
+    .visual img { display:block; width:100%; height:auto; }
+    .pin { position:absolute; z-index:2; width:26px; height:26px; display:grid; place-items:center; border:2px solid white; border-radius:50%; background:#c34b42; color:white; font-weight:bold; box-shadow:0 2px 8px #0008; }
+    .pin.one { left:39%; top:7%; } .pin.two { left:23%; top:31%; } .pin.three { left:33%; top:50%; } .pin.four { left:75%; top:90%; }
+    .visual-arrows { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+    .visual-arrows > path { fill:none; stroke:#fff2d1; stroke-width:4; marker-end:url(#arrow-head); }
+    .visual-pair { display:grid; grid-template-columns:.65fr 1fr; gap:12px; align-items:start; }
+    .visual-pair figure { margin:0; }
+    .visual-pair img { display:block; max-width:100%; max-height:62mm; margin:auto; object-fit:contain; border:1px solid #c7a861; border-radius:8px; }
+    .legend { padding-left:26px; font-size:9.5pt; }
+    .legend li { margin:3px 0; }
     .footer { position:absolute; bottom:20px; left:52px; right:52px; padding-top:7px; border-top:1px solid var(--line); color:#738096; font-size:8.5pt; display:flex; justify-content:space-between; }
     .cover .footer { border-color:#ffffff40; color:#c2cada; }
     a { color:#80520a; }
@@ -210,6 +221,28 @@
     <p class="small">Este guia explica os fluxos gerais da versão atual do ArcanaSheet. A interface pode mudar com futuras atualizações. Para dúvidas sobre a aventura, confirme sempre com o Mestre da mesa.</p>
     <p><strong>ArcanaSheet</strong> · <a href="https://arcanasheet.sociedade.online/">arcanasheet.sociedade.online</a></p>
     <div class="footer"><span>ArcanaSheet · Guia de início</span><span>7</span></div>
+  </section>
+
+  <section>
+    <h2>Guia visual: escolher um herói</h2>
+    <p>Os números e as setas mostram o caminho mais rápido para começar. A tela pode mudar um pouco conforme o tamanho do aparelho.</p>
+    <figure class="visual" aria-label="Captura real da tela de criação de personagens com passos numerados">
+      <img src="manual_assets/tutorial-desktop.png" alt="Tela real do ArcanaSheet com o seletor de heróis prontos, cartões de personagens e o botão para criar uma ficha do zero">
+      <svg class="visual-arrows" viewBox="0 0 1000 694" preserveAspectRatio="none" aria-hidden="true"><defs><marker id="arrow-head" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#fff2d1" /></marker></defs><path d="M390 48 L520 70"/><path d="M230 216 L315 255"/><path d="M330 347 L240 348"/><path d="M750 625 L680 615"/></svg>
+      <span class="pin one">1</span><span class="pin two">2</span><span class="pin three">3</span><span class="pin four">4</span>
+    </figure>
+    <ol class="legend">
+      <li>Deixe selecionado <strong>Heróis Prontos</strong> para começar rápido.</li>
+      <li>Leia a classe, a defesa e os pontos de vida do personagem.</li>
+      <li>Toque em <strong>Jogar Agora</strong> para usar o herói como está; escolha <strong>Ajustar</strong> para personalizar.</li>
+      <li>Se preferir montar tudo, use <strong>Criar Ficha do Zero Passo a Passo</strong>.</li>
+    </ol>
+    <div class="box tip"><strong>Imagem da interface real:</strong> capturada na versão local do projeto em 29 de setembro de 2026. O conteúdo dos personagens é demonstrativo.</div>
+    <div class="visual-pair">
+      <figure><img src="manual_assets/tutorial-device.png" alt="Captura real da interface do ArcanaSheet em tela estreita na orientação retrato"><figcaption class="small">Versão retrato, capturada no projeto local.</figcaption></figure>
+      <div><h3>Depois de escolher</h3><p>Confira o nome, a classe e os PV na ficha. O tutorial do aplicativo também pode guiar você por um teste, pela mesa online e pelo início de um combate.</p><p>Para ampliar a captura, abra este PDF com zoom ou consulte o manual digital em HTML.</p></div>
+    </div>
+    <div class="footer"><span>ArcanaSheet · Guia de início</span><span>8</span></div>
   </section>
 </main>
 </body>

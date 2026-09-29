@@ -22,6 +22,7 @@ interface DmScreenProps {
   onImportPlayers: (characters: Character[]) => void;
   onResetEncounter: () => void;
   onHpDelta: (id: string, delta: number) => void;
+  onUndoLastHpChange: () => void;
   onToggleCondition: (id: string, cond: ConditionKey) => void;
   onUpdateInitiative: (id: string, init: number) => void;
   onRemoveCombatant: (id: string) => void;
@@ -47,6 +48,7 @@ export const DmScreen: React.FC<DmScreenProps> = ({
   onImportPlayers,
   onResetEncounter,
   onHpDelta,
+  onUndoLastHpChange,
   onToggleCondition,
   onUpdateInitiative,
   onRemoveCombatant,
@@ -138,6 +140,7 @@ export const DmScreen: React.FC<DmScreenProps> = ({
         onOpenCustomMonster={() => setIsCustomOpen(true)}
         onResetEncounter={onResetEncounter}
         onHpDelta={onHpDelta}
+        onUndoLastHpChange={onUndoLastHpChange}
         onToggleCondition={onToggleCondition}
         onUpdateInitiative={onUpdateInitiative}
         onRemoveCombatant={onRemoveCombatant}

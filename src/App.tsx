@@ -12,6 +12,8 @@ import { broadcastSyncMessage } from './utils/syncChannel';
 
 import { Navbar, type AppMode } from './components/Navbar';
 import { DiceRollerBar } from './components/DiceRollerBar';
+import { BeginnerGuideModal } from './components/BeginnerGuideModal';
+import { AiActionReviewModal } from './components/ai/AiActionReviewModal';
 import { PlayerSheetPage } from './pages/PlayerSheetPage';
 
 const DmScreenPage = lazy(() => import('./pages/DmScreenPage').then((m) => ({ default: m.DmScreenPage })));
@@ -136,10 +138,16 @@ export function App() {
     applyCombatantHpDelta,
     toggleCombatantCondition,
     updateCombatantInitiative,
+    undoLastHpChange,
+    recordCombatAction,
   } = useEncounter();
 
   // Estados de interface
   const [currentMode, setCurrentMode] = useState<AppMode>('player');
+  const [beginnerMode, setBeginnerMode] = useState<boolean>(() => {
+    try { return localStorage.getItem('arcanasheet_beginner_mode') === 'true'; } catch { return false; }
+  });
+  const [isBeginnerGuideOpen, setIsBeginnerGuideOpen] = useState(false);
   const [advantageMode, setAdvantageMode] = useState<AdvantageMode>('normal');
   const [diceRolls, setDiceRolls] = useState<DiceRollResult[]>([]);
   const [lastRoll, setLastRoll] = useState<DiceRollResult | null>(null);
@@ -193,6 +201,9 @@ export function App() {
   } = useModalManager();
 
   const { notification, showNotification } = useNotification();
+  useEffect(() => {
+    try { localStorage.setItem('arcanasheet_beginner_mode', String(beginnerMode)); } catch { /* armazenamento opcional */ }
+  }, [beginnerMode]);
   const [isSecretRoll, setIsSecretRoll] = useState(false);
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(() => {
     try {
@@ -382,6 +393,7 @@ export function App() {
   }, []);
 
   const [isAiResponding, setIsAiResponding] = useState(false);
+  const [pendingAiAction, setPendingAiAction] = useState<AiMessage | null>(null);
   const triggerAiDmRef = useRef<((promptText: string) => Promise<void>) | undefined>(undefined);
   const executeAiMonsterAttackRef = useRef<((attack: MonsterAttackAction) => Promise<void>) | undefined>(undefined);
   const handleTriggerAiMonsterTurnRef = useRef<((combatant?: Combatant) => void) | undefined>(undefined);
@@ -594,11 +606,20 @@ export function App() {
   // Modificar PV de Combatente e Sincronizar Imediatamente os Tokens no Mapa e Rede P2P
   const handleHpDelta = useCallback(
     (id: string, delta: number) => {
-      applyCombatantHpDelta(id, delta);
+      applyCombatantHpDelta(id, delta, character.name || user?.displayName || 'Mestre');
 
       const combatant = encounterRef.current?.combatants.find((c) => c.id === id);
       if (combatant) {
-        const newHp = Math.max(0, Math.min(combatant.maxHp, combatant.currentHp + delta));
+        let newHp = combatant.currentHp;
+        let newTempHp = combatant.tempHp;
+        if (delta < 0) {
+          const damage = Math.abs(delta);
+          const absorbed = Math.min(newTempHp, damage);
+          newTempHp -= absorbed;
+          newHp = Math.max(0, newHp - (damage - absorbed));
+        } else {
+          newHp = Math.min(combatant.maxHp, newHp + delta);
+        }
 
         setTokens((prev) => {
           const updated = prev.map((t) => {
@@ -612,6 +633,7 @@ export function App() {
                 ...t,
                 combatantId: id,
                 currentHp: newHp,
+                tempHp: newTempHp,
                 maxHp: combatant.maxHp,
               };
             }
@@ -625,8 +647,21 @@ export function App() {
         });
       }
     },
-    [applyCombatantHpDelta, isConnected, broadcastTokenMove, character.name, setTokens]
+    [applyCombatantHpDelta, isConnected, broadcastTokenMove, character.name, user?.displayName, setTokens]
   );
+
+  const handleUndoLastHpChange = useCallback(() => {
+    const previous = encounterRef.current?.lastHpChange;
+    if (!previous) return;
+    setTokens((items) => {
+      const updated = items.map((token) => token.combatantId === previous.combatantId || token.id === previous.combatantId
+        ? { ...token, currentHp: previous.currentHp, tempHp: previous.tempHp }
+        : token);
+      if (isConnected) broadcastTokenMove(updated, character.name);
+      return updated;
+    });
+    undoLastHpChange(character.name || user?.displayName || 'Mestre');
+  }, [setTokens, undoLastHpChange, isConnected, broadcastTokenMove, character.name, user?.displayName]);
 
   // Sincroniza o combate D&D 5e do Host com todos os pares conectados quando o encontro mudar
   useEffect(() => {
@@ -717,188 +752,16 @@ export function App() {
           }
         );
 
-        // 1. Inserir novos monstros no encontro e tokens no mapa (SPAWN / REFORÇOS)
-        if (aiReply.monsterSpawns && aiReply.monsterSpawns.length > 0) {
-          aiReply.monsterSpawns.forEach((spawn) => {
-            const cleanSpawnName = spawn.monsterName.replace(/\s*\([^)]*\)/g, '').trim();
-            const spawnBase = cleanSpawnName.toLowerCase().replace(/\s*\d+$/, '').trim();
-
-            // Se o monstro com esse nome base já existe no encontro ativo e está vivo, evita duplicações desnecessárias
-            const alreadyExists =
-              spawn.count <= 1 &&
-              encounterRef.current?.combatants.some((c) => {
-                const cBase = c.name.toLowerCase().replace(/\s*\([^)]*\)/g, '').replace(/\s*\d+$/, '').trim();
-                return cBase === spawnBase && c.currentHp > 0;
-              });
-
-            if (alreadyExists) {
-              return;
-            }
-
-            const foundMon = SRD_MONSTERS.find((m) => {
-              const mClean = m.name.toLowerCase().replace(/\s*\([^)]*\)/g, '').trim();
-              const mBase = mClean.replace(/\s*\d+$/, '').trim();
-              return mBase === spawnBase || mClean.includes(spawnBase) || spawnBase.includes(mBase);
-            });
-
-            if (foundMon) {
-              addMonsterCombatant(foundMon, spawn.count);
-            } else {
-              const fallbackMon: Monster = {
-                id: `custom-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-                name: cleanSpawnName,
-                size: 'Médio',
-                type: 'Monstruosidade',
-                alignment: 'Hostil',
-                armorClass: 13,
-                hitPoints: 22,
-                hitDice: '3d8+6',
-                speed: '9m',
-                abilities: {
-                  str: 14,
-                  dex: 12,
-                  con: 14,
-                  int: 8,
-                  wis: 10,
-                  cha: 8,
-                },
-                challengeRating: '1',
-                xp: 200,
-                senses: 'Visão no Escuro 18m',
-                languages: 'Comum',
-                actions: [
-                  {
-                    name: 'Ataque Selvagem',
-                    type: 'melee',
-                    description: 'Ataque corpo-a-corpo: +4 para acertar, dano 1d8+2 cortante.',
-                    attackBonus: 4,
-                    damageFormula: '1d8+2',
-                  },
-                ],
-              };
-              addMonsterCombatant(fallbackMon, spawn.count);
-            }
-
-            sendChatMessage(
-              {
-                text: `⚠️ **Reforços Inimigos:** ${spawn.count}x **${cleanSpawnName}** entraram no combate e foram adicionados ao mapa tático!`,
-                senderName: '✨ Mestre Supremo (IA)',
-                type: 'AI_DM',
-              },
-              '✨ Mestre Supremo (IA)'
-            );
-          });
+        const hasMechanicalProposal = Boolean(
+          aiReply.monsterSpawns?.length || aiReply.mapMoves?.length || aiReply.monsterAttack
+        );
+        if (hasMechanicalProposal) {
+          setPendingAiAction(aiReply);
         }
 
-        // 2. Mover tokens de monstros ou jogadores no mapa (MOVER)
-        if (aiReply.mapMoves && aiReply.mapMoves.length > 0) {
-          aiReply.mapMoves.forEach((move) => {
-            const moveNameBase = move.tokenName.toLowerCase().replace(/\s*\d+$/, '').trim();
-            const tokenToMove = tokensRef.current.find((t) => {
-              const tBase = t.name.toLowerCase().replace(/\s*\d+$/, '').trim();
-              return (
-                t.name.toLowerCase() === move.tokenName.toLowerCase() ||
-                t.name.toLowerCase().includes(move.tokenName.toLowerCase()) ||
-                move.tokenName.toLowerCase().includes(t.name.toLowerCase()) ||
-                tBase === moveNameBase
-              );
-            });
-
-            if (tokenToMove) {
-              const squares = move.distanceSquares || 4;
-              const dist = squares * 50;
-              const act = move.actionOrTarget.toLowerCase();
-
-              const mapW = mapConfigRef.current?.width || 1200;
-              const mapH = mapConfigRef.current?.height || 800;
-
-              // Procura se a ação cita algum outro combatente (alvo de aproximação ou combate)
-              const otherTargetToken = tokensRef.current.find(
-                (other) =>
-                  other.id !== tokenToMove.id &&
-                  act.includes(other.name.toLowerCase())
-              );
-
-              let newX = tokenToMove.x;
-              let newY = tokenToMove.y;
-
-              if (otherTargetToken) {
-                // Move em direção ao token alvo, mantendo 1 casa (50px) de distância
-                const dx = otherTargetToken.x - tokenToMove.x;
-                const dy = otherTargetToken.y - tokenToMove.y;
-                const currentDist = Math.sqrt(dx * dx + dy * dy);
-
-                if (currentDist > 60) {
-                  const moveAmount = Math.min(dist, currentDist - 50);
-                  const ratio = moveAmount / currentDist;
-                  newX = Math.round(tokenToMove.x + dx * ratio);
-                  newY = Math.round(tokenToMove.y + dy * ratio);
-                }
-              } else if (act.includes('recua') || act.includes('trás') || act.includes('afasta')) {
-                // Recua para longe do centro
-                newY = tokenToMove.y < mapH / 2 ? Math.max(50, newY - dist) : Math.min(mapH - 60, newY + dist);
-              } else if (act.includes('norte') || act.includes('cima')) {
-                newY = Math.max(50, newY - dist);
-              } else if (act.includes('sul') || act.includes('baixo')) {
-                newY = Math.min(mapH - 60, newY + dist);
-              } else if (act.includes('esquerda') || act.includes('oeste')) {
-                newX = Math.max(50, newX - dist);
-              } else if (act.includes('direita') || act.includes('leste')) {
-                newX = Math.min(mapW - 60, newX + dist);
-              } else if (act.includes('avança') || act.includes('investe') || act.includes('frente') || act.includes('aproxima')) {
-                // Avança em direção ao time oposto mais próximo
-                const opponentToken = tokensRef.current.find(
-                  (e) => e.type !== tokenToMove.type && (e.currentHp ?? 1) > 0
-                );
-                if (opponentToken) {
-                  const dx = opponentToken.x - tokenToMove.x;
-                  const dy = opponentToken.y - tokenToMove.y;
-                  const currentDist = Math.sqrt(dx * dx + dy * dy);
-                  if (currentDist > 60) {
-                    const moveAmount = Math.min(dist, currentDist - 50);
-                    const ratio = moveAmount / currentDist;
-                    newX = Math.round(tokenToMove.x + dx * ratio);
-                    newY = Math.round(tokenToMove.y + dy * ratio);
-                  }
-                } else {
-                  newX = tokenToMove.x < mapW / 2 ? tokenToMove.x + Math.floor(dist * 0.7) : tokenToMove.x - Math.floor(dist * 0.7);
-                  newY = tokenToMove.y < mapH / 2 ? tokenToMove.y + Math.floor(dist * 0.7) : tokenToMove.y - Math.floor(dist * 0.7);
-                }
-              }
-
-              newX = Math.max(50, Math.min(mapW - 60, newX));
-              newY = Math.max(50, Math.min(mapH - 60, newY));
-
-              moveToken(tokenToMove.id, newX, newY);
-
-              if (isConnected) {
-                const updated = tokensRef.current.map((t) =>
-                  t.id === tokenToMove.id ? { ...t, x: newX, y: newY } : t
-                );
-                broadcastTokenMove(updated, character.name);
-              }
-
-              sendChatMessage(
-                {
-                  text: `👣 **Movimentação:** **${tokenToMove.name}** deslocou-se ${squares} casas (${move.actionOrTarget}) no mapa!`,
-                  senderName: '✨ Mestre Supremo (IA)',
-                  type: 'AI_DM',
-                },
-                '✨ Mestre Supremo (IA)'
-              );
-            }
-          });
-        }
-
-        // 3. O app resolve os ataques dos monstros com rolagens reais; o texto da IA não altera PV.
-        if (aiReply.monsterAttack) {
-          await executeAiMonsterAttackRef.current?.(aiReply.monsterAttack);
-        }
-
-        // 6. Enviar resposta narrativa do Mestre IA com as ações sugeridas (sempre por último no chat)
         sendChatMessage({
           id: aiReply.id,
-          text: aiReply.content,
+          text: `${aiReply.content}${hasMechanicalProposal ? '\n\n⚖️ Ações mecânicas aguardam revisão do Mestre.' : ''}`,
           senderName: '✨ Mestre Supremo (IA)',
           type: 'AI_DM',
           suggestedActions: aiReply.suggestedActions,
@@ -1553,6 +1416,10 @@ export function App() {
         res.isSecret = true;
       }
       addRollResult(res);
+      if (encounterRef.current?.isRunning && !isSecretRoll) {
+        const bonus = res.modifier >= 0 ? `+${res.modifier}` : `${res.modifier}`;
+        recordCombatAction(`${character.name || 'Jogador'}: ${label} — ${res.breakdown} = ${res.total} (bônus ${bonus}; ${res.advantageMode}).`, 'roll', character.name || 'Jogador');
+      }
 
       // Se estiver conectado em sala multiplayer, transmite para todos na mesa (ou oculta se for secreto)
       if (isConnected) {
@@ -1650,6 +1517,9 @@ export function App() {
       showNotification,
       updateCharacter,
       setAdvantageMode,
+      recordCombatAction,
+      isSecretRoll,
+      character.name,
     ]
   );
 
@@ -1738,6 +1608,9 @@ export function App() {
         res.isSecret = true;
       }
       addRollResult(res);
+      if (encounterRef.current?.isRunning && !isSecretRoll) {
+        recordCombatAction(`${character.name || 'Jogador'}: ${label || formula} — ${res.breakdown} = ${res.total}.`, 'roll', character.name || 'Jogador');
+      }
 
       if (isConnected) {
         if (isSecretRoll) {
@@ -1752,7 +1625,7 @@ export function App() {
         }
       }
     },
-    [isSecretRoll, addRollResult, isConnected, sendChatMessage, character.name, broadcastDiceRoll]
+    [isSecretRoll, addRollResult, isConnected, sendChatMessage, character.name, broadcastDiceRoll, recordCombatAction]
   );
 
   // Rolar novamente a última rolagem ativa (Re-roll na animação 3D)
@@ -1779,7 +1652,8 @@ export function App() {
 
         // 2. Rolagem de Ataque com d20 único (aciona animação 3D e broadcast P2P)
         const targetName = attack.target || character.name || 'o Herói';
-        const targetAc = character.armorClass || 10;
+        const targetCombatant = encounterRef.current?.combatants.find((c) => c.name.toLowerCase() === targetName.toLowerCase());
+        const targetAc = targetCombatant?.armorClass || character.armorClass || 10;
         const attackLabel = `${attack.monsterName}: ${attack.attackName}${attack.target ? ` (vs ${attack.target})` : ''}`;
         
         const attackRoll = rollD20(attackLabel, attack.attackBonus || 0, 'normal');
@@ -1792,6 +1666,7 @@ export function App() {
         const isNat20 = natural === 20 || Boolean(attackRoll.isCriticalSuccess);
         const isNat1 = natural === 1 || Boolean(attackRoll.isCriticalFailure);
         const isHit = isNat20 || (!isNat1 && attackRoll.total >= targetAc);
+        recordCombatAction(`${attack.monsterName}: ${attack.attackName} +${attack.attackBonus || 0} — ${attackRoll.breakdown} = ${attackRoll.total} contra CA ${targetAc}: ${isHit ? 'acerto' : 'erro'}.`, 'attack', attack.monsterName);
 
         // 3. Intervalo de suspense (1.6s) para os jogadores conferirem se acertou a CA antes do dano
         setTimeout(() => {
@@ -1802,6 +1677,7 @@ export function App() {
             const damageLabel = `${attack.monsterName}: Dano ${attack.attackName}`;
             damageRoll = rollFormula(attack.damageFormula || '1d6', damageLabel);
             finalDamage = isNat20 ? damageRoll.total * 2 : damageRoll.total;
+            recordCombatAction(`${attack.monsterName}: dano ${damageRoll.breakdown} = ${finalDamage}${isNat20 ? ' (crítico)' : ''} contra ${targetName}.`, 'attack', attack.monsterName);
 
             // Se o herói local for o alvo, deduz vida na ficha e no mapa
             const isLocalTarget =
@@ -1824,13 +1700,12 @@ export function App() {
             }
 
             // Também deduz o dano no combatente correspondente em encounter.combatants
-            const targetCombatant = encounterRef.current?.combatants.find(
-              (c) =>
-                c.name.toLowerCase() === (attack.target || '').toLowerCase() ||
+            const hpTarget = targetCombatant || encounterRef.current?.combatants.find(
+              (c) => c.name.toLowerCase() === (attack.target || '').toLowerCase() ||
                 (isLocalTarget && c.name.toLowerCase() === (character.name || '').toLowerCase())
             );
-            if (targetCombatant && finalDamage > 0) {
-              applyCombatantHpDelta(targetCombatant.id, -finalDamage);
+            if (hpTarget && finalDamage > 0) {
+              applyCombatantHpDelta(hpTarget.id, -finalDamage, attack.monsterName);
             }
           }
 
@@ -1872,7 +1747,7 @@ export function App() {
         }, 1600);
       });
     },
-    [character, applyDamage, applyCombatantHpDelta, nextTurn, addRollResult, isConnected, broadcastDiceRoll, setTokens, sendChatMessage, showNotification]
+    [character, applyDamage, applyCombatantHpDelta, nextTurn, addRollResult, isConnected, broadcastDiceRoll, setTokens, sendChatMessage, showNotification, recordCombatAction]
   );
   executeAiMonsterAttackRef.current = executeAiMonsterAttack;
 
@@ -2249,6 +2124,54 @@ export function App() {
     showNotification('Você saiu da conta.');
   }, [logout, showNotification]);
 
+  const handleApproveAiActions = useCallback(async (proposal: AiMessage) => {
+    setPendingAiAction(null);
+    (proposal.monsterSpawns || []).forEach((spawn) => {
+      const wanted = spawn.monsterName.toLowerCase().replace(/\s*\([^)]*\)/g, '').trim();
+      const monster = SRD_MONSTERS.find((item) => item.name.toLowerCase() === wanted || item.name.toLowerCase().includes(wanted));
+      if (monster) {
+        addMonsterCombatant(monster, Math.max(1, Math.min(20, spawn.count)));
+        return;
+      }
+      const customMonster: Monster = {
+        id: `custom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        name: spawn.monsterName, size: 'Médio', type: 'Monstruosidade', alignment: 'Hostil', armorClass: 13,
+        hitPoints: 22, hitDice: '3d8+6', speed: '9m', abilities: { str: 14, dex: 12, con: 14, int: 8, wis: 10, cha: 8 },
+        challengeRating: '1', xp: 200, senses: 'Visão no Escuro 18m', languages: 'Comum',
+        actions: [{ name: 'Ataque Selvagem', type: 'melee', description: 'Ataque corpo a corpo: +4 para acertar, dano 1d8+2 cortante.', attackBonus: 4, damageFormula: '1d8+2' }],
+      };
+      addMonsterCombatant(customMonster, Math.max(1, Math.min(20, spawn.count)));
+    });
+
+    for (const move of proposal.mapMoves || []) {
+      const token = tokensRef.current.find((item) => item.name.toLowerCase() === move.tokenName.toLowerCase());
+      if (!token) { showNotification(`Não encontrei o token “${move.tokenName}”; movimento ignorado.`); continue; }
+      const distance = Math.max(0, Math.min(12, move.distanceSquares ?? 4)) * 50;
+      const act = move.actionOrTarget.toLowerCase();
+      const target = tokensRef.current.find((item) => item.id !== token.id && act.includes(item.name.toLowerCase()));
+      let x = token.x;
+      let y = token.y;
+      if (target) {
+        const length = Math.hypot(target.x - x, target.y - y) || 1;
+        const moveBy = Math.min(distance, Math.max(0, length - 50));
+        x += Math.round((target.x - x) / length * moveBy);
+        y += Math.round((target.y - y) / length * moveBy);
+      } else if (act.includes('norte') || act.includes('cima')) y -= distance;
+      else if (act.includes('sul') || act.includes('baixo')) y += distance;
+      else if (act.includes('oeste') || act.includes('esquerda')) x -= distance;
+      else if (act.includes('leste') || act.includes('direita')) x += distance;
+      else { showNotification(`Revise a direção do movimento de ${move.tokenName}; movimento ignorado.`); continue; }
+      const width = mapConfigRef.current?.width || 1200;
+      const height = mapConfigRef.current?.height || 800;
+      x = Math.max(0, Math.min(width, x)); y = Math.max(0, Math.min(height, y));
+      moveToken(token.id, x, y);
+      const updated = tokensRef.current.map((item) => item.id === token.id ? { ...item, x, y } : item);
+      if (isConnected) broadcastTokenMove(updated, character.name);
+    }
+    if (proposal.monsterAttack) await executeAiMonsterAttackRef.current?.(proposal.monsterAttack);
+    showNotification('Ações aprovadas aplicadas. Confira o registro do combate.');
+  }, [addMonsterCombatant, moveToken, isConnected, broadcastTokenMove, character.name, showNotification]);
+
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950 text-amber-400">
@@ -2309,14 +2232,27 @@ export function App() {
         onOpenPrint={() => setIsPrintOpen(true)}
         onToggleChat={() => setIsChatOpen((prev) => !prev)}
         onOpenMusicPlayer={() => setIsMusicPlayerOpen(true)}
+        beginnerMode={beginnerMode}
+        onToggleBeginnerMode={() => setBeginnerMode((value) => !value)}
+        onOpenBeginnerGuide={() => setIsBeginnerGuideOpen(true)}
         userName={character.name || user?.displayName || user?.email || null}
         onLogout={handleLogout}
       />
+
+      {pendingAiAction && <AiActionReviewModal proposal={pendingAiAction} onApprove={handleApproveAiActions} onReject={() => { setPendingAiAction(null); showNotification('Ações mecânicas da IA rejeitadas; a narração foi mantida.'); }} />}
+
+      {beginnerMode && (
+        <aside className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm" aria-label="Ajuda do modo iniciante">
+          <p className="text-slate-200"><strong className="text-amber-300">Modo iniciante:</strong> {currentMode === 'player' ? 'crie sua ficha, acompanhe seus PV e use os dados para fazer testes.' : currentMode === 'dm' ? 'importe os heróis, adicione criaturas e avance os turnos pelo painel de combate.' : 'escolha um cenário, posicione os personagens e acompanhe a aventura no mapa.'}</p>
+          <button type="button" onClick={() => setIsBeginnerGuideOpen(true)} className="min-h-10 rounded-lg bg-amber-500 px-3 font-bold text-slate-950">Abrir tutorial</button>
+        </aside>
+      )}
 
       {/* MODO 1: FICHA DE PERSONAGEM (JOGADOR) */}
       {currentMode === 'player' && (
         <PlayerSheetPage
           character={character}
+          beginnerMode={beginnerMode}
           updateCharacter={updateCharacter}
           updateAbility={updateAbility}
           cycleSkillProficiency={cycleSkillProficiency}
@@ -2357,6 +2293,17 @@ export function App() {
         />
       )}
 
+      {isBeginnerGuideOpen && (
+        <BeginnerGuideModal
+          onClose={() => setIsBeginnerGuideOpen(false)}
+          onCreateHero={() => { setCurrentMode('player'); setIsWizardOpen(true); }}
+          onRollTest={() => { setCurrentMode('player'); handleRollD20('Teste de exemplo', 2); }}
+          onOpenTable={() => setIsMultiplayerOpen(true)}
+          onOpenCombat={() => setCurrentMode('dm')}
+          onRollInitiative={() => handleRollD20('Iniciativa', character.initiativeBonus || 0)}
+        />
+      )}
+
       {/* MODO 2: PAINEL DO MESTRE (DM SCREEN) */}
       {currentMode === 'dm' && (
         <Suspense fallback={<PageFallback />}>
@@ -2371,6 +2318,7 @@ export function App() {
             onImportPlayers={importPlayerCharacters}
             onResetEncounter={resetEncounter}
             onHpDelta={handleHpDelta}
+            onUndoLastHpChange={handleUndoLastHpChange}
             onToggleCondition={handleToggleCombatantCondition}
             onUpdateInitiative={updateCombatantInitiative}
             onRemoveCombatant={removeCombatant}

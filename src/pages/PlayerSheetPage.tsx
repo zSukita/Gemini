@@ -82,6 +82,7 @@ export interface PlayerSheetPageProps {
   onOpenWizard: () => void;
   onOpenCompendium: () => void;
   onOpenPrint?: () => void;
+  beginnerMode?: boolean;
 }
 
 export const PlayerSheetPage: React.FC<PlayerSheetPageProps> = ({
@@ -124,6 +125,7 @@ export const PlayerSheetPage: React.FC<PlayerSheetPageProps> = ({
   onOpenWizard,
   onOpenCompendium,
   onOpenPrint,
+  beginnerMode = false,
 }) => {
   const [activeTab, setActiveTab] = useState<PlayerSheetTabType>('combat');
   const [sheetMode, setSheetMode] = useState<'adventurer' | 'full'>(() => {
@@ -139,6 +141,7 @@ export const PlayerSheetPage: React.FC<PlayerSheetPageProps> = ({
       localStorage.setItem('arcanasheet_sheet_mode', mode);
     }
   };
+  const effectiveSheetMode = beginnerMode ? 'adventurer' : sheetMode;
 
   const [quickHpDelta, setQuickHpDelta] = useState<number>(1);
 
@@ -180,7 +183,7 @@ export const PlayerSheetPage: React.FC<PlayerSheetPageProps> = ({
             <span>🛡️ Modo Aventureiro (Fácil)</span>
           </button>
 
-          <button
+          {!beginnerMode && <button
             type="button"
             onClick={() => handleSetSheetMode('full')}
             className={`px-3.5 py-1.5 rounded-xl text-xs font-serif font-bold tracking-wide flex items-center gap-2 transition cursor-pointer ${
@@ -191,8 +194,10 @@ export const PlayerSheetPage: React.FC<PlayerSheetPageProps> = ({
           >
             <BookOpen size={14} className={sheetMode === 'full' ? 'text-slate-950' : 'text-indigo-400'} />
             <span>📜 Ficha Completa (D&D 5e)</span>
-          </button>
+          </button>}
         </div>
+
+        {beginnerMode && <p className="px-2 text-xs text-amber-200" role="status">Modo iniciante ativo: mostramos primeiro as ações mais comuns. Desative “Iniciante” no menu superior para abrir a ficha completa.</p>}
 
         <div className="flex items-center gap-2">
           {onOpenPrint && (
@@ -220,7 +225,7 @@ export const PlayerSheetPage: React.FC<PlayerSheetPageProps> = ({
         </div>
       </div>
 
-      {sheetMode === 'adventurer' ? (
+      {effectiveSheetMode === 'adventurer' ? (
         <div className="space-y-4 animate-in fade-in">
           {/* 1. Painel Vital & Combate Rápido */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

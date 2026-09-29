@@ -7,6 +7,7 @@ import {
   type AiOracleAction, 
   type StartingPremise,
   type AiProvider,
+  type AiDmStyle,
   ADVENTURE_TONES, 
   STARTING_PREMISES,
   AI_PROVIDERS
@@ -105,6 +106,7 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
   const [apiKey, setApiKey] = useState('');
   const [groqApiKey, setGroqApiKey] = useState('');
   const [tone, setTone] = useState<AdventureTone>('heroic');
+  const [dmStyle, setDmStyle] = useState<AiDmStyle>('beginner');
   const [customInstructions, setCustomInstructions] = useState('');
   const [includeStats, setIncludeStats] = useState(true);
   const [testStatus, setTestStatus] = useState<{ loading: boolean; success?: boolean; message?: string }>({ loading: false });
@@ -205,6 +207,7 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
       setApiKey(config.apiKey || getStoredApiKey());
       setGroqApiKey(config.groqApiKey || getStoredGroqApiKey());
       setTone(config.tone);
+      setDmStyle(config.dmStyle || 'beginner');
       setCustomInstructions(config.customInstructions);
       setIncludeStats(config.includeCharacterStats);
 
@@ -236,6 +239,7 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
       groqApiKey,
       model: provider === 'groq' ? DEFAULT_GROQ_MODEL : DEFAULT_GEMINI_MODEL,
       tone,
+      dmStyle,
       customInstructions,
       includeCharacterStats: includeStats,
     });
@@ -1283,6 +1287,7 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
                 <label className="text-xs font-bold text-amber-300 block">
                   Selecione o Motor de IA:
                 </label>
+                <p role="status" className="text-xs text-slate-300">Provedor selecionado: <strong className="text-amber-200">{AI_PROVIDERS.find((item) => item.id === provider)?.name || provider}</strong>. Chaves pessoais são usadas no serviço escolhido; confira os limites e condições atuais no painel oficial do provedor.</p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                   {AI_PROVIDERS.map((p) => {
                     const isSelected = provider === p.id;
@@ -1321,6 +1326,18 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
                   })}
                 </div>
               </div>
+
+              <fieldset className="space-y-2.5">
+                <legend className="text-xs font-bold text-amber-300">Estilo de condução do Mestre IA</legend>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {([
+                    ['narrative', 'Mais narrativo', 'Descrições e escolhas abertas.'],
+                    ['tactical', 'Mais tático', 'Posições, distâncias e ações claras.'],
+                    ['beginner', 'Simples para iniciantes', 'Explica termos e sugere próximos passos.'],
+                    ['rules_faithful', 'Fiel às regras', 'Distingue regra conhecida de interpretação do Mestre.'],
+                  ] as const).map(([id, label, description]) => <label key={id} className={`flex min-h-14 cursor-pointer items-start gap-2 rounded-xl border p-3 ${dmStyle === id ? 'border-amber-500 bg-amber-500/10' : 'border-slate-800 bg-slate-900'}`}><input type="radio" name="dm-style" checked={dmStyle === id} onChange={() => setDmStyle(id)} className="mt-0.5 accent-amber-500" /><span><strong className="block text-xs text-slate-100">{label}</strong><span className="text-[10px] text-slate-400">{description}</span></span></label>)}
+                </div>
+              </fieldset>
 
               {/* Box de Configuração do Provedor Selecionado */}
               {provider === 'groq' && (

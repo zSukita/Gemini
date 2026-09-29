@@ -130,6 +130,7 @@ export const DEFAULT_AI_CONFIG: AiDmConfig = {
   customInstructions: '',
   includeCharacterStats: true,
   campaignSummary: '',
+  dmStyle: 'beginner',
 };
 
 export function getStoredApiKey(): string {

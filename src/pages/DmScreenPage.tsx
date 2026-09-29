@@ -25,6 +25,7 @@ export interface DmScreenPageProps {
   onImportPlayers: (players: any[]) => void;
   onResetEncounter: () => void;
   onHpDelta: (id: string, delta: number) => void;
+  onUndoLastHpChange: () => void;
   onToggleCondition: (id: string, cond: ConditionKey) => void;
   onUpdateInitiative: (id: string, init: number) => void;
   onRemoveCombatant: (id: string) => void;
@@ -55,6 +56,7 @@ export const DmScreenPage: React.FC<DmScreenPageProps> = (props) => {
             onImportPlayers={props.onImportPlayers}
             onResetEncounter={props.onResetEncounter}
             onHpDelta={props.onHpDelta}
+            onUndoLastHpChange={props.onUndoLastHpChange}
             onToggleCondition={props.onToggleCondition}
             onUpdateInitiative={props.onUpdateInitiative}
             onRemoveCombatant={props.onRemoveCombatant}

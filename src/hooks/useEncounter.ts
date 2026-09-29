@@ -103,6 +103,7 @@ export function useEncounter() {
         ...prev,
         combatants: sorted,
         activeCombatantIndex: 0,
+        actionLog: [{ id: `log-${Date.now()}`, timestamp: Date.now(), round: prev.round, actor: 'Mestre', kind: 'initiative' as const, message: `Ordem de iniciativa: ${sorted.map((c) => `${c.name} (${c.initiative})`).join(', ')}.` }, ...(prev.actionLog || [])].slice(0, 50),
       };
     });
   }, []);
@@ -245,6 +246,7 @@ export function useEncounter() {
         ...prev,
         combatants: updated,
         activeCombatantIndex: 0,
+        actionLog: [{ id: `log-${Date.now()}`, timestamp: Date.now(), round: prev.round, actor: 'Mestre', kind: 'initiative' as const, message: `Iniciativas roladas: ${updated.filter((c) => c.type === 'monster').map((c) => `${c.name} (${c.initiative})`).join(', ')}.` }, ...(prev.actionLog || [])].slice(0, 50),
       };
     });
   };
@@ -277,11 +279,14 @@ export function useEncounter() {
           ...prev,
           round: prev.round + 1,
           activeCombatantIndex: 0,
+          actionLog: [{ id: `log-${Date.now()}`, timestamp: Date.now(), round: prev.round + 1, actor: 'Mestre', kind: 'turn' as const, message: `Começou a rodada ${prev.round + 1}.` }, ...(prev.actionLog || [])].slice(0, 50),
         };
       }
+      const nextActor = prev.combatants[nextIndex];
       return {
         ...prev,
         activeCombatantIndex: nextIndex,
+        actionLog: [{ id: `log-${Date.now()}`, timestamp: Date.now(), round: prev.round, actor: 'Mestre', kind: 'turn' as const, message: `Turno de ${nextActor.name}.` }, ...(prev.actionLog || [])].slice(0, 50),
       };
     });
   };
@@ -310,7 +315,7 @@ export function useEncounter() {
   };
 
   // Ajustar HP do combatente (+ cura / - dano)
-  const applyCombatantHpDelta = (id: string, delta: number) => {
+  const applyCombatantHpDelta = (id: string, delta: number, actor = 'Mestre') => {
     setEncounter((prev) => {
       const target = prev.combatants.find((c) => c.id === id);
       if (!target) return prev;
@@ -351,6 +356,8 @@ export function useEncounter() {
 
       return {
         ...prev,
+        lastHpChange: { combatantId: id, currentHp: target.currentHp, tempHp: target.tempHp, name: target.name, actor },
+        actionLog: [{ id: `log-${Date.now()}`, timestamp: Date.now(), round: prev.round, actor, kind: 'hp' as const, message: `${target.name}: ${delta < 0 ? `${Math.abs(delta)} de dano` : `${delta} PV de cura`} (PV ${target.currentHp}→${newCurrent}; temporários ${target.tempHp}→${newTemp}).` }, ...(prev.actionLog || [])].slice(0, 50),
         combatants: prev.combatants.map((c) =>
           c.id === id
             ? { ...c, currentHp: newCurrent, tempHp: newTemp }
@@ -360,10 +367,32 @@ export function useEncounter() {
     });
   };
 
+  const undoLastHpChange = (actor = 'Mestre') => {
+    setEncounter((prev) => {
+      const change = prev.lastHpChange;
+      if (!change) return prev;
+      const combatant = prev.combatants.find((item) => item.id === change.combatantId);
+      if (!combatant) return { ...prev, lastHpChange: undefined };
+      if (combatant.playerId) {
+        broadcastSyncMessage({ type: 'DM_COMBATANT_UPDATE', payload: { playerId: combatant.playerId, currentHp: change.currentHp, tempHp: change.tempHp } });
+      }
+      return {
+        ...prev,
+        lastHpChange: undefined,
+        combatants: prev.combatants.map((item) => item.id === change.combatantId ? { ...item, currentHp: change.currentHp, tempHp: change.tempHp } : item),
+        actionLog: [{ id: `log-${Date.now()}`, timestamp: Date.now(), round: prev.round, actor, kind: 'hp' as const, message: `Correção: PV de ${change.name} restaurados para ${change.currentHp} (temporários: ${change.tempHp}).` }, ...(prev.actionLog || [])].slice(0, 50),
+      };
+    });
+  };
+
   // Alternar Condição / Status
   const toggleCombatantCondition = (id: string, condition: ConditionKey) => {
-    setEncounter((prev) => ({
+    setEncounter((prev) => {
+      const target = prev.combatants.find((c) => c.id === id);
+      const isRemoving = target?.conditions.includes(condition) || false;
+      return {
       ...prev,
+      actionLog: [{ id: `log-${Date.now()}`, timestamp: Date.now(), round: prev.round, actor: 'Mestre', kind: 'condition' as const, message: `${target?.name || 'Combatente'}: condição ${isRemoving ? 'removida' : 'aplicada'} (${condition}).` }, ...(prev.actionLog || [])].slice(0, 50),
       combatants: prev.combatants.map((c) => {
         if (c.id !== id) return c;
         const exists = c.conditions.includes(condition);
@@ -372,16 +401,25 @@ export function useEncounter() {
           : [...c.conditions, condition];
         return { ...c, conditions: newConditions };
       }),
-    }));
+      };
+    });
   };
 
   // Atualizar iniciativa diretamente
   const updateCombatantInitiative = (id: string, initiative: number) => {
     setEncounter((prev) => ({
       ...prev,
+      actionLog: [{ id: `log-${Date.now()}`, timestamp: Date.now(), round: prev.round, actor: 'Mestre', kind: 'initiative' as const, message: `${prev.combatants.find((c) => c.id === id)?.name || 'Combatente'}: iniciativa ajustada para ${initiative}.` }, ...(prev.actionLog || [])].slice(0, 50),
       combatants: prev.combatants.map((c) =>
         c.id === id ? { ...c, initiative } : c
       ),
+    }));
+  };
+
+  const recordCombatAction = (message: string, kind: 'roll' | 'attack' | 'initiative' | 'condition' = 'roll', actor = 'Mestre') => {
+    setEncounter((prev) => ({
+      ...prev,
+      actionLog: [{ id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, timestamp: Date.now(), round: prev.round, actor, kind, message }, ...(prev.actionLog || [])].slice(0, 50),
     }));
   };
 
@@ -408,6 +446,8 @@ export function useEncounter() {
     applyCombatantHpDelta,
     toggleCombatantCondition,
     updateCombatantInitiative,
+    undoLastHpChange,
+    recordCombatAction,
     resetEncounter,
   };
 }

@@ -44,6 +44,12 @@ describe('geminiService', () => {
       expect(prompt).toContain('[TESTE:');
     });
 
+    it('deve aplicar o estilo escolhido para conduzir a aventura', () => {
+      const prompt = buildSystemPrompt(null, 'heroic', undefined, undefined, 'tactical');
+      expect(prompt).toContain('Condução tática');
+      expect(prompt).toContain('distância, terreno, cobertura');
+    });
+
     it('deve incorporar estatísticas e perícias do personagem selecionado', () => {
       const mockChar: Partial<Character> = {
         name: 'Thorgar Quebra-Machado',

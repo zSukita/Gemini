@@ -56,6 +56,14 @@ export interface StartingPremise {
 
 export const STARTING_PREMISES: StartingPremise[] = [
   {
+    id: 'beginner_first_adventure',
+    title: 'A Lanterna Perdida',
+    subtitle: 'Uma missão curta para aprender a observar, conversar, rolar dados e concluir um objetivo',
+    tone: 'heroic',
+    icon: '🏮',
+    initialPrompt: 'AVENTURA TUTORIAL PARA QUEM NUNCA JOGOU D&D. O objetivo é encontrar a lanterna azul que a aprendiz de ferreira deixou cair perto da ponte antes do anoitecer. Conduza em quatro cenas simples: (1) explique que o jogador diz o que quer fazer e peça uma observação da trilha, sugerindo Percepção; (2) apresente uma bifurcação com uma pista visível e deixe o jogador escolher; (3) inclua uma conversa amigável com um guarda que oferece ajuda se o herói explicar a situação; (4) permita recuperar a lanterna sem combate, usando uma solução criativa ou um teste simples se houver risco. Em cada etapa explique brevemente termos como teste, bônus e CD antes de pedir qualquer rolagem. Faça uma pergunta por turno, ofereça exatamente três opções simples, não decida pelo jogador e não crie inimigos nem aplique consequências mecânicas sem aprovação explícita do Mestre. Termine quando a lanterna voltar à aprendiz, parabenize o jogador e explique o que ele aprendeu.',
+  },
+  {
     id: 'tavern_ambush',
     title: 'A Taverna do Javali Caolho',
     subtitle: 'Uma noite chuvosa interrompida por gritos e um forasteiro ensanguentado',
@@ -155,6 +163,7 @@ export interface AiMessage {
 }
 
 export type AiProvider = 'groq' | 'gemini' | 'pollinations';
+export type AiDmStyle = 'narrative' | 'tactical' | 'beginner' | 'rules_faithful';
 
 export interface AiProviderOption {
   id: AiProvider;
@@ -215,6 +224,7 @@ export interface AiDmConfig {
   customInstructions: string;
   includeCharacterStats: boolean;
   campaignSummary?: string;
+  dmStyle?: AiDmStyle;
 }
 
 export type AiOracleAction = 

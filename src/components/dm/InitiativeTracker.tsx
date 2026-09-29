@@ -31,6 +31,7 @@ interface InitiativeTrackerProps {
   onOpenCustomMonster: () => void;
   onResetEncounter: () => void;
   onHpDelta: (id: string, delta: number) => void;
+  onUndoLastHpChange: () => void;
   onToggleCondition: (id: string, cond: ConditionKey) => void;
   onUpdateInitiative: (id: string, init: number) => void;
   onRemoveCombatant: (id: string) => void;
@@ -51,6 +52,7 @@ export const InitiativeTracker: React.FC<InitiativeTrackerProps> = ({
   onOpenCustomMonster,
   onResetEncounter,
   onHpDelta,
+  onUndoLastHpChange,
   onToggleCondition,
   onUpdateInitiative,
   onRemoveCombatant,
@@ -58,6 +60,7 @@ export const InitiativeTracker: React.FC<InitiativeTrackerProps> = ({
   onRollMonsterDamage,
 }) => {
   const activeCombatant = encounter.combatants[encounter.activeCombatantIndex];
+  const activeCharacter = activeCombatant?.playerId ? charactersList.find((ch) => ch.id === activeCombatant.playerId) : undefined;
 
   // Cálculo Oficial de Dificuldade (D&D 5e)
   const playerCombatants = encounter.combatants
@@ -253,6 +256,26 @@ export const InitiativeTracker: React.FC<InitiativeTrackerProps> = ({
           )}
         </div>
       </div>
+
+      {activeCombatant && encounter.isRunning && (
+        <aside aria-live="polite" className="rounded-xl border border-sky-500/30 bg-sky-950/20 px-4 py-3 text-sm">
+          <strong className="text-sky-200">Lembrete do turno de {activeCombatant.name}:</strong>
+          <span className="ml-2 text-slate-300">{activeCombatant.conditions.length ? `Condições: ${activeCombatant.conditions.join(', ')}.` : 'Sem condições registradas.'}</span>
+          {activeCharacter?.resources?.length ? <ul className="mt-2 flex flex-wrap gap-2">{activeCharacter.resources.map((resource) => <li key={resource.id} className="rounded-lg bg-slate-900 px-2 py-1 text-xs text-amber-200">{resource.name}: {resource.current}/{resource.max}</li>)}</ul> : activeCombatant.type === 'player' ? <p className="mt-1 text-xs text-slate-400">Nenhum recurso de classe cadastrado nesta ficha.</p> : null}
+        </aside>
+      )}
+
+      {(encounter.actionLog?.length || 0) > 0 && (
+        <section aria-labelledby="combat-log-title" className="rpg-card rounded-2xl border-slate-700/80 p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h3 id="combat-log-title" className="font-serif font-bold text-amber-200">Registro recente do combate</h3>
+            {encounter.lastHpChange && <button type="button" onClick={onUndoLastHpChange} className="min-h-10 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 text-xs font-bold text-amber-200">Desfazer última alteração de PV</button>}
+          </div>
+          <ol className="max-h-40 space-y-2 overflow-y-auto text-xs text-slate-300" aria-live="polite">
+            {encounter.actionLog?.slice(0, 8).map((entry) => <li key={entry.id} className="flex gap-2 border-l-2 border-slate-700 pl-2"><time className="shrink-0 text-slate-500">R{entry.round}</time><span>{entry.message}</span><span className="ml-auto shrink-0 text-slate-500">{entry.actor}</span></li>)}
+          </ol>
+        </section>
+      )}
 
       {/* 2. Lista de Combatentes */}
       <div className="flex flex-col gap-3">

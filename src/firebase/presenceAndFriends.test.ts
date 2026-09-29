@@ -11,12 +11,10 @@ const localStorageMock = {
   removeItem: (k: string) => storageMap.delete(k),
   clear: () => storageMap.clear(),
 };
-// @ts-expect-error - node environment polyfill
-globalThis.localStorage = localStorageMock;
+(globalThis as unknown as { localStorage: unknown }).localStorage = localStorageMock;
 
 const windowListeners: Record<string, Function[]> = {};
-// @ts-expect-error - node environment polyfill
-globalThis.window = {
+(globalThis as unknown as { window: unknown }).window = {
   addEventListener: (type: string, fn: Function) => {
     windowListeners[type] = windowListeners[type] || [];
     windowListeners[type].push(fn);
@@ -29,8 +27,7 @@ globalThis.window = {
     return true;
   },
 };
-// @ts-expect-error - node environment polyfill
-globalThis.Event = class Event {
+(globalThis as unknown as { Event: unknown }).Event = class Event {
   type: string;
   constructor(type: string) {
     this.type = type;
@@ -145,6 +142,26 @@ describe('presenceAndFriends service', () => {
     // Previne duplicados
     const duplicate = await addFriend('my-user-id', friend);
     expect(duplicate).toBe(false);
+
+    // Remove amigo
+    const removed = await removeFriend('my-user-id', 'stable-friend-uid');
+    expect(removed).toBe(true);
+    const afterRemoval = await getFriendsList('my-user-id');
+    expect(afterRemoval.length).toBe(0);
+  });
+
+  // 3.1 Envio e resposta a convites de jogo
+  it('creates and responds to game invites', async () => {
+    const inviteId = await sendGameInvite({
+      fromUserId: 'host-1',
+      fromUserName: 'Gandalf',
+      toUserId: 'player-2',
+      toUserName: 'Frodo',
+      roomCode: 'MESA-1234',
+    });
+
+    expect(inviteId).toBeTruthy();
+    await respondToGameInvite(inviteId, true);
   });
 
   // 4. Falha ao tentar salvar amigo com ID temporário / inválido

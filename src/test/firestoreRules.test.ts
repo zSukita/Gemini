@@ -643,11 +643,20 @@ describe('Firestore Security Rules - Campanhas e Índices', () => {
       const bobPresence = doc(bob, 'online_users', 'bob');
       const eveTriesAlice = doc(eve, 'online_users', 'alice');
 
-      // Alice registra sua própria presença
+      // Alice e Bob registram sua própria presença
       await assertSucceeds(
         setDoc(alicePresence, {
           userId: 'alice',
           name: 'Alice Aventureira',
+          lastSeen: Date.now(),
+          status: 'online',
+        })
+      );
+
+      await assertSucceeds(
+        setDoc(bobPresence, {
+          userId: 'bob',
+          name: 'Bob Ladino',
           lastSeen: Date.now(),
           status: 'online',
         })

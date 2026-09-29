@@ -1647,11 +1647,23 @@ export function App() {
   const executeAiMonsterAttack = useCallback(
     (attack: MonsterAttackAction): Promise<void> => {
       return new Promise<void>((resolve) => {
+        const currentEncounter = encounterRef.current;
+        const requestedTargetName = attack.target || character.name || 'o Herói';
+        const requestedTarget = currentEncounter?.combatants.find(
+          (c) => c.name.toLowerCase() === requestedTargetName.toLowerCase()
+        );
+        // Nunca aplique dano a personagem já inconsciente/morta. A seleção do alvo
+        // normalmente filtra isso antes, mas esta validação protege ataques propostos pela IA.
+        if (requestedTarget?.type === 'player' && requestedTarget.currentHp <= 0) {
+          showNotification(`${requestedTarget.name} está inconsciente e não pode ser alvo automático. O turno do monstro foi cancelado.`);
+          resolve();
+          return;
+        }
         // 1. Notificação de início do ataque
         showNotification(`🐉 ${attack.monsterName} ataca com ${attack.attackName}!`);
 
         // 2. Rolagem de Ataque com d20 único (aciona animação 3D e broadcast P2P)
-        const targetName = attack.target || character.name || 'o Herói';
+        const targetName = requestedTargetName;
         const targetCombatant = encounterRef.current?.combatants.find((c) => c.name.toLowerCase() === targetName.toLowerCase());
         const targetAc = targetCombatant?.armorClass || character.armorClass || 10;
         const attackLabel = `${attack.monsterName}: ${attack.attackName}${attack.target ? ` (vs ${attack.target})` : ''}`;
@@ -1778,11 +1790,31 @@ export function App() {
           description: 'Um golpe brutal com garras, presas ou armas rústicas.',
         };
 
+      const currentEncounter = encounterRef.current;
+      const consciousTargets = (currentEncounter?.combatants || encounter.combatants)
+        .filter((c) => c.type === 'player' && c.currentHp > 0);
+      const target = consciousTargets[0];
+      if (!target) {
+        setEncounter((prev) => ({
+          ...prev,
+          isRunning: false,
+          actionLog: [{ id: `log-${Date.now()}`, timestamp: Date.now(), round: prev.round, actor: 'Mestre', kind: 'turn' as const, message: 'Combate pausado: não há personagens jogadores conscientes para continuar os turnos automáticos.' }, ...(prev.actionLog || [])].slice(0, 50),
+        }));
+        sendChatMessage({
+          text: '⏸️ **Combate pausado.** Não há heróis conscientes para os inimigos atacarem automaticamente. O personagem a 0 PV permanece inconsciente; o Mestre pode retomar a cena, aplicar cura ou decidir o próximo passo.',
+          senderName: '✨ Mestre Supremo (IA)',
+          type: 'AI_DM',
+        }, '✨ Mestre Supremo (IA)');
+        showNotification('Combate pausado: nenhum herói consciente.');
+        return;
+      }
+
       const attackAction: MonsterAttackAction = {
         monsterName: mon.name,
         attackName: chosenAction.name,
         attackBonus: chosenAction.attackBonus ?? 3,
         damageFormula: chosenAction.damageFormula ?? '1d6+1',
+        target: target.name,
       };
 
       // 3. Registra a narração da IA no chat compartilhado
@@ -1799,7 +1831,7 @@ export function App() {
       // 4. Dispara a sequência de dados 3D na tela de todos
       executeAiMonsterAttack(attackAction);
     },
-    [encounter.combatants, encounter.activeCombatantIndex, executeAiMonsterAttack, sendChatMessage, showNotification]
+    [encounter.combatants, encounter.activeCombatantIndex, executeAiMonsterAttack, sendChatMessage, showNotification, setEncounter]
   );
   handleTriggerAiMonsterTurnRef.current = handleTriggerAiMonsterTurn;
 

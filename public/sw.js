@@ -1,5 +1,6 @@
 // Service Worker para ArcanaSheet PWA
-const CACHE_NAME = 'arcanasheet-v1';
+// Trocar a versão invalida o shell antigo sem manter HTML referenciando chunks removidos.
+const CACHE_NAME = 'arcanasheet-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -48,7 +49,25 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Estratégia Stale-While-Revalidate para assets estáticos
+  // O HTML precisa vir da rede para sempre apontar para os arquivos do deploy atual.
+  // A estratégia antiga podia devolver um index.html antigo e tentar carregar chunks
+  // com hash que já não existem, resultando em uma tela vazia/preta.
+  if (event.request.mode === 'navigate' || url.pathname === '/' || url.pathname.endsWith('.html')) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response.ok && response.type === 'basic') {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          }
+          return response;
+        })
+        .catch(async () => (await caches.match(event.request)) || (await caches.match('/index.html')))
+    );
+    return;
+  }
+
+  // Arquivos com hash podem usar cache-first; o HTML sempre solicita a versão atual.
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       const fetchPromise = fetch(event.request)

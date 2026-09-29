@@ -12,8 +12,9 @@ const TabletopSessionView = lazy(() => import('../components/vtt/TabletopSession
 
 function LazyFallback() {
   return (
-    <div className="flex items-center justify-center p-8" role="status" aria-label="Carregando">
-      <Scroll className="w-6 h-6 animate-bounce text-amber-400 drop-shadow-[0_0_8px_rgba(212,175,55,0.4)]" />
+    <div className="flex min-h-[55vh] flex-col items-center justify-center gap-3 rounded-2xl border border-amber-500/20 bg-slate-950 p-8 text-center" role="status" aria-label="Carregando mesa virtual">
+      <Scroll className="w-8 h-8 animate-bounce text-amber-400 drop-shadow-[0_0_8px_rgba(212,175,55,0.4)]" />
+      <p className="text-sm text-slate-300">Carregando a mesa virtual…</p>
     </div>
   );
 }

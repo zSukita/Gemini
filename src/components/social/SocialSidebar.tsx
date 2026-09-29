@@ -162,8 +162,7 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
 
     const onlineData = effectiveOnlineUsers.find(
       (u) =>
-        u.userId === f.userId ||
-        (f.email && u.email && u.email.trim().toLowerCase() === f.email.trim().toLowerCase())
+        u.userId === f.userId
     ) || (peerData ? {
       userId: peerData.userId || peerData.peerId,
       name: peerData.name,
@@ -772,7 +771,7 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
                       type="text"
                       value={addInput}
                       onChange={(e) => setAddInput(e.target.value)}
-                      placeholder="Email ou nome de usuário..."
+                      placeholder="UID ou nome exato de jogador online..."
                       className="rpg-input flex-1 text-xs py-1"
                     />
                     <button

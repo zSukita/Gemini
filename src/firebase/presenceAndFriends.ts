@@ -3,7 +3,6 @@ import {
   doc,
   setDoc,
   getDoc,
-  getDocs,
   query,
   where,
   or,
@@ -16,6 +15,7 @@ import { p2pManager } from '../utils/peerService';
 import { broadcastSyncMessage, subscribeToSync } from '../utils/syncChannel';
 
 let presenceUsingLocalFallback = !db;
+const legacySocialRecordsCleaned = new Set<string>();
 
 export function isPresenceUsingLocalFallback(): boolean {
   return presenceUsingLocalFallback;
@@ -36,7 +36,6 @@ export interface DirectMessage {
 export interface OnlineUserPresence {
   userId: string;
   name: string;
-  email?: string;
   avatarUrl?: string;
   characterName?: string;
   characterClass?: string;
@@ -205,24 +204,38 @@ export async function updateUserPresence(presence: OnlineUserPresence): Promise<
   }
 
   const data: OnlineUserPresence = {
-    ...presence,
+    userId: presence.userId,
+    name: presence.name,
+    avatarUrl: presence.avatarUrl,
+    characterName: presence.characterName,
+    characterClass: presence.characterClass,
+    characterLevel: presence.characterLevel,
     lastSeen: Date.now(),
+    status: presence.status,
+    currentRoomCode: presence.currentRoomCode,
   };
 
   if (db) {
     try {
-      const userRef = doc(db, 'online_users', presence.userId);
+      // Remove uma vez os registros legados que continham e-mail.
+      if (!legacySocialRecordsCleaned.has(presence.userId)) {
+        await Promise.all([
+          deleteDoc(doc(db, 'online_users', presence.userId)),
+          deleteDoc(doc(db, 'user_profiles', presence.userId)),
+        ]);
+        legacySocialRecordsCleaned.add(presence.userId);
+      }
+      const userRef = doc(db, 'public_presence', presence.userId);
       const sanitized = sanitizeFirestoreDoc(data as unknown as Record<string, unknown>);
       await setDoc(userRef, sanitized, { merge: true });
 
-      // Atualiza o perfil público de busca segura para amigos (online e offline)
-      const profileRef = doc(db, 'user_profiles', presence.userId);
+      // Perfil público acessível por UID, sem endereço de e-mail.
+      const profileRef = doc(db, 'public_profiles', presence.userId);
       await setDoc(
         profileRef,
         {
           userId: presence.userId,
           displayName: presence.characterName || presence.name || 'Aventureiro',
-          email: (presence.email || '').toLowerCase().trim(),
           avatarUrl: presence.avatarUrl || '',
           updatedAt: Date.now(),
         },
@@ -246,8 +259,14 @@ export async function updateUserPresence(presence: OnlineUserPresence): Promise<
 export async function setUserOffline(userId: string): Promise<void> {
   if (db && userId && userId !== 'local_user' && !userId.startsWith('local_')) {
     try {
-      const userRef = doc(db, 'online_users', userId);
-      await deleteDoc(userRef);
+      await deleteDoc(doc(db, 'public_presence', userId));
+      if (!legacySocialRecordsCleaned.has(userId)) {
+        await Promise.all([
+          deleteDoc(doc(db, 'online_users', userId)),
+          deleteDoc(doc(db, 'user_profiles', userId)),
+        ]);
+        legacySocialRecordsCleaned.add(userId);
+      }
     } catch (e: unknown) {
       if (!isPermissionError(e)) {
         console.warn('Erro ao remover presença no Firestore:', e);
@@ -289,7 +308,7 @@ export function subscribeToOnlineUsers(
 
   if (db) {
     try {
-      const colRef = collection(db, 'online_users');
+      const colRef = collection(db, 'public_presence');
       firestoreUnsub = onSnapshot(
         colRef,
         (snapshot) => {
@@ -355,30 +374,28 @@ export function subscribeToOnlineUsers(
 }
 
 /**
- * Busca conta de usuário autenticada por email ou userId (online ou offline)
+ * Busca por UID ou nome exato de usuário online. E-mails não são publicados nem pesquisáveis no cliente.
  */
-export async function findUserByEmailOrId(
+export async function findUserByUidOrOnlineName(
   identifier: string
-): Promise<{ userId: string; name: string; email?: string; avatarUrl?: string } | null> {
+): Promise<{ userId: string; name: string; avatarUrl?: string } | null> {
   const clean = (identifier || '').trim();
   if (!clean) return null;
 
-  const isEmail = clean.includes('@');
-  const cleanLower = clean.toLowerCase();
+  if (clean.includes('@')) return null;
+  const normalized = clean.toLocaleLowerCase('pt-BR');
 
   // 1. Procura primeiro nos usuários online
   const onlineList = getLocalPresenceUsers();
   const foundOnline = onlineList.find((u) => {
-    if (u.userId === clean) return true;
-    if (isEmail && u.email && u.email.toLowerCase() === cleanLower) return true;
-    return false;
+    return u.userId === clean || u.name?.trim().toLocaleLowerCase('pt-BR') === normalized ||
+      u.characterName?.trim().toLocaleLowerCase('pt-BR') === normalized;
   });
 
   if (foundOnline && foundOnline.userId && !foundOnline.userId.startsWith('friend_')) {
     return {
       userId: foundOnline.userId,
       name: foundOnline.characterName || foundOnline.name || 'Aventureiro',
-      email: foundOnline.email,
       avatarUrl: foundOnline.avatarUrl,
     };
   }
@@ -386,31 +403,15 @@ export async function findUserByEmailOrId(
   // 2. Se houver conexão com Firestore, busca nos perfis de usuários cadastrados
   if (db) {
     try {
-      if (isEmail) {
-        const colRef = collection(db, 'user_profiles');
-        const q = query(colRef, where('email', '==', cleanLower));
-        const snap = await getDocs(q);
-        if (!snap.empty) {
-          const docData = snap.docs[0].data();
-          return {
-            userId: docData.userId || snap.docs[0].id,
-            name: docData.displayName || docData.name || clean.split('@')[0],
-            email: docData.email,
-            avatarUrl: docData.avatarUrl,
-          };
-        }
-      } else {
-        const docRef = doc(db, 'user_profiles', clean);
-        const snap = await getDoc(docRef);
-        if (snap.exists()) {
-          const docData = snap.data();
-          return {
-            userId: docData.userId || clean,
-            name: docData.displayName || docData.name || 'Aventureiro',
-            email: docData.email,
-            avatarUrl: docData.avatarUrl,
-          };
-        }
+      const docRef = doc(db, 'public_profiles', clean);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const docData = snap.data();
+        return {
+          userId: docData.userId || clean,
+          name: docData.displayName || docData.name || 'Aventureiro',
+          avatarUrl: docData.avatarUrl,
+        };
       }
     } catch (e) {
       console.warn('Erro ao buscar perfil de usuário no Firestore:', e);
@@ -469,7 +470,7 @@ export async function addFriend(
   if (db) {
     try {
       const ref = doc(db, 'user_friends', userId);
-      await setDoc(ref, { friends: updated }, { merge: true });
+        await setDoc(ref, sanitizeFirestoreDoc({ friends: updated } as unknown as Record<string, unknown>), { merge: true });
     } catch (e: unknown) {
       console.error('Erro ao salvar amigo no Firestore:', e);
       throw new Error(`Falha ao salvar amigo no Firestore: ${(e as Error).message || e}`);
@@ -490,7 +491,7 @@ export async function removeFriend(userId: string, friendUserId: string): Promis
   if (db) {
     try {
       const ref = doc(db, 'user_friends', userId);
-      await setDoc(ref, { friends: updated }, { merge: true });
+        await setDoc(ref, sanitizeFirestoreDoc({ friends: updated } as unknown as Record<string, unknown>), { merge: true });
     } catch (e: unknown) {
       console.error('Erro ao remover amigo no Firestore:', e);
       throw new Error(`Falha ao atualizar lista de amigos no Firestore: ${(e as Error).message || e}`);

@@ -220,24 +220,41 @@ service cloud.firestore {
       }
     }
 
-    // 4. Usuários Online (Presença em Tempo Real)
+    // Coleções antigas continham e-mail. Negamos leitura/escrita e permitimos apenas a remoção pelo dono.
     match /online_users/{userId} {
+      allow read, create, update: if false;
+      allow delete: if isOwner(userId);
+    }
+
+    match /user_profiles/{userId} {
+      allow read, create, update: if false;
+      allow delete: if isOwner(userId);
+    }
+
+    // Presença pública sem endereço de e-mail.
+    match /public_presence/{userId} {
       allow read: if isAuthenticated();
       allow create, update: if isOwner(userId) &&
         request.resource.data.userId == request.auth.uid &&
         request.resource.data.name is string &&
         request.resource.data.status in ['online', 'in_game'] &&
-        request.resource.data.lastSeen is number;
+        request.resource.data.lastSeen is number &&
+        request.resource.data.keys().hasOnly([
+          'userId', 'name', 'avatarUrl', 'characterName', 'characterClass',
+          'characterLevel', 'lastSeen', 'status', 'currentRoomCode'
+        ]);
       allow delete: if isOwner(userId);
     }
 
-    // 4.1 Perfis Públicos de Usuários (Busca segura de amigos por UID ou e-mail)
-    match /user_profiles/{userId} {
-      allow read: if isAuthenticated();
+    // Perfil público consultável por UID. Não pode ser enumerado nem conter e-mail.
+    match /public_profiles/{userId} {
+      allow get: if isAuthenticated();
+      allow list: if false;
       allow create, update: if isOwner(userId) &&
         request.resource.data.userId == request.auth.uid &&
         request.resource.data.displayName is string &&
-        request.resource.data.email is string;
+        request.resource.data.updatedAt is number &&
+        request.resource.data.keys().hasOnly(['userId', 'displayName', 'avatarUrl', 'updatedAt']);
       allow delete: if isOwner(userId);
     }
 

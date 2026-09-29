@@ -47,7 +47,7 @@ import {
   sendDirectMessage,
   subscribeToDirectMessages,
   markDirectMessagesAsRead,
-  findUserByEmailOrId,
+  findUserByUidOrOnlineName,
   type OnlineUserPresence,
   type FriendUser,
   type DirectMessage,
@@ -293,28 +293,27 @@ describe('presenceAndFriends service', () => {
     unsub();
   });
 
-  // 8. Busca de usuário por email ou ID real
-  it('finds users by stable account ID or exact email', async () => {
+  // 8. Busca de usuário por UID ou nome online; e-mail não é pesquisável
+  it('finds users by stable account ID or exact online name, never by email', async () => {
     const onlineUser: OnlineUserPresence = {
       userId: 'stable-user-456',
       name: 'Gimli',
-      email: 'gimli@moria.com',
       lastSeen: Date.now(),
       status: 'online',
     };
     await updateUserPresence(onlineUser);
 
-    const foundById = await findUserByEmailOrId('stable-user-456');
+    const foundById = await findUserByUidOrOnlineName('stable-user-456');
     expect(foundById).toBeTruthy();
     expect(foundById?.userId).toBe('stable-user-456');
     expect(foundById?.name).toBe('Gimli');
 
-    const foundByEmail = await findUserByEmailOrId('gimli@moria.com');
-    expect(foundByEmail).toBeTruthy();
-    expect(foundByEmail?.userId).toBe('stable-user-456');
+    const foundByName = await findUserByUidOrOnlineName('Gimli');
+    expect(foundByName?.userId).toBe('stable-user-456');
+    expect(await findUserByUidOrOnlineName('gimli@moria.com')).toBeNull();
 
     // Não deve encontrar usuário inexistente
-    const notFound = await findUserByEmailOrId('naoexiste@dominio.com');
+    const notFound = await findUserByUidOrOnlineName('naoexiste@dominio.com');
     expect(notFound).toBeNull();
   });
 

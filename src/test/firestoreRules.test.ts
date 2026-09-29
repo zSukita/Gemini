@@ -639,9 +639,9 @@ describe('Firestore Security Rules - Campanhas e Índices', () => {
       const bob = testEnv.authenticatedContext('bob').firestore();
       const eve = testEnv.authenticatedContext('eve').firestore();
 
-      const alicePresence = doc(alice, 'online_users', 'alice');
-      const bobPresence = doc(bob, 'online_users', 'bob');
-      const eveTriesAlice = doc(eve, 'online_users', 'alice');
+      const alicePresence = doc(alice, 'public_presence', 'alice');
+      const bobPresence = doc(bob, 'public_presence', 'bob');
+      const eveTriesAlice = doc(eve, 'public_presence', 'alice');
 
       // Alice e Bob registram sua própria presença
       await assertSucceeds(
@@ -662,6 +662,11 @@ describe('Firestore Security Rules - Campanhas e Índices', () => {
         })
       );
 
+      await assertFails(setDoc(doc(alice, 'public_presence', 'alice'), {
+        userId: 'alice', name: 'Alice', email: 'alice@example.com',
+        lastSeen: Date.now(), status: 'online',
+      }));
+
       // Eve NÃO pode modificar a presença da Alice
       await assertFails(
         updateDoc(eveTriesAlice, {
@@ -675,6 +680,41 @@ describe('Firestore Security Rules - Campanhas e Índices', () => {
 
       // Alice PODE apagar seu próprio registro de presença ao sair
       await assertSucceeds(deleteDoc(alicePresence));
+    });
+
+    it('bloqueia leitura dos documentos legados que podem conter e-mails', async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const adminDb = context.firestore();
+        await setDoc(doc(adminDb, 'online_users', 'alice'), {
+          userId: 'alice', name: 'Alice', email: 'alice@example.com',
+          lastSeen: Date.now(), status: 'online',
+        });
+        await setDoc(doc(adminDb, 'user_profiles', 'alice'), {
+          userId: 'alice', displayName: 'Alice', email: 'alice@example.com',
+        });
+      });
+
+      const alice = testEnv.authenticatedContext('alice').firestore();
+      const eve = testEnv.authenticatedContext('eve').firestore();
+      await assertFails(getDoc(doc(eve, 'online_users', 'alice')));
+      await assertFails(getDoc(doc(eve, 'user_profiles', 'alice')));
+      // O proprietário consegue apagar registros legados no próximo heartbeat/logout.
+      await assertSucceeds(deleteDoc(doc(alice, 'online_users', 'alice')));
+      await assertSucceeds(deleteDoc(doc(alice, 'user_profiles', 'alice')));
+    });
+
+    it('publica perfil sem e-mail, acessível por UID e não enumerável', async () => {
+      const alice = testEnv.authenticatedContext('alice').firestore();
+      const bob = testEnv.authenticatedContext('bob').firestore();
+      const profile = doc(alice, 'public_profiles', 'alice');
+      await assertSucceeds(setDoc(profile, {
+        userId: 'alice', displayName: 'Alice', avatarUrl: '', updatedAt: Date.now(),
+      }));
+      await assertSucceeds(getDoc(doc(bob, 'public_profiles', 'alice')));
+      await assertFails(setDoc(doc(alice, 'public_profiles', 'alice'), {
+        userId: 'alice', displayName: 'Alice', email: 'alice@example.com', updatedAt: Date.now(),
+      }));
+      await assertFails(getDocs(collection(bob, 'public_profiles')));
     });
 
     it('4. usuários só podem modificar sua própria lista de amigos', async () => {

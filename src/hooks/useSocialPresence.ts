@@ -14,7 +14,7 @@ import {
   sendGameInvite,
   subscribeToIncomingInvites,
   respondToGameInvite,
-  findUserByEmailOrId,
+  findUserByUidOrOnlineName,
 } from '../firebase/presenceAndFriends';
 
 interface UseSocialPresenceProps {
@@ -49,7 +49,6 @@ export function useSocialPresence({
   const latestPresenceRef = useRef({
     userId,
     name: userName,
-    email: user?.email || undefined,
     avatarUrl,
     characterName: character?.name,
     characterClass: character?.characterClass,
@@ -58,7 +57,6 @@ export function useSocialPresence({
   latestPresenceRef.current = {
     userId,
     name: userName,
-    email: user?.email || undefined,
     avatarUrl,
     characterName: character?.name,
     characterClass: character?.characterClass,
@@ -74,7 +72,6 @@ export function useSocialPresence({
       updateUserPresence({
         userId: cur.userId,
         name: cur.name,
-        email: cur.email,
         avatarUrl: cur.avatarUrl,
         characterName: cur.characterName,
         characterClass: cur.characterClass,
@@ -150,16 +147,22 @@ export function useSocialPresence({
     return () => unsubscribe();
   }, [userId, userName]);
 
-  // Ação: Adicionar amigo por email ou userId real
+  // Ação: Adicionar amigo por UID ou pelo nome exato de alguém online
   const handleAddFriend = useCallback(
     async (identifier: string): Promise<{ success: boolean; message: string }> => {
       const clean = identifier.trim();
-      if (!clean) return { success: false, message: 'Digite um identificador ou e-mail válido.' };
+      if (!clean) return { success: false, message: 'Digite um UID ou o nome exato de alguém online.' };
 
       // Busca conta real e autenticada (online ou offline)
-      const matched = await findUserByEmailOrId(clean);
+      const matched = await findUserByUidOrOnlineName(clean);
 
       if (!matched || matched.userId === userId) {
+        if (clean.includes('@')) {
+          return {
+            success: false,
+            message: 'Por privacidade, a busca por e-mail foi desativada. Use o UID do usuário ou adicione alguém pela lista de jogadores online.',
+          };
+        }
         if (matched?.userId === userId) {
           return { success: false, message: 'Você não pode adicionar a si mesmo como amigo.' };
         }
@@ -173,7 +176,6 @@ export function useSocialPresence({
       const targetFriend: Omit<FriendUser, 'addedAt'> = {
         userId: matched.userId,
         name: matched.name,
-        email: matched.email,
         avatarUrl: matched.avatarUrl,
       };
 

@@ -29,7 +29,8 @@ import {
   DEFAULT_GEMINI_MODEL,
   DEFAULT_GROQ_MODEL
 } from '../../services/geminiService';
-import { rollD20 } from '../../utils/diceRoller';
+import { rollD20, rollFormula } from '../../utils/diceRoller';
+import { getDnd5eRollModifier } from '../../utils/calculations';
 import { 
   Sparkles, 
   Send, 
@@ -461,26 +462,20 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
   const handleRollRequested = useCallback(
     (rollReq: { skillOrAbility: string; dc?: number; reason: string }) => {
       // Tentar encontrar modificador do personagem se aplicável
-      let modifier = 0;
       const label = rollReq.skillOrAbility;
+      const damageFormula = label.match(/(\d+d\d+(?:\s*[+-]\s*\d+)?)/i)?.[1];
+      const isDamageRoll = /\b(dano|damage)\b/i.test(label) && Boolean(damageFormula);
+      const modifier = activeCharacter ? getDnd5eRollModifier(activeCharacter, label) : 0;
 
-      if (activeCharacter) {
-        const getMod = (score: number) => Math.floor((score - 10) / 2);
-        const lower = rollReq.skillOrAbility.toLowerCase();
-        if (lower.includes('forç') || lower.includes('atletismo')) modifier = getMod(activeCharacter.abilities.str.score);
-        else if (lower.includes('destr') || lower.includes('acrobacia') || lower.includes('furtiv')) modifier = getMod(activeCharacter.abilities.dex.score);
-        else if (lower.includes('const')) modifier = getMod(activeCharacter.abilities.con.score);
-        else if (lower.includes('intel') || lower.includes('arcan') || lower.includes('histór') || lower.includes('investig')) modifier = getMod(activeCharacter.abilities.int.score);
-        else if (lower.includes('sabi') || lower.includes('percep') || lower.includes('intuiç') || lower.includes('sobreviv')) modifier = getMod(activeCharacter.abilities.wis.score);
-        else if (lower.includes('caris') || lower.includes('atuaç') || lower.includes('enganaç') || lower.includes('intimid') || lower.includes('persuas')) modifier = getMod(activeCharacter.abilities.cha.score);
-      }
-
-      // Rolar d20 com label e modifier
-      const roll = rollD20(label, modifier, 'normal');
+      const roll = isDamageRoll
+        ? rollFormula(damageFormula!, label)
+        : rollD20(label, modifier, 'normal');
       const total = roll.total;
       const dcInfo = rollReq.dc ? ` contra CD ${rollReq.dc}` : '';
       const successInfo = rollReq.dc ? (total >= rollReq.dc ? ' (SUCESSO!)' : ' (FALHA)') : '';
-      const resultNarrative = `[ROLAGEM DE DADO: ${label}]: Tirei ${roll.selectedRoll ?? (roll.total - modifier)}${modifier !== 0 ? (modifier >= 0 ? `+${modifier}` : modifier) : ''} = TOTAL ${total}${dcInfo}${successInfo}. ${rollReq.reason}`;
+      const resultNarrative = isDamageRoll
+        ? `[ROLAGEM DE DANO: ${label}]: ${roll.breakdown} = TOTAL ${total}. ${rollReq.reason}`
+        : `[ROLAGEM DE DADO: ${label}]: Tirei ${roll.selectedRoll ?? (roll.total - modifier)}${modifier !== 0 ? (modifier >= 0 ? `+${modifier}` : modifier) : ''} = TOTAL ${total}${dcInfo}${successInfo}. ${rollReq.reason}`;
 
       handleSendAction(resultNarrative);
     },

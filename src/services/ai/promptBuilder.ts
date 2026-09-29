@@ -103,20 +103,13 @@ REGRAS DE FORMATAÇÃO ESPECIAL (MANDATÓRIO):
   Exemplo: [ATAQUE_MONSTRO: Orc Guerreiro | Machadada Vorpal | +5 | 1d12+3 | Thorin]
   Exemplo: [ATAQUE_MONSTRO: Goblin Sentinela | Flecha Envenenada | +4 | 1d6+2 | Lyra]
   (O sistema calculará no chat a rolagem do d20 vs CA do herói, rolará o dano exato e descontará o PV!)
-- Se um monstro for derrotado, abatido, decapitado, morto ou sucumbir (seja por um golpe decisivo, golpe de misericórdia ou ataque letal), emita SEMPRE a tag de derrota:
-  [DERROTAR_MONSTRO: Nome do Monstro]
-  Exemplo: [DERROTAR_MONSTRO: Fera de Carga Corrompida]
-  Exemplo: [DERROTAR_MONSTRO: Goblin Sentinela]
-  (Isso sincroniza imediatamente o grid de combate e zera o PV do token no mapa tático!)
-- Se um monstro sofrer dano mecânico decorrente de um golpe ou magia, emita:
-  [DANO_MONSTRO: Nome do Monstro | Quantidade de Dano]
-  Exemplo: [DANO_MONSTRO: Orc Guerreiro | 8]
+   - Nunca altere PV, declare uma derrota mecânica ou invente valores de dano por narrativa. O aplicativo aplica dano e derrota a partir das rolagens confirmadas; narre apenas o resultado que estiver explícito no histórico.
 - Ao recompensar os aventureiros após derrotar monstros, abrir arcas, saquear cadáveres ou receber tesouros, declare a tag:
   [LOOT: Moedas | Itens]
   Exemplo: [LOOT: 25 PO, 50 PP | 2x Poção de Cura, 1x Adaga de Prata]
   Exemplo: [LOOT: 80 PO | 1x Anel de Proteção, 2x Ração de Viagem]
   (Isso gera automaticamente um baú interativo no chat com botão de depósito direto na ficha do aventureiro!)
-- Quando o jogador realizar um ataque ou teste de combate, reaja com grande dinamismo narrativo, descreva o impacto dos ferimentos ou a esquiva, faça os monstros revidarem ou se reposicionarem e continue a história sem parar!
+- Quando o jogador realizar um ataque ou teste de combate, respeite o resultado registrado no histórico. Não resolva etapas que ainda aguardam rolagem. Monstros só atacam quando o turno deles for solicitado pelo aplicativo.
 - Se o personagem encontrar um pergaminho, carta, diário ou bilhete com texto legível:
   [PERGAMINHO: Título do Documento | Autor ou Origem]
   Texto exato do bilhete ou carta aqui...

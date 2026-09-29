@@ -1,5 +1,5 @@
 import type { Character, AbilityKey, SkillKey } from '../types/dnd5e';
-import { SKILLS } from '../types/dnd5e';
+import { ABILITIES, SKILLS } from '../types/dnd5e';
 
 /**
  * Calcula o modificador de um atributo segundo as regras de D&D 5e:
@@ -58,6 +58,49 @@ export function getSkillModifier(character: Character, skillKey: SkillKey): numb
     return abilityMod + profBonus;
   }
   return abilityMod;
+}
+
+/** Resolve o modificador completo de um teste pedido pelo Mestre de IA. */
+export function getDnd5eRollModifier(character: Character, label: string): number {
+  const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const target = normalize(label);
+  const proficiency = getProficiencyBonus(character.level);
+
+  const findAbility = (): AbilityKey | undefined =>
+    (Object.keys(SKILLS) as SkillKey[])
+      .map((key) => SKILLS[key].ability)
+      .filter((key, index, all) => all.indexOf(key) === index)
+      .find((key) => {
+        const ability = normalize(ABILITIES[key].name);
+        const abbreviation = normalize(ABILITIES[key].abbr);
+        return target.includes(ability) || new RegExp(`\\b${abbreviation.toLowerCase()}\\b`).test(target);
+      });
+
+  const isAttack = /\b(ataque|attack|golpe)\b/.test(target);
+  if (isAttack) {
+    const weapon = character.attacks?.find((attack) => target.includes(normalize(attack.name)));
+    if (weapon) return weapon.attackBonus;
+    if (target.includes('magia') || target.includes('magico') || target.includes('spell')) {
+      return getSpellAttackBonus(character);
+    }
+    const ability = findAbility();
+    const usesDexterity = /\b(destreza|des|arco|adaga|rapieira)\b/.test(target);
+    const key: AbilityKey = ability || (usesDexterity ? 'dex' : 'str');
+    return getAbilityModifier(character.abilities[key]?.score ?? 10) + proficiency;
+  }
+
+  if (/salvaguarda|saving throw|resistencia/.test(target)) {
+    const ability = findAbility();
+    return ability ? getSavingThrowModifier(character, ability) : 0;
+  }
+
+  const skill = (Object.keys(SKILLS) as SkillKey[]).find((key) =>
+    target.includes(normalize(SKILLS[key].name)) || target.includes(normalize(key.replace(/_/g, ' ')))
+  );
+  if (skill) return getSkillModifier(character, skill);
+
+  const ability = findAbility();
+  return ability ? getAbilityModifier(character.abilities[ability]?.score ?? 10) : 0;
 }
 
 /**

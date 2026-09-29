@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { ChatMessage, ChatMessageType } from '../../types/chat';
-import type { Character, DiceRollResult, SkillKey, AbilityKey, AdvantageMode } from '../../types/dnd5e';
+import type { Character, DiceRollResult, AdvantageMode } from '../../types/dnd5e';
 import type { Encounter } from '../../types/combat';
 import type { MapToken } from '../../types/vtt';
 import type { AiLootReward } from '../../types/aiDm';
-import { SKILLS, ABILITIES } from '../../types/dnd5e';
 import { rollFormula, rollD20 } from '../../utils/diceRoller';
+import { getDnd5eRollModifier } from '../../utils/calculations';
 import { 
   Sparkles, 
   Dices, 
@@ -373,48 +373,10 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
       formula = formulaMatch[1].replace(/\s+/g, '');
       label = `Dano: ${skillOrAbility}`;
       isDamage = true;
-    } else if (target.includes('ataque') || target.includes('attack') || target.includes('golpe')) {
-      isAttack = true;
-      const matchingAttack = character?.attacks?.find((a) => target.includes(a.name.toLowerCase()));
-      if (matchingAttack) {
-        mod = matchingAttack.attackBonus;
-      } else {
-        const isDex = target.includes('destreza') || target.includes('dex') || target.includes('arco') || target.includes('adaga') || target.includes('rapieira');
-        const abilityScore = isDex ? (character?.abilities.dex?.score ?? 10) : (character?.abilities.str?.score ?? 10);
-        const abilityMod = Math.floor((abilityScore - 10) / 2);
-        const profBonus = Math.floor(((character?.level || 1) - 1) / 4) + 2;
-        mod = abilityMod + profBonus;
-      }
-      formula = mod === 0 ? '1d20' : mod > 0 ? `1d20+${mod}` : `1d20${mod}`;
-      label = `Ataque: ${skillOrAbility}`;
     } else {
-      if (character) {
-        const profBonus = Math.floor(((character.level || 1) - 1) / 4) + 2;
-
-        const skillEntry = Object.entries(SKILLS).find(
-          ([k, def]) => target.includes(k) || target.includes(def.name.toLowerCase())
-        ) as [SkillKey, { ability: AbilityKey; name: string }] | undefined;
-
-        if (skillEntry) {
-          const [skillKey, def] = skillEntry;
-          const abilityScore = character.abilities[def.ability]?.score ?? 10;
-          const abilityMod = Math.floor((abilityScore - 10) / 2);
-          const skillProf = character.skills?.[skillKey]?.proficiency ?? 'none';
-          mod = abilityMod + (skillProf === 'expertise' ? profBonus * 2 : skillProf === 'proficient' ? profBonus : 0);
-        } else {
-          const abilityEntry = Object.entries(ABILITIES).find(
-            ([k, def]) =>
-              target.includes(k) ||
-              target.includes(def.name.toLowerCase()) ||
-              target.includes(def.abbr.toLowerCase())
-          ) as [AbilityKey, { name: string; abbr: string }] | undefined;
-          if (abilityEntry) {
-            const abilityKey = abilityEntry[0];
-            const abilityScore = character.abilities[abilityKey]?.score ?? 10;
-            mod = Math.floor((abilityScore - 10) / 2);
-          }
-        }
-      }
+      isAttack = /\b(ataque|attack|golpe)\b/.test(target);
+      if (character) mod = getDnd5eRollModifier(character, skillOrAbility);
+      if (isAttack) label = `Ataque: ${skillOrAbility}`;
       formula = mod === 0 ? '1d20' : mod > 0 ? `1d20+${mod}` : `1d20${mod}`;
     }
 

@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ArcanaSheet — Guia de início</title>
+  <style>
+    :root { --ink:#182233; --muted:#526176; --gold:#b87508; --pale:#fff7e6; --line:#d8dee8; --paper:#fff; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#e9edf3; color:var(--ink); font:11pt/1.55 Arial, sans-serif; }
+    main { max-width:850px; margin:24px auto; background:var(--paper); box-shadow:0 8px 32px #18223320; }
+    section { padding:42px 52px; min-height:960px; position:relative; page-break-after:always; }
+    section:last-child { page-break-after:auto; }
+    .cover { display:flex; min-height:960px; flex-direction:column; justify-content:center; align-items:center; text-align:center; color:white; background:linear-gradient(145deg,#101827,#202c40 68%,#52370f); }
+    .sigil { width:86px; height:86px; display:grid; place-items:center; border-radius:24px; background:#e99512; color:#101827; font-size:40px; box-shadow:0 8px 28px #e9951260; }
+    h1,h2,h3 { font-family:Georgia,serif; line-height:1.2; }
+    h1 { margin:24px 0 8px; font-size:36pt; letter-spacing:2px; color:#ffe4a0; }
+    h2 { margin:0 0 20px; padding-bottom:10px; border-bottom:2px solid var(--gold); font-size:23pt; color:#5e3c0a; }
+    h3 { margin:20px 0 7px; font-size:14pt; color:#68470e; }
+    p { margin:7px 0 11px; }
+    li { margin:5px 0; }
+    ul,ol { padding-left:23px; margin:7px 0 14px; }
+    .subtitle { font:700 14pt Georgia,serif; color:#f4b643; letter-spacing:1px; }
+    .tagline { max-width:520px; margin:20px auto; color:#d7deea; font-size:13pt; }
+    .meta { margin-top:58px; color:#c2cada; font-size:9pt; }
+    .box { padding:13px 16px; margin:13px 0; border:1px solid #efd18c; border-left:5px solid var(--gold); border-radius:9px; background:var(--pale); }
+    .box strong { color:#593900; }
+    .tip { background:#eef5ff; border-color:#a9c5ea; border-left-color:#3975b8; }
+    .warning { background:#fff0ef; border-color:#edb8b2; border-left-color:#c34b42; }
+    .steps { counter-reset:step; list-style:none; padding:0; }
+    .steps li { counter-increment:step; position:relative; padding:0 0 11px 38px; }
+    .steps li::before { content:counter(step); position:absolute; left:0; top:0; width:25px; height:25px; border-radius:50%; display:grid; place-items:center; color:white; background:#b87508; font-weight:bold; }
+    .two { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .card { padding:12px 14px; border:1px solid var(--line); border-radius:9px; background:#f8fafc; }
+    .card h3 { margin-top:2px; }
+    .small { font-size:9.5pt; color:var(--muted); }
+    .pill { display:inline-block; border:1px solid #dbc181; background:#fff8e7; padding:2px 7px; border-radius:5px; font-weight:bold; white-space:nowrap; }
+    .footer { position:absolute; bottom:20px; left:52px; right:52px; padding-top:7px; border-top:1px solid var(--line); color:#738096; font-size:8.5pt; display:flex; justify-content:space-between; }
+    .cover .footer { border-color:#ffffff40; color:#c2cada; }
+    a { color:#80520a; }
+    @media(max-width:700px) { main { margin:0; } section { padding:30px 23px 54px; min-height:0; } .footer { left:23px; right:23px; } .two { grid-template-columns:1fr; } .cover { min-height:90vh; } }
+    @media print {
+      @page { size:A4; margin:0; }
+      body { background:white; font-size:10.5pt; print-color-adjust:exact; -webkit-print-color-adjust:exact; }
+      main { max-width:none; margin:0; box-shadow:none; }
+      section { height:297mm; min-height:0; padding:16mm 18mm 19mm; overflow:hidden; }
+      section.cover { height:297mm; padding:24mm; }
+      .footer { left:18mm; right:18mm; bottom:8mm; }
+      .cover .footer { left:24mm; right:24mm; }
+      a { color:inherit; text-decoration:none; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <section class="cover">
+    <div class="sigil">⚔</div>
+    <h1>ARCANASHEET</h1>
+    <div class="subtitle">Guia de início para jogadores e mestres</div>
+    <p class="tagline">Aprenda a criar seu primeiro herói, fazer testes, jogar com seu grupo e usar o tabuleiro virtual — mesmo que esta seja sua primeira aventura de RPG.</p>
+    <p><span class="pill">Ficha digital</span> <span class="pill">Dados</span> <span class="pill">Mesa online</span> <span class="pill">Mestre de IA</span></p>
+    <p class="meta">Manual para iniciantes · Revisado em 29 de setembro de 2026<br><a href="https://arcanasheet.sociedade.online/">arcanasheet.sociedade.online</a></p>
+    <div class="footer"><span>ArcanaSheet · Guia de início</span><span>1</span></div>
+  </section>
+
+  <section>
+    <h2>Bem-vindo à aventura</h2>
+    <p>ArcanaSheet reúne sua ficha de personagem, rolagens de dados e ferramentas para jogar com outras pessoas. Você não precisa conhecer todas as regras para começar: diga o que seu herói tenta fazer, e o Mestre conduz a cena.</p>
+    <div class="box"><strong>Como funciona uma partida?</strong><br>O Mestre descreve uma situação. Você diz o que seu personagem faz. Quando o resultado for incerto, o grupo rola dados. O resultado muda a história — inclusive quando algo não sai como planejado.</div>
+    <h3>Comece em cinco passos</h3>
+    <ol class="steps">
+      <li><strong>Entre ou crie sua conta.</strong> Use a tela inicial do ArcanaSheet. Guarde sua senha e não compartilhe sua chave de IA.</li>
+      <li><strong>Abra a aba Ficha.</strong> Escolha <span class="pill">Heróis Prontos</span> para começar rapidamente ou <span class="pill">Criar do Zero</span> para escolher os detalhes.</li>
+      <li><strong>Leia o resumo do personagem.</strong> Confira classe, nível, pontos de vida, defesa e ataques antes da primeira cena.</li>
+      <li><strong>Entre na mesa do grupo.</strong> O Mestre cria ou abre a mesa online e compartilha o código ou convite com os jogadores.</li>
+      <li><strong>Jogue uma ação simples.</strong> Exemplo: “Quero observar a porta antes de abrir”. Se for preciso, o Mestre pede um teste e você rola pelo cartão exibido.</li>
+    </ol>
+    <div class="box tip"><strong>Primeira vez em D&D?</strong><br>Não tente decorar o livro de regras. Faça perguntas, descreva sua intenção e use a ficha para consultar os números. O grupo pode decidir junto como resolver uma situação duvidosa.</div>
+    <h3>Escolha sua área</h3>
+    <div class="two">
+      <div class="card"><strong>Ficha</strong><br>Seu personagem, atributos, equipamentos e rolagens.</div>
+      <div class="card"><strong>Mestre</strong><br>Ferramentas para preparar e conduzir encontros.</div>
+      <div class="card"><strong>Mapa (VTT)</strong><br>Tabuleiro tático, tokens, chat e combate.</div>
+      <div class="card"><strong>Mesa Online</strong><br>Conexão e comunicação com o grupo.</div>
+    </div>
+    <div class="footer"><span>ArcanaSheet · Guia de início</span><span>2</span></div>
+  </section>
+
+  <section>
+    <h2>Seu primeiro personagem</h2>
+    <h3>Herói pronto ou criação passo a passo?</h3>
+    <p>Se você ainda está aprendendo, escolha um <strong>Herói Pronto</strong>. Ele já vem com uma combinação inicial de classe e equipamento, então você pode começar a jogar e entender a ficha aos poucos. Quando quiser personalizar, crie um personagem do zero ou edite o herói existente.</p>
+    <h3>O que significam os números principais?</h3>
+    <div class="two">
+      <div class="card"><strong>Atributos</strong><br>Força, Destreza, Constituição, Inteligência, Sabedoria e Carisma. Indicam as aptidões gerais do herói.</div>
+      <div class="card"><strong>Modificador</strong><br>Bônus ou penalidade derivado do atributo. É o número somado à maioria dos testes.</div>
+      <div class="card"><strong>Proficiência</strong><br>Bônus por treinamento. Soma-se quando o personagem é proficiente na perícia, salvaguarda ou ataque aplicável.</div>
+      <div class="card"><strong>PV e CA</strong><br>PV são pontos de vida. CA é Classe de Armadura: o alvo que um ataque precisa alcançar para acertar.</div>
+    </div>
+    <h3>Como fazer um teste</h3>
+    <ol>
+      <li>O Mestre informa o que testar — por exemplo, Furtividade — e, quando necessário, a Classe de Dificuldade (CD).</li>
+      <li>Use o botão do teste solicitado. A ficha acrescenta os bônus cadastrados e mostra o resultado.</li>
+      <li>Compare o total com a CD. Igualar ou superar a CD normalmente significa sucesso; abaixo dela, falha. O Mestre descreve o efeito na cena.</li>
+    </ol>
+    <div class="box"><strong>Exemplo:</strong> uma personagem tenta atravessar uma sala sem ser vista. O Mestre pede Furtividade CD 13. Ela rola o dado e soma o modificador da perícia. O Mestre decide o que acontece com base no resultado e na situação.</div>
+    <h3>Vantagem e desvantagem</h3>
+    <p>Com vantagem, role dois d20 e use o maior. Com desvantagem, role dois e use o menor. O Mestre informa quando uma delas se aplica; elas não se acumulam entre si.</p>
+    <div class="box tip"><strong>Dica:</strong> se os valores da ficha parecerem errados, confira atributos, proficiências e arma equipada. A ficha depende dessas informações para calcular vários bônus.</div>
+    <div class="footer"><span>ArcanaSheet · Guia de início</span><span>3</span></div>
+  </section>
+
+  <section>
+    <h2>Jogue uma rodada</h2>
+    <h3>Quando começa um combate</h3>
+    <ol class="steps">
+      <li><strong>Iniciativa:</strong> cada participante faz uma rolagem para determinar a ordem dos turnos.</li>
+      <li><strong>No seu turno:</strong> diga sua intenção ao Mestre. Você normalmente pode se mover e realizar uma ação; recursos especiais podem permitir outras opções.</li>
+      <li><strong>Ataque:</strong> role para acertar o alvo. Se acertar, role o dano indicado pela arma ou magia.</li>
+      <li><strong>Dano e cura:</strong> o Mestre ou o sistema atualiza os pontos de vida. Confira o valor antes de continuar.</li>
+      <li><strong>Fim do turno:</strong> passe a vez para o próximo combatente no rastreador.</li>
+    </ol>
+    <div class="box warning"><strong>O VTT não substitui o Mestre.</strong><br>Distância, alcance, condições, concentração, cobertura e efeitos de magia podem exigir interpretação. Confirme o resultado com o Mestre, especialmente quando a automação não reconhecer a ação ou o alvo.</div>
+    <h3>Ficha, recursos e descanso</h3>
+    <ul>
+      <li>Use a ficha para consultar PV, CA, ataques, perícias, equipamentos e recursos de classe.</li>
+      <li>Um descanso curto ou longo só deve ser aplicado quando a situação da aventura permitir. O Mestre define quando o grupo pode descansar.</li>
+      <li>Confira os recursos depois do descanso: algumas habilidades voltam em descanso curto, outras em descanso longo ou conforme as regras da classe.</li>
+      <li>Subir de nível não é apenas aumentar um número: pode liberar habilidades, magias, pontos de vida e escolhas novas. Revise a ficha depois de evoluir.</li>
+    </ul>
+    <h3>Usando o mapa</h3>
+    <ul>
+      <li>O Mestre carrega o cenário e posiciona tokens. Selecione o token para ver as ações disponíveis.</li>
+      <li>Use o zoom para aproximar e afastar. No computador, arraste o mapa para mover a câmera; controles de toque podem variar conforme o aparelho.</li>
+      <li>Use a régua e os modelos de área como auxílio visual. O Mestre confirma alcance, movimento e quem foi afetado.</li>
+      <li>No celular, os atalhos de dados e ações abrem painéis flutuantes. Feche-os para liberar a área de jogo.</li>
+    </ul>
+    <div class="footer"><span>ArcanaSheet · Guia de início</span><span>4</span></div>
+  </section>
+
+  <section>
+    <h2>Entre em uma mesa online</h2>
+    <h3>Para quem está jogando</h3>
+    <ol>
+      <li>Abra <span class="pill">Mesa Online</span> ou o convite enviado pelo Mestre.</li>
+      <li>Entre com o código da campanha ou aceite o convite recebido.</li>
+      <li>Escolha a ficha correta e confira nome, PV e CA antes de começar.</li>
+      <li>Mantenha a página aberta durante a sessão e avise o grupo se perder a conexão.</li>
+    </ol>
+    <h3>Para quem está mestrando</h3>
+    <ol>
+      <li>Abra a área <span class="pill">Mestre</span> e prepare a campanha, o encontro e os personagens necessários.</li>
+      <li>Crie ou abra uma mesa online e compartilhe o código ou convite somente com os jogadores.</li>
+      <li>Abra <span class="pill">Mapa (VTT)</span> para carregar o cenário, posicionar participantes e acompanhar o combate.</li>
+      <li>Use o rastreador para iniciar o combate e avançar a vez na ordem de iniciativa.</li>
+      <li>Confirme se todos entraram na campanha certa antes de compartilhar handouts ou informações privadas.</li>
+    </ol>
+    <div class="box tip"><strong>Se algo não sincronizar:</strong> peça ao grupo para confirmar que está na mesma campanha e conectado. Atualize a página somente depois de verificar se há alterações não salvas. Se o problema continuar, anote o que fez e em qual tela ocorreu.</div>
+    <h3>Convites, chat e privacidade</h3>
+    <p>Use o chat público para informações compartilhadas e mensagens privadas para segredos de personagem. Não publique códigos de campanha em locais abertos. Nunca envie senha, chave de API ou dados pessoais no chat da mesa.</p>
+    <div class="footer"><span>ArcanaSheet · Guia de início</span><span>5</span></div>
+  </section>
+
+  <section>
+    <h2>Como usar o Mestre de IA</h2>
+    <p>O Mestre de IA pode narrar cenas, interpretar personagens, sugerir caminhos e conduzir uma aventura solo ou apoiar uma mesa. Ele é uma ferramenta de apoio: pode esquecer fatos, interpretar uma regra incorretamente ou propor algo que não combina com a campanha.</p>
+    <h3>Configuração inicial</h3>
+    <ol>
+      <li>Abra o Mestre de IA e vá às configurações.</li>
+      <li>Escolha um provedor disponível. Alguns exigem uma chave de API própria; o modo sem chave depende da disponibilidade do serviço externo.</li>
+      <li>Se usar uma chave, copie-a somente do site oficial do provedor e guarde-a em local seguro. Não a compartilhe com o grupo.</li>
+      <li>Selecione o tom da aventura e informe instruções simples: tema, limites, ritmo, personagens e o tipo de desafio desejado.</li>
+      <li>Comece com uma premissa ou descreva a primeira ação do personagem.</li>
+    </ol>
+    <div class="box warning"><strong>Privacidade e custos:</strong><br>Verifique as condições do provedor escolhido. Mensagens enviadas à IA podem ser processadas por esse serviço. Uma chave de API pode gerar cobranças ou consumir limites da sua conta; consulte o painel do próprio provedor.</div>
+    <h3>Como conversar com a IA</h3>
+    <div class="two">
+      <div class="card"><strong>Descreva intenção</strong><br>“Examino a fechadura procurando armadilhas antes de abrir.”</div>
+      <div class="card"><strong>Peça uma regra</strong><br>“Que teste devo fazer e qual bônus da minha ficha se aplica?”</div>
+      <div class="card"><strong>Corrija o contexto</strong><br>“Meu personagem já gastou essa magia; não a use novamente.”</div>
+      <div class="card"><strong>Defina o ritmo</strong><br>“Faça uma pausa para eu decidir antes de avançar a cena.”</div>
+    </div>
+    <h3>Rolagens e decisões</h3>
+    <p>Quando a IA solicitar um teste, confira o nome do teste, o alvo e o bônus. Faça a rolagem pelo cartão. Em combate, confirme acerto, dano e alvo no histórico da mesa. O app automatiza algumas ações, mas não cobre todas as regras de D&D.</p>
+    <div class="box"><strong>Uma boa regra para a mesa:</strong> a rolagem do aplicativo decide o número; jogadores e Mestre decidem juntos como esse número afeta a ficção, respeitando as regras combinadas.</div>
+    <div class="footer"><span>ArcanaSheet · Guia de início</span><span>6</span></div>
+  </section>
+
+  <section>
+    <h2>Problemas comuns e glossário</h2>
+    <div class="two">
+      <div class="card"><h3>Não consigo entrar</h3><p>Confira e-mail, senha e conexão. Use “esqueci minha senha” se necessário. Não compartilhe sua senha para pedir ajuda.</p></div>
+      <div class="card"><h3>A ficha não aparece</h3><p>Confirme a conta usada e a campanha selecionada. Aguarde a sincronização antes de atualizar a página.</p></div>
+      <div class="card"><h3>A IA não responde</h3><p>Confira o provedor escolhido, a chave, o limite de uso e a conexão. Serviços externos podem ficar indisponíveis.</p></div>
+      <div class="card"><h3>O mapa não responde bem no celular</h3><p>Feche painéis flutuantes, gire o aparelho para paisagem ou use um computador para controlar o tabuleiro com mais precisão.</p></div>
+      <div class="card"><h3>Uma rolagem parece errada</h3><p>Confira atributo, proficiência, arma e vantagem/desvantagem. Peça ao Mestre para revisar o resultado antes de aplicar dano.</p></div>
+      <div class="card"><h3>Perdi a conexão</h3><p>Avise o grupo por outro canal. Ao retornar, confirme com o Mestre quais mudanças aconteceram enquanto você estava fora.</p></div>
+    </div>
+    <h3>Glossário rápido</h3>
+    <ul>
+      <li><strong>CD:</strong> Classe de Dificuldade, o número que um teste precisa alcançar.</li>
+      <li><strong>d20:</strong> dado de vinte faces, usado para muitos testes, ataques e salvaguardas.</li>
+      <li><strong>PV:</strong> pontos de vida. Ao chegar a zero, consulte o Mestre sobre as regras de inconsciência e morte.</li>
+      <li><strong>CA:</strong> Classe de Armadura, valor usado para verificar se um ataque acerta.</li>
+      <li><strong>VTT:</strong> tabuleiro virtual para mapa, tokens e combate.</li>
+      <li><strong>Token:</strong> marcador que representa personagem, criatura ou objeto no mapa.</li>
+      <li><strong>Proficiência:</strong> treinamento que acrescenta bônus em testes específicos.</li>
+    </ul>
+    <div class="box tip"><strong>Quer aprender jogando?</strong><br>Comece com um herói pronto, uma cena curta e um único objetivo. Depois da primeira sessão, personalize a ficha e explore o mapa, o bestiário e as ferramentas do Mestre.</div>
+    <p class="small">Este guia explica os fluxos gerais da versão atual do ArcanaSheet. A interface pode mudar com futuras atualizações. Para dúvidas sobre a aventura, confirme sempre com o Mestre da mesa.</p>
+    <p><strong>ArcanaSheet</strong> · <a href="https://arcanasheet.sociedade.online/">arcanasheet.sociedade.online</a></p>
+    <div class="footer"><span>ArcanaSheet · Guia de início</span><span>7</span></div>
+  </section>
+</main>
+</body>
+</html>

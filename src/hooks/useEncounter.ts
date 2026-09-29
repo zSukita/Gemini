@@ -93,12 +93,10 @@ export function useEncounter() {
     return unsubscribe;
   }, []);
 
-  // Ordenar combatentes por Iniciativa (jogadores agem antes de monstros)
+  // D&D 5e: todos os combatentes agem em ordem decrescente de iniciativa.
   const sortCombatantsByInitiative = useCallback(() => {
     setEncounter((prev) => {
       const sorted = [...prev.combatants].sort((a, b) => {
-        if (a.type === 'player' && b.type !== 'player') return -1;
-        if (a.type !== 'player' && b.type === 'player') return 1;
         return b.initiative - a.initiative;
       });
       return {
@@ -251,12 +249,10 @@ export function useEncounter() {
     });
   };
 
-  // Iniciar combate (jogadores sempre agem primeiro)
+  // Iniciar combate respeitando a iniciativa rolada por todos os combatentes.
   const startEncounter = () => {
     setEncounter((prev) => {
       const sorted = [...prev.combatants].sort((a, b) => {
-        if (a.type === 'player' && b.type !== 'player') return -1;
-        if (a.type !== 'player' && b.type === 'player') return 1;
         return b.initiative - a.initiative;
       });
       return {

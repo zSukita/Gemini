@@ -29,7 +29,7 @@ export const AI_ADVENTURE_SCENARIOS: AiAdventureScenario[] = [
     mapPresetId: 'map-ravenloft-crypt',
     ambientLight: 'night',
     initialPrompt:
-      'Vocês descem pelas escadarias úmidas de pedra antiga e penetram na Cripta dos Reis Esquecidos. O ar é denso, cheirando a pó e cinzas milenares. No centro do salão, sarcófagos de pedra rachados começam a tremer, e chamas espectrais verdes brotam dos candelabros de ferro fundido. Sombras arqueadas com armaduras enferrujadas se erguem dos túmulos empunhando lâminas lascadas!',
+      'Vocês descem pelas escadarias úmidas de pedra antiga e entram na Cripta dos Reis Esquecidos. O ar cheira a pó e cinzas antigas. Um sarcófago central começa a tremer; chamas verdes se acendem nos candelabros. A tampa cai com um estrondo e um único esqueleto de armadura enferrujada surge, ainda desorientado. Há tempo para observar a criatura e decidir como agir.',
     suggestedActions: [
       'Sacar as armas e formar uma linha defensiva ao redor do altar central',
       'Acender uma tocha ou canalizar luz divina para afastar as sombras',
@@ -41,7 +41,7 @@ export const AI_ADVENTURE_SCENARIOS: AiAdventureScenario[] = [
       reason: 'Para identificar qual sarcófago está prestes a se romper primeiro',
     },
     monsters: [
-      { monsterId: 'srd-skeleton', count: 3, initialX: 300, initialY: 350 },
+      { monsterId: 'srd-skeleton', count: 1, initialX: 300, initialY: 350 },
     ],
   },
   {

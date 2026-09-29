@@ -544,6 +544,8 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
             chatLog={chatLog}
             currentUserName={currentUserName}
             character={character}
+            isHost={isHost}
+            isConnected={isConnected}
             isAiResponding={isAiResponding}
             encounter={encounter}
             tokens={tokens}
@@ -555,6 +557,7 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
             onCollectLoot={onCollectLoot}
             onUpdateCharacter={onUpdateCharacter}
             onNextTurn={onNextTurn}
+            onStartEncounter={onStartEncounter}
           />
         </div>
 

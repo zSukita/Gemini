@@ -50,6 +50,8 @@ interface TabletopParchmentChatProps {
   chatLog: ChatMessage[];
   currentUserName: string;
   character?: Character | null;
+  isHost?: boolean;
+  isConnected?: boolean;
   isAiResponding?: boolean;
   encounter?: Encounter;
   tokens?: MapToken[];
@@ -60,6 +62,7 @@ interface TabletopParchmentChatProps {
   onCollectLoot?: (reward: AiLootReward, messageId?: string) => void;
   onUpdateCharacter?: (updates: Partial<Character>) => void;
   onNextTurn?: () => void;
+  onStartEncounter?: () => void;
   onSendMessage: (
     textOrPayload:
       | string
@@ -82,6 +85,8 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
   chatLog,
   currentUserName,
   character,
+  isHost = true,
+  isConnected = false,
   isAiResponding,
   encounter,
   tokens,
@@ -93,11 +98,13 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
   onUpdateCharacter,
   onSendMessage,
   onNextTurn,
+  onStartEncounter,
 }) => {
   const [inputText, setInputText] = useState('');
   const [isSecretMode, setIsSecretMode] = useState(false);
   const [advantageMode, setAdvantageMode] = useState<AdvantageMode>('normal');
   const [collectedLootIds, setCollectedLootIds] = useState<Set<string>>(new Set());
+  const [resolvedRequestedRollIds, setResolvedRequestedRollIds] = useState<Set<string>>(new Set());
   const [isCampaignMemoryOpen, setIsCampaignMemoryOpen] = useState(false);
   const [campaignSummaryText, setCampaignSummaryText] = useState(() => getStoredCampaignSummary());
   const [isSynthesizingMemory, setIsSynthesizingMemory] = useState(false);
@@ -119,10 +126,31 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
   const isMyTurn = !isCombatActive || Boolean(isPlayerTurn && activeCombatant?.name.toLowerCase() === currentUserName.toLowerCase());
   const isOtherPlayerTurn = Boolean(isCombatActive && isPlayerTurn && !isMyTurn);
   const isMonsterTurn = Boolean(isCombatActive && activeCombatant?.type === 'monster');
+  const isUnconscious = Boolean(character && character.currentHp <= 0);
+  const isDead = Boolean((character?.deathSaves?.failures || 0) >= 3);
+  const isStable = Boolean((character?.deathSaves?.successes || 0) >= 3);
 
   // Localiza a mensagem da IA mais recente e as ações sugeridas ativas
   const lastAiMessage = [...chatLog].reverse().find(
     (m) => m.type === 'AI_DM' || m.senderName.includes('IA')
+  );
+  const isRequestedRollResolved = (message: ChatMessage) => {
+    const requestedSkill = message.requestedRoll?.skillOrAbility.toLowerCase();
+    if (!requestedSkill) return false;
+    return resolvedRequestedRollIds.has(message.id) || chatLog.some((entry) =>
+      entry.type === 'PUBLIC' &&
+      entry.timestamp >= message.timestamp &&
+      entry.text.toLowerCase().includes(`realizei o teste de ${requestedSkill}`)
+    );
+  };
+  const hasResolvedScenarioCheck = Boolean(
+    !isCombatActive &&
+    encounter?.combatants.some((combatant) => combatant.type === 'monster' && combatant.currentHp > 0) &&
+    chatLog.some((request) => request.type === 'AI_DM' && request.requestedRoll && chatLog.some((result) =>
+      result.type === 'PUBLIC' &&
+      result.timestamp >= request.timestamp &&
+      result.text.toLowerCase().includes(`realizei o teste de ${request.requestedRoll!.skillOrAbility.toLowerCase()}`)
+    ))
   );
   const latestActionMsg = [...chatLog].reverse().find(
     (m) => m.suggestedActions && m.suggestedActions.length > 0
@@ -215,6 +243,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
   };
 
   const handleExecuteAction = (act: string) => {
+    if (isUnconscious) return;
     if (isCombatActive && !isMyTurn) return;
     const actLower = act.toLowerCase();
     const isMoveOrAttack =
@@ -296,8 +325,8 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
   };
 
   const handleRollDeathSave = () => {
-    if (!character) return;
-    const roll = rollD20('Salvaguarda contra a Morte', 0, advantageMode);
+    if (!character || !isMyTurn || isDead || isStable) return;
+    const roll = rollD20('Salvaguarda contra a Morte', 0, 'normal');
     const natural = roll.rolls?.[0] ?? roll.selectedRoll;
     const currentSuccesses = character.deathSaves?.successes || 0;
     const currentFailures = character.deathSaves?.failures || 0;
@@ -384,6 +413,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
   };
 
   const handleRollRequested = (req: { skillOrAbility: string; dc?: number; reason: string }) => {
+    if (isUnconscious) return;
     const target = req.skillOrAbility.toLowerCase();
     const meta = getRequestedRollMeta(req.skillOrAbility);
     const { mod, label, isAttack, isDamage, formula } = meta;
@@ -793,21 +823,17 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
 
   const renderQuickDamageApplier = (msg: ChatMessage) => {
     if (!onHpDelta || !encounter?.combatants) return null;
+    const damageLabel = msg.diceRoll?.label.toLowerCase() || '';
+    // O resultado de ataque do jogador já aplica dano automaticamente, e o golpe dos monstros já
+    // altera os PV do alvo. Não ofereça um segundo botão que possa ferir o alvo errado ou duplicar dano.
+    if (msg.type !== 'PUBLIC' || !msg.diceRoll || !/(dano|damage)/.test(damageLabel)) return null;
 
-    let dmgAmount: number | null = null;
-    if (msg.diceRoll && (msg.diceRoll.label.toLowerCase().includes('dano') || msg.diceRoll.dieType !== 'd20')) {
-      dmgAmount = msg.diceRoll.total;
-    } else {
-      const match = msg.text.match(/(\d+)\s+de dano/i);
-      if (match) {
-        dmgAmount = parseInt(match[1], 10);
-      }
-    }
+    const dmgAmount = msg.diceRoll.total;
+    if (dmgAmount <= 0) return null;
 
-    if (!dmgAmount || dmgAmount <= 0) return null;
-
+    const messageText = msg.text.toLowerCase();
     const validTargets = encounter.combatants.filter(
-      (c) => (c.type === 'monster' || c.type === 'npc') && c.currentHp > 0
+      (c) => (c.type === 'monster' || c.type === 'npc') && c.currentHp > 0 && messageText.includes(c.name.toLowerCase())
     );
 
     if (validTargets.length === 0) return null;
@@ -849,7 +875,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
   return (
     <div className="tabletop-parchment flex flex-col h-full rounded-xl overflow-hidden shadow-2xl">
       {/* Cabeçalho de Pergaminho Responsivo */}
-      <div className="tabletop-parchment-header px-3 sm:px-4 py-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 select-none w-full max-w-full overflow-hidden">
+      <div className="tabletop-parchment-header px-3 sm:px-4 py-2 flex flex-col gap-1.5 select-none w-full max-w-full min-w-0">
         {/* Linha Superior: Título + Badge de Status no mobile */}
         <div className="flex items-center justify-between w-full sm:w-auto min-w-0">
           <div className="flex items-center gap-2 min-w-0">
@@ -863,12 +889,12 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
           </span>
         </div>
 
-        {/* Linha de Controles: no mobile permite scroll horizontal suave dos botões sem comprimir textos */}
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar w-full sm:w-auto py-0.5 shrink-0">
+        {/* Os controles quebram em linhas para permanecerem visíveis em painéis estreitos */}
+        <div className="flex flex-wrap items-center gap-1.5 overflow-visible w-full min-w-0 py-0.5">
           <button
             type="button"
             onClick={() => setIsCampaignMemoryOpen(true)}
-            className="text-[10px] font-serif font-bold text-amber-950 hover:text-amber-900 bg-amber-900/10 hover:bg-amber-900/20 px-2.5 py-1 rounded-md border border-amber-900/30 flex items-center gap-1 transition shadow-xs cursor-pointer shrink-0 min-h-[28px]"
+            className="text-[11px] font-serif font-bold text-amber-950 hover:text-amber-900 bg-amber-900/10 hover:bg-amber-900/20 px-2.5 py-1 rounded-md border border-amber-900/30 flex items-center gap-1 transition shadow-xs cursor-pointer shrink-0 min-h-8"
             title="Visualizar e gerenciar a Memória de Longo Prazo da Campanha"
           >
             <BookOpen size={11} />
@@ -877,7 +903,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
           <button
             type="button"
             onClick={handleToggleAutoVoice}
-            className={`text-[10px] font-serif font-bold px-2.5 py-1 rounded-md border flex items-center gap-1 transition shadow-xs cursor-pointer shrink-0 min-h-[28px] ${
+            className={`text-[11px] font-serif font-bold px-2.5 py-1 rounded-md border flex items-center gap-1 transition shadow-xs cursor-pointer shrink-0 min-h-8 ${
               autoVoice
                 ? 'bg-amber-800 text-amber-100 border-amber-900 shadow-sm'
                 : 'text-amber-950 hover:text-amber-900 bg-amber-900/10 hover:bg-amber-900/20 border-amber-900/30'
@@ -891,7 +917,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
             <button
               type="button"
               onClick={handleToggleVoiceMode}
-              className="text-[10px] font-serif font-bold text-amber-950 hover:text-amber-900 bg-amber-900/10 hover:bg-amber-900/20 px-2.5 py-1 rounded-md border border-amber-900/30 flex items-center gap-1 transition shadow-xs cursor-pointer shrink-0 min-h-[28px]"
+              className="text-[11px] font-serif font-bold text-amber-950 hover:text-amber-900 bg-amber-900/10 hover:bg-amber-900/20 px-2.5 py-1 rounded-md border border-amber-900/30 flex items-center gap-1 transition shadow-xs cursor-pointer shrink-0 min-h-8"
               title={
                 voiceMode === 'story_only'
                   ? 'Modo: Apenas História e Falas (Recomendado). Clique para narrar também rolagens.'
@@ -909,14 +935,14 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                 setSpeakingMsgId(null);
                 setIsSpeakingAny(false);
               }}
-              className="text-[10px] font-serif font-bold text-rose-100 bg-rose-800 hover:bg-rose-700 px-2.5 py-1 rounded-md border border-rose-600 flex items-center gap-1 transition shadow-xs cursor-pointer animate-pulse shrink-0 min-h-[28px]"
+              className="text-[11px] font-serif font-bold text-rose-100 bg-rose-800 hover:bg-rose-700 px-2.5 py-1 rounded-md border border-rose-600 flex items-center gap-1 transition shadow-xs cursor-pointer animate-pulse shrink-0 min-h-8"
               title="Interromper fala atual do Mestre IA"
             >
               <Square size={10} fill="currentColor" />
               <span>Silenciar</span>
             </button>
           )}
-          <span className="hidden sm:inline-flex text-[10px] font-serif font-bold text-amber-900/80 bg-amber-900/10 px-2 py-0.5 rounded border border-amber-900/20 shrink-0">
+          <span className="hidden sm:inline-flex text-[11px] font-serif font-bold text-amber-900/80 bg-amber-900/10 px-2 py-0.5 rounded border border-amber-900/20 shrink-0">
             Mestre IA Ativo
           </span>
           {onOpenEndSessionModal && (
@@ -934,7 +960,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
       </div>
 
       {/* ─── CARD DE SALVAGUARDA CONTRA A MORTE (0 PV) ─── */}
-      {character && character.currentHp <= 0 && (
+      {isUnconscious && character && (
         <div className="mx-3 mt-2 p-3 bg-red-950/95 border-2 border-red-600 rounded-xl text-red-100 shadow-xl select-none animate-in fade-in">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
@@ -944,13 +970,23 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
               </span>
             </div>
             <span className="text-[10px] text-red-300 font-serif font-bold italic">
-              {(character.deathSaves?.failures || 0) >= 3
+              {isDead
                 ? '💀 Morto'
-                : (character.deathSaves?.successes || 0) >= 3
+                : isStable
                 ? '✨ Estabilizado'
-                : 'Inconsciente & Agonizando'}
+                : 'Inconsciente · 0 PV'}
             </span>
           </div>
+
+          <p className="mb-2 text-xs leading-relaxed text-red-100/90">
+            {isDead
+              ? 'Este personagem morreu e não pode agir. O Mestre precisa decidir se existe uma forma de retorno.'
+              : isStable
+                ? 'Você está inconsciente e estável. Não faça mais salvaguardas; precisa receber cura para voltar a agir.'
+                : isMyTurn
+                  ? 'Você não pode atacar, se mover ou usar habilidades. No seu turno, role apenas a salvaguarda contra a morte abaixo.'
+                  : 'Você está inconsciente. Aguarde seu turno para fazer a salvaguarda contra a morte.'}
+          </p>
 
           <div className="flex items-center justify-between text-xs py-1.5 px-2.5 bg-black/50 rounded-lg border border-red-800/60 mb-2.5">
             <div className="flex items-center gap-1.5">
@@ -1012,14 +1048,15 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
             </div>
           </div>
 
-          {(character.deathSaves?.failures || 0) < 3 && (character.deathSaves?.successes || 0) < 3 && (
+          {!isDead && !isStable && (
             <button
               type="button"
               onClick={handleRollDeathSave}
-              className="w-full py-1.5 px-3 rounded bg-red-800 hover:bg-red-700 border border-red-500 font-serif font-bold text-xs text-white flex items-center justify-center gap-2 transition shadow-md cursor-pointer"
+              disabled={!isMyTurn}
+              className="w-full min-h-10 py-1.5 px-3 rounded bg-red-800 hover:bg-red-700 border border-red-500 font-serif font-bold text-xs text-white flex items-center justify-center gap-2 transition shadow-md cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Dices size={14} />
-              <span>Rolar Salvaguarda contra a Morte (1d20)</span>
+              <span>{isMyTurn ? 'Rolar Salvaguarda contra a Morte (1d20)' : 'Disponível no seu turno'}</span>
             </button>
           )}
         </div>
@@ -1193,11 +1230,16 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
 
                           <button
                             type="button"
-                            onClick={() => handleRollRequested(msg.requestedRoll!)}
-                            className="rpg-button bg-gradient-to-r from-amber-700 to-amber-600 hover:from-amber-600 hover:to-amber-500 text-amber-50 hover:text-white font-black text-xs py-1.5 px-3 rounded-lg shadow-md flex items-center gap-1.5 cursor-pointer active:scale-95 transition"
+                            onClick={() => {
+                              if (isRequestedRollResolved(msg)) return;
+                              handleRollRequested(msg.requestedRoll!);
+                              setResolvedRequestedRollIds((previous) => new Set(previous).add(msg.id));
+                            }}
+                            disabled={isUnconscious || isRequestedRollResolved(msg)}
+                            className="rpg-button bg-gradient-to-r from-amber-700 to-amber-600 hover:from-amber-600 hover:to-amber-500 text-amber-50 hover:text-white font-black text-xs py-1.5 px-3 rounded-lg shadow-md flex items-center gap-1.5 cursor-pointer active:scale-95 transition disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             <Dices size={13} className="text-amber-300" />
-                            <span>Rolar Agora ({modStr || '+0'})</span>
+                            <span>{isUnconscious ? 'Indisponível com 0 PV' : isRequestedRollResolved(msg) ? 'Teste realizado' : `Rolar Agora (${modStr || '+0'})`}</span>
                           </button>
                         </div>
                       </div>
@@ -1302,7 +1344,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
               </span>
             </div>
 
-            {isMyTurn && (
+            {isMyTurn && !isUnconscious && (
               <div className="space-y-1.5">
                 <div className="space-y-1">
                   {activeActions.map((act, i) => {
@@ -1342,6 +1384,24 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
               </div>
             )}
 
+            {isMyTurn && isUnconscious && (
+              <div className="space-y-2 rounded-lg border border-red-800/40 bg-red-950/10 p-2 text-xs text-red-950">
+                <p>{isDead ? 'Personagem morto: ações de combate indisponíveis.' : isStable ? 'Personagem estabilizado: ações indisponíveis até receber cura.' : 'Personagem inconsciente: apenas a salvaguarda contra a morte está disponível.'}</p>
+                {onNextTurn && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSendMessage(`⚕️ ${currentUserName} concluiu o turno após a salvaguarda contra a morte.`, currentUserName);
+                      onNextTurn();
+                    }}
+                    className="w-full min-h-10 rounded-lg bg-red-800 px-3 py-2 font-bold text-white shadow hover:bg-red-900"
+                  >
+                    Encerrar turno
+                  </button>
+                )}
+              </div>
+            )}
+
             {isOtherPlayerTurn && (
               <div className="p-2 rounded bg-amber-900/10 border border-amber-900/20 text-xs text-amber-900 italic">
                 ⏳ É a vez de <strong>{activeCombatant.name}</strong> agir segundo a ordem de iniciativa D&D 5e.
@@ -1366,19 +1426,29 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
           </div>
         )}
 
+        {hasResolvedScenarioCheck && onStartEncounter && (!isConnected || isHost) && (
+          <button
+            type="button"
+            onClick={() => onStartEncounter()}
+            className="w-full min-h-11 rounded-lg border border-amber-700 bg-amber-800 px-3 py-2 text-xs font-black text-amber-50 shadow hover:bg-amber-900"
+          >
+            ⚔️ Iniciar combate e rolar iniciativa
+          </button>
+        )}
+
         <div ref={chatEndRef} />
       </div>
 
       {/* Formulário de Envio */}
-      <form onSubmit={handleSubmit} className="p-2.5 bg-[#dfd0b5] border-t-2 border-[#8a6840] space-y-1.5">
+      <form onSubmit={handleSubmit} className="min-w-0 p-2.5 bg-[#dfd0b5] border-t-2 border-[#8a6840] space-y-1.5">
         {/* Barra de Atalhos */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 text-[10px]">
+        <div className="flex flex-wrap items-center gap-1.5 overflow-visible pb-0.5 text-[11px]">
           {/* Seletor de Vantagem / Normal / Desvantagem */}
           <div className="flex items-center bg-[#cbbb9e] p-0.5 rounded border border-[#9b784f] shrink-0">
             <button
               type="button"
               onClick={() => setAdvantageMode('advantage')}
-              className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+              className={`px-2 py-1 rounded text-[11px] font-bold transition cursor-pointer ${
                 advantageMode === 'advantage'
                   ? 'bg-emerald-700 text-white shadow-xs'
                   : 'text-amber-950 hover:bg-[#bfa987]'
@@ -1390,7 +1460,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
             <button
               type="button"
               onClick={() => setAdvantageMode('normal')}
-              className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+              className={`px-2 py-1 rounded text-[11px] font-bold transition cursor-pointer ${
                 advantageMode === 'normal'
                   ? 'bg-amber-800 text-white shadow-xs'
                   : 'text-amber-950 hover:bg-[#bfa987]'
@@ -1402,7 +1472,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
             <button
               type="button"
               onClick={() => setAdvantageMode('disadvantage')}
-              className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+              className={`px-2 py-1 rounded text-[11px] font-bold transition cursor-pointer ${
                 advantageMode === 'disadvantage'
                   ? 'bg-rose-800 text-white shadow-xs'
                   : 'text-amber-950 hover:bg-[#bfa987]'

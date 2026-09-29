@@ -991,8 +991,8 @@ export function App() {
         }
       });
 
-      // Se houver monstros no cenário, inicia o combate D&D 5e e a ordem de turnos
-      if (scenario.monsters.length > 0) {
+      // Quando o prólogo pede um teste, deixe o jogador rolar e escolher uma ação antes do combate.
+      if (scenario.monsters.length > 0 && !scenario.requestedRoll) {
         setTimeout(() => {
           startEncounter();
         }, 300);
@@ -1099,8 +1099,8 @@ export function App() {
         }
       });
 
-      // Se houver monstros no cenário, inicia o combate D&D 5e e a ordem de turnos
-      if (scenario.monsters.length > 0) {
+      // Quando o prólogo pede um teste, deixe o jogador rolar e escolher uma ação antes do combate.
+      if (scenario.monsters.length > 0 && !scenario.requestedRoll) {
         setTimeout(() => {
           startEncounter();
         }, 300);

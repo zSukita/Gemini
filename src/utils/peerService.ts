@@ -43,6 +43,7 @@ export class P2PNetworkManager {
   private roomCode = '';
   private currentUserName = '';
   private currentUserAvatar = '';
+  private currentUserId = '';
   private messageListeners: ((msg: P2PMessage) => void)[] = [];
   private peerListListeners: ((peers: PeerUser[]) => void)[] = [];
   private activePeers: PeerUser[] = [];
@@ -53,6 +54,10 @@ export class P2PNetworkManager {
 
   public getIsHost(): boolean {
     return this.isHost;
+  }
+
+  public getCurrentUserId(): string {
+    return this.currentUserId;
   }
 
   public getConnectedPeers(): PeerUser[] {
@@ -70,10 +75,16 @@ export class P2PNetworkManager {
   /**
    * Inicializa uma sala como Anfitrião (Host / Mestre)
    */
-  public async createRoom(userName: string, customCode?: string, avatarUrl?: string): Promise<string> {
+  public async createRoom(
+    userName: string,
+    customCode?: string,
+    avatarUrl?: string,
+    userId?: string
+  ): Promise<string> {
     this.disconnect();
     this.currentUserName = userName;
     this.currentUserAvatar = avatarUrl || '';
+    this.currentUserId = userId || '';
     this.isHost = true;
 
     // Gera código seguro de 6 caracteres aleatórios ou usa o customizado (ex: MESA-K9W2P4)
@@ -103,6 +114,7 @@ export class P2PNetworkManager {
         this.activePeers = [
           {
             peerId: fullPeerId,
+            userId: this.currentUserId || undefined,
             name: this.currentUserName,
             role: 'dm',
             avatarUrl: this.currentUserAvatar,
@@ -147,11 +159,13 @@ export class P2PNetworkManager {
     roomCode: string,
     userName: string,
     avatarUrl?: string,
-    characterData?: Partial<PeerUser>
+    characterData?: Partial<PeerUser>,
+    userId?: string
   ): Promise<boolean> {
     this.disconnect();
     this.currentUserName = userName;
     this.currentUserAvatar = avatarUrl || '';
+    this.currentUserId = userId || '';
     this.isHost = false;
 
     const cleanCode = roomCode.toUpperCase().replace(/[^A-Z0-9-]/g, '');
@@ -174,6 +188,7 @@ export class P2PNetworkManager {
         if (!this.peer || isResolved) return;
         const conn = this.peer.connect(targetPeerId, {
           metadata: {
+            userId: this.currentUserId || undefined,
             name: this.currentUserName,
             role: 'player',
             avatarUrl: this.currentUserAvatar,
@@ -198,6 +213,7 @@ export class P2PNetworkManager {
 
           const selfUser: PeerUser = {
             peerId: this.peer?.id || 'player',
+            userId: this.currentUserId || undefined,
             name: this.currentUserName,
             role: 'player',
             avatarUrl: this.currentUserAvatar,
@@ -297,8 +313,12 @@ export class P2PNetworkManager {
         ? metadata.characterClass.trim().slice(0, 30)
         : undefined;
 
+      const rawUserId = typeof (metadata as any)?.userId === 'string' ? (metadata as any).userId.trim() : '';
+      const peerUserId = rawUserId.slice(0, 128) || undefined;
+
       const peerUser: PeerUser = {
         peerId: conn.peer,
+        userId: peerUserId,
         name: peerName,
         role: peerRole,
         avatarUrl: peerAvatar,
@@ -430,9 +450,67 @@ export class P2PNetworkManager {
         }
       }
 
+      // 4. Verificação de Mensagens Direcionadas / Privadas
+      const isDirectMessage = msg.type === 'DIRECT_MESSAGE';
+      const isWhisper = msg.type === 'CHAT_MESSAGE' && (msg.payload as any)?.type === 'WHISPER';
+      const hasTarget = Boolean(msg.targetPeerId || msg.targetUserId);
+      const isPrivateDirected = isDirectMessage || isWhisper || hasTarget;
+
+      if (isPrivateDirected) {
+        // Encontra o destinatário pretendido
+        let targetPeer: PeerUser | undefined = undefined;
+        if (msg.targetPeerId) {
+          targetPeer = this.activePeers.find((p) => p.peerId === msg.targetPeerId);
+        } else if (msg.targetUserId) {
+          targetPeer = this.activePeers.find((p) => p.userId && p.userId === msg.targetUserId);
+        } else if (isDirectMessage) {
+          const dm = msg.payload as { toUserId?: string };
+          if (dm?.toUserId) {
+            targetPeer = this.activePeers.find((p) => p.userId && p.userId === dm.toUserId);
+          }
+        } else if (isWhisper) {
+          const whisper = msg.payload as { recipientName?: string };
+          if (whisper?.recipientName) {
+            const cleanRec = whisper.recipientName.trim().toLowerCase();
+            targetPeer = this.activePeers.find(
+              (p) => p.name.trim().toLowerCase() === cleanRec
+            );
+          }
+        }
+
+        const myPeerId = this.peer?.id;
+        const isMeTarget = targetPeer
+          ? (targetPeer.peerId === myPeerId || Boolean(this.currentUserId && targetPeer.userId === this.currentUserId))
+          : false;
+        const isMeSender = (Boolean(myPeerId) && msg.senderId === myPeerId) || (Boolean(this.currentUserId) && msg.senderId === this.currentUserId);
+
+        if (this.isHost) {
+          // Se o Host for o destinatário ou o remetente, notifica localmente
+          if (isMeTarget || isMeSender) {
+            this.notifyMessage(msg);
+          }
+
+          // Se o destinatário for um peer conectado (diferente de quem enviou e do próprio Host)
+          if (targetPeer && targetPeer.peerId !== conn.peer && targetPeer.peerId !== myPeerId) {
+            const targetConn = this.connections.get(targetPeer.peerId);
+            if (targetConn && targetConn.open) {
+              targetConn.send(msg);
+            }
+          }
+          // IMPORTANTE: Retorna imediatamente! NUNCA faz broadcast de conteúdo privado aos demais
+          return;
+        } else {
+          // Cliente: só aceita e notifica se for o destinatário legítimo ou o remetente
+          if (isMeTarget || isMeSender) {
+            this.notifyMessage(msg);
+          }
+          return;
+        }
+      }
+
       this.notifyMessage(msg);
 
-      // Se for o Host, retransmite a mensagem para os outros participantes
+      // Se for o Host, retransmite a mensagem pública para os outros participantes
       if (this.isHost) {
         this.connections.forEach((c, peerId) => {
           if (peerId !== conn.peer && c.open) {
@@ -523,6 +601,57 @@ export class P2PNetworkManager {
   }
 
   /**
+   * Envia uma mensagem diretamente para um peer específico (sem broadcast para outros)
+   */
+  public sendDirected(targetPeerIdOrUserId: string, msg: P2PMessage): boolean {
+    const target = this.activePeers.find(
+      (p) => p.peerId === targetPeerIdOrUserId || (p.userId && p.userId === targetPeerIdOrUserId)
+    );
+    if (!target) return false;
+
+    msg.targetPeerId = target.peerId;
+    if (target.userId) msg.targetUserId = target.userId;
+
+    if (this.isHost) {
+      const conn = this.connections.get(target.peerId);
+      if (conn && conn.open) {
+        try {
+          conn.send(msg);
+          return true;
+        } catch (e) {
+          console.warn('Erro ao enviar mensagem P2P direcionada pelo Host:', e);
+          return false;
+        }
+      }
+      return false;
+    } else {
+      // Cliente conectado ao Host: envia para o Host rotear para o target
+      const hostConn = Array.from(this.connections.values())[0];
+      if (hostConn && hostConn.open) {
+        try {
+          hostConn.send(msg);
+          return true;
+        } catch (e) {
+          console.warn('Erro ao enviar mensagem P2P direcionada pelo Cliente:', e);
+          return false;
+        }
+      }
+      return false;
+    }
+  }
+
+  public findPeerByUserId(userId: string): PeerUser | undefined {
+    if (!userId) return undefined;
+    return this.activePeers.find((p) => p.userId === userId);
+  }
+
+  public findPeerByName(name: string): PeerUser | undefined {
+    if (!name) return undefined;
+    const clean = name.trim().toLowerCase();
+    return this.activePeers.find((p) => p.name.trim().toLowerCase() === clean);
+  }
+
+  /**
    * Encerra conexões e desliga o peer
    */
   public disconnect() {
@@ -535,6 +664,7 @@ export class P2PNetworkManager {
     this.activePeers = [];
     this.roomCode = '';
     this.isHost = false;
+    this.currentUserId = '';
     this.notifyPeerList();
   }
 }

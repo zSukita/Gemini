@@ -104,6 +104,7 @@ export interface AppModalsProps {
   onlineUsers: OnlineUserPresence[];
   friends: FriendUser[];
   directMessages?: DirectMessage[];
+  isUsingFallback?: boolean;
   onSendDirectMessage?: (toUserId: string, toUserName: string, content: string) => Promise<void>;
   onMarkMessagesAsRead?: (partnerUserId: string) => Promise<void>;
   onAddFriend: (identifier: string) => Promise<{ success: boolean; message: string }>;
@@ -231,6 +232,7 @@ export const AppModals: React.FC<AppModalsProps> = (props) => {
     onlineUsers,
     friends,
     directMessages,
+    isUsingFallback,
     onSendDirectMessage,
     onMarkMessagesAsRead,
     onAddFriend,
@@ -395,6 +397,7 @@ export const AppModals: React.FC<AppModalsProps> = (props) => {
         currentUserName={character.name || user?.displayName || 'Você'}
         currentRoomCode={isConnected ? roomCode : undefined}
         directMessages={directMessages}
+        isUsingFallback={isUsingFallback}
         onSendDirectMessage={onSendDirectMessage}
         onMarkMessagesAsRead={onMarkMessagesAsRead}
         onAddFriend={onAddFriend}

@@ -111,10 +111,13 @@ export interface P2PMessage {
   senderName: string;
   payload: unknown;
   timestamp: number;
+  targetPeerId?: string;
+  targetUserId?: string;
 }
 
 export interface PeerUser {
   peerId: string;
+  userId?: string;
   name: string;
   role: 'dm' | 'player';
   joinedAt: number;

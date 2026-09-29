@@ -3,6 +3,7 @@ import {
   doc,
   setDoc,
   getDoc,
+  getDocs,
   query,
   where,
   or,
@@ -13,6 +14,12 @@ import {
 import { db } from './config';
 import { p2pManager } from '../utils/peerService';
 import { broadcastSyncMessage, subscribeToSync } from '../utils/syncChannel';
+
+let presenceUsingLocalFallback = !db;
+
+export function isPresenceUsingLocalFallback(): boolean {
+  return presenceUsingLocalFallback;
+}
 
 export interface DirectMessage {
   id: string;
@@ -100,7 +107,15 @@ export function getLocalDirectMessages(): DirectMessage[] {
 
 export function saveLocalDirectMessages(messages: DirectMessage[]): void {
   try {
-    localStorage.setItem(LOCAL_MESSAGES_KEY, JSON.stringify(messages));
+    const seen = new Set<string>();
+    const unique: DirectMessage[] = [];
+    messages.forEach((m) => {
+      if (m && m.id && !seen.has(m.id)) {
+        seen.add(m.id);
+        unique.push(m);
+      }
+    });
+    localStorage.setItem(LOCAL_MESSAGES_KEY, JSON.stringify(unique));
   } catch {
     // ignore
   }
@@ -199,6 +214,20 @@ export async function updateUserPresence(presence: OnlineUserPresence): Promise<
       const userRef = doc(db, 'online_users', presence.userId);
       const sanitized = sanitizeFirestoreDoc(data as unknown as Record<string, unknown>);
       await setDoc(userRef, sanitized, { merge: true });
+
+      // Atualiza o perfil público de busca segura para amigos (online e offline)
+      const profileRef = doc(db, 'user_profiles', presence.userId);
+      await setDoc(
+        profileRef,
+        {
+          userId: presence.userId,
+          displayName: presence.characterName || presence.name || 'Aventureiro',
+          email: (presence.email || '').toLowerCase().trim(),
+          avatarUrl: presence.avatarUrl || '',
+          updatedAt: Date.now(),
+        },
+        { merge: true }
+      );
     } catch (e: unknown) {
       if (!isPermissionError(e)) {
         console.warn('Erro ao atualizar presença no Firestore, usando fallback local:', e);
@@ -234,21 +263,29 @@ export async function setUserOffline(userId: string): Promise<void> {
  * Escuta em tempo real os usuários online no site
  */
 export function subscribeToOnlineUsers(
-  callback: (users: OnlineUserPresence[]) => void
+  callback: (users: OnlineUserPresence[]) => void,
+  onStatusChange?: (isFallback: boolean) => void
 ): () => void {
-  const activeWindow = 10 * 60 * 1000; // 10 minutos para tolerância a abas em segundo plano e throttling
+  const activeWindow = 5 * 60 * 1000; // 5 minutos de tolerância para inatividade
 
   const getValidOnlineUsers = (list: OnlineUserPresence[]) => {
     const now = Date.now();
     return list.filter((u) => {
       if (!u || !u.lastSeen) return false;
       const diff = now - u.lastSeen;
-      // Aceita presença nos últimos 10 minutos ou com tolerância a relógios adiantados (até 5 min no futuro)
       return diff <= activeWindow && diff >= -5 * 60 * 1000;
     });
   };
 
   let firestoreUnsub: (() => void) | null = null;
+  let currentList: OnlineUserPresence[] = [];
+
+  const updateList = (raw: OnlineUserPresence[]) => {
+    currentList = raw;
+    const valid = getValidOnlineUsers(raw);
+    saveLocalPresenceUsers(valid);
+    callback(valid);
+  };
 
   if (db) {
     try {
@@ -256,32 +293,45 @@ export function subscribeToOnlineUsers(
       firestoreUnsub = onSnapshot(
         colRef,
         (snapshot) => {
+          presenceUsingLocalFallback = false;
+          onStatusChange?.(false);
           const onlineList: OnlineUserPresence[] = [];
           snapshot.forEach((docSnap) => {
             const u = docSnap.data() as OnlineUserPresence;
             if (u) onlineList.push(u);
           });
-
-          const valid = getValidOnlineUsers(onlineList);
-          saveLocalPresenceUsers(valid);
-          callback(valid);
+          updateList(onlineList);
         },
         (err) => {
+          presenceUsingLocalFallback = true;
+          onStatusChange?.(true);
           if (!isPermissionError(err)) {
             console.warn('Erro na assinatura de usuários online do Firestore, usando fallback local:', err);
           }
-          callback(getValidOnlineUsers(getLocalPresenceUsers()));
+          updateList(getLocalPresenceUsers());
         }
       );
     } catch (e: unknown) {
+      presenceUsingLocalFallback = true;
+      onStatusChange?.(true);
       if (!isPermissionError(e)) {
         console.warn('Falha ao inicializar onSnapshot de usuários online:', e);
       }
     }
+  } else {
+    presenceUsingLocalFallback = true;
+    onStatusChange?.(true);
   }
 
+  // Intervalo periódico para expirar usuários inativos automaticamente
+  const pruneTimer = setInterval(() => {
+    const valid = getValidOnlineUsers(currentList.length > 0 ? currentList : getLocalPresenceUsers());
+    callback(valid);
+  }, 15000);
+
   const localHandler = () => {
-    callback(getValidOnlineUsers(getLocalPresenceUsers()));
+    const valid = getValidOnlineUsers(getLocalPresenceUsers());
+    callback(valid);
   };
 
   if (typeof window !== 'undefined') {
@@ -290,17 +340,84 @@ export function subscribeToOnlineUsers(
   }
 
   // Emissão inicial imediata
-  callback(getValidOnlineUsers(getLocalPresenceUsers()));
+  updateList(getLocalPresenceUsers());
 
   return () => {
     if (firestoreUnsub) {
       firestoreUnsub();
     }
+    clearInterval(pruneTimer);
     if (typeof window !== 'undefined') {
       window.removeEventListener('storage', localHandler);
       window.removeEventListener('arcanasheet_presence_change', localHandler);
     }
   };
+}
+
+/**
+ * Busca conta de usuário autenticada por email ou userId (online ou offline)
+ */
+export async function findUserByEmailOrId(
+  identifier: string
+): Promise<{ userId: string; name: string; email?: string; avatarUrl?: string } | null> {
+  const clean = (identifier || '').trim();
+  if (!clean) return null;
+
+  const isEmail = clean.includes('@');
+  const cleanLower = clean.toLowerCase();
+
+  // 1. Procura primeiro nos usuários online
+  const onlineList = getLocalPresenceUsers();
+  const foundOnline = onlineList.find((u) => {
+    if (u.userId === clean) return true;
+    if (isEmail && u.email && u.email.toLowerCase() === cleanLower) return true;
+    return false;
+  });
+
+  if (foundOnline && foundOnline.userId && !foundOnline.userId.startsWith('friend_')) {
+    return {
+      userId: foundOnline.userId,
+      name: foundOnline.characterName || foundOnline.name || 'Aventureiro',
+      email: foundOnline.email,
+      avatarUrl: foundOnline.avatarUrl,
+    };
+  }
+
+  // 2. Se houver conexão com Firestore, busca nos perfis de usuários cadastrados
+  if (db) {
+    try {
+      if (isEmail) {
+        const colRef = collection(db, 'user_profiles');
+        const q = query(colRef, where('email', '==', cleanLower));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          const docData = snap.docs[0].data();
+          return {
+            userId: docData.userId || snap.docs[0].id,
+            name: docData.displayName || docData.name || clean.split('@')[0],
+            email: docData.email,
+            avatarUrl: docData.avatarUrl,
+          };
+        }
+      } else {
+        const docRef = doc(db, 'user_profiles', clean);
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          const docData = snap.data();
+          return {
+            userId: docData.userId || clean,
+            name: docData.displayName || docData.name || 'Aventureiro',
+            email: docData.email,
+            avatarUrl: docData.avatarUrl,
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('Erro ao buscar perfil de usuário no Firestore:', e);
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -330,6 +447,13 @@ export async function addFriend(
   userId: string,
   friend: Omit<FriendUser, 'addedAt'>
 ): Promise<boolean> {
+  if (!userId || (userId === 'local_user' && !friend.userId)) {
+    throw new Error('Identificador de usuário inválido.');
+  }
+  if (!friend.userId || friend.userId === userId || friend.userId.startsWith('friend_')) {
+    throw new Error('Não é possível adicionar um usuário com identificador temporário ou inválido.');
+  }
+
   const newFriend: FriendUser = {
     ...friend,
     addedAt: Date.now(),
@@ -346,8 +470,9 @@ export async function addFriend(
     try {
       const ref = doc(db, 'user_friends', userId);
       await setDoc(ref, { friends: updated }, { merge: true });
-    } catch (e) {
-      console.warn('Erro ao salvar amigo no Firestore:', e);
+    } catch (e: unknown) {
+      console.error('Erro ao salvar amigo no Firestore:', e);
+      throw new Error(`Falha ao salvar amigo no Firestore: ${(e as Error).message || e}`);
     }
   }
 
@@ -366,8 +491,9 @@ export async function removeFriend(userId: string, friendUserId: string): Promis
     try {
       const ref = doc(db, 'user_friends', userId);
       await setDoc(ref, { friends: updated }, { merge: true });
-    } catch (e) {
-      console.warn('Erro ao remover amigo no Firestore:', e);
+    } catch (e: unknown) {
+      console.error('Erro ao remover amigo no Firestore:', e);
+      throw new Error(`Falha ao atualizar lista de amigos no Firestore: ${(e as Error).message || e}`);
     }
   }
 
@@ -600,38 +726,30 @@ export async function respondToGameInvite(inviteId: string, accept: boolean): Pr
 export async function sendDirectMessage(
   msg: Omit<DirectMessage, 'id' | 'timestamp' | 'read'>
 ): Promise<DirectMessage> {
-  if (!msg.toUserId || msg.toUserId === msg.fromUserId) {
+  if (!msg.fromUserId || !msg.fromUserId.trim()) {
+    throw new Error('Remetente da mensagem inválido.');
+  }
+  if (!msg.toUserId || !msg.toUserId.trim() || msg.toUserId === msg.fromUserId) {
     throw new Error('Destinatário da mensagem inválido ou igual ao remetente.');
   }
-  if (!msg.content || !msg.content.trim()) {
+  const cleanContent = (msg.content || '').trim();
+  if (!cleanContent) {
     throw new Error('O conteúdo da mensagem não pode ser vazio.');
+  }
+  if (cleanContent.length > 2000) {
+    throw new Error('A mensagem não pode exceder 2000 caracteres.');
   }
 
   const id = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const fullMessage: DirectMessage = {
     ...msg,
-    content: msg.content.trim().slice(0, 2000),
+    content: cleanContent,
     id,
     timestamp: Date.now(),
     read: false,
   };
 
-  // 1. Atualiza cache local e notifica subscribers imediatamente (otimista)
-  const current = getLocalDirectMessages();
-  saveLocalDirectMessages([...current, fullMessage]);
-
-  // 2. Se P2P estiver conectado, transmite via P2P para entrega em tempo real
-  if (p2pManager.isConnected()) {
-    p2pManager.broadcast({
-      type: 'DIRECT_MESSAGE',
-      senderId: p2pManager.getRoomCode(),
-      senderName: fullMessage.fromUserName,
-      payload: fullMessage,
-      timestamp: fullMessage.timestamp,
-    });
-  }
-
-  // 3. Salva no Firestore
+  // 1. Salva no Firestore (confirmação do meio de entrega oficial)
   if (db) {
     try {
       const ref = doc(db, 'direct_messages', id);
@@ -642,6 +760,23 @@ export async function sendDirectMessage(
       throw new Error(`Falha ao enviar mensagem direta no Firestore: ${(e as Error).message || e}`);
     }
   }
+
+  // 2. Se P2P estiver conectado, entrega direcionada EXCLUSIVA ao peer destinatário
+  if (p2pManager.isConnected()) {
+    p2pManager.sendDirected(fullMessage.toUserId, {
+      type: 'DIRECT_MESSAGE',
+      senderId: p2pManager.getCurrentUserId() || p2pManager.getRoomCode(),
+      senderName: fullMessage.fromUserName,
+      payload: fullMessage,
+      timestamp: fullMessage.timestamp,
+      targetUserId: fullMessage.toUserId,
+    });
+  }
+
+  // 3. Atualiza cache local APENAS após confirmação de entrega com sucesso
+  const current = getLocalDirectMessages();
+  const filtered = current.filter((m) => m.id !== id);
+  saveLocalDirectMessages([...filtered, fullMessage]);
 
   return fullMessage;
 }
@@ -654,7 +789,15 @@ export function subscribeToDirectMessages(
   callback: (messages: DirectMessage[]) => void
 ): () => void {
   const filterForUser = (all: DirectMessage[]) => {
-    return all.filter((m) => m.toUserId === userId || m.fromUserId === userId);
+    const seen = new Set<string>();
+    const unique: DirectMessage[] = [];
+    all.forEach((m) => {
+      if (m && m.id && (m.toUserId === userId || m.fromUserId === userId) && !seen.has(m.id)) {
+        seen.add(m.id);
+        unique.push(m);
+      }
+    });
+    return unique;
   };
 
   let firestoreUnsub: (() => void) | null = null;
@@ -676,14 +819,18 @@ export function subscribeToDirectMessages(
           });
           list.sort((a, b) => a.timestamp - b.timestamp);
 
-          // Mescla com locais para consistência
+          // Mescla com locais garantindo deduplicação por id e pertencimento ao usuário
           const locals = getLocalDirectMessages();
           const mergedMap = new Map<string, DirectMessage>();
-          locals.forEach((m) => mergedMap.set(m.id, m));
+          locals.forEach((m) => {
+            if (m.toUserId === userId || m.fromUserId === userId) {
+              mergedMap.set(m.id, m);
+            }
+          });
           list.forEach((m) => mergedMap.set(m.id, m));
           const merged = Array.from(mergedMap.values()).sort((a, b) => a.timestamp - b.timestamp);
           saveLocalDirectMessages(merged);
-          callback(filterForUser(merged));
+          callback(merged);
         },
         (err) => {
           if (!isPermissionError(err)) {
@@ -742,8 +889,6 @@ export async function markDirectMessagesAsRead(
     return m;
   });
 
-  saveLocalDirectMessages(updated);
-
   const firestore = db;
   if (firestore && toUpdate.length > 0) {
     try {
@@ -755,4 +900,6 @@ export async function markDirectMessagesAsRead(
       throw new Error(`Falha ao marcar mensagens como lidas no Firestore: ${(e as Error).message || e}`);
     }
   }
+
+  saveLocalDirectMessages(updated);
 }

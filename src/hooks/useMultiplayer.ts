@@ -8,6 +8,8 @@ import { getLocalDirectMessages, saveLocalDirectMessages, type DirectMessage, ty
 import type { Encounter } from '../types/combat';
 
 export interface UseMultiplayerOptions {
+  currentUserId?: string;
+  currentUserName?: string;
   onRemoteDiceRoll?: (roll: DiceRollResult) => void;
   onRemoteTokenMove?: (tokens: MapToken[]) => void;
   onRemoteFogUpdate?: (shapes: FogShape[]) => void;
@@ -76,6 +78,11 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
       if (msg.type === 'DIRECT_MESSAGE') {
         const dm = msg.payload as any;
         if (dm) {
+          const currentUserId = optionsRef.current?.currentUserId || p2pManager.getCurrentUserId();
+          // Privacidade estrita: descartar mensagens diretas que não pertencem ao usuário atual
+          if (currentUserId && dm.toUserId !== currentUserId && dm.fromUserId !== currentUserId) {
+            return;
+          }
           const locals = getLocalDirectMessages();
           if (!locals.some((m) => m.id === dm.id)) {
             saveLocalDirectMessages([...locals, dm]);
@@ -88,6 +95,10 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
       if (msg.type === 'GAME_INVITE') {
         const invite = msg.payload as any;
         if (invite) {
+          const currentUserId = optionsRef.current?.currentUserId || p2pManager.getCurrentUserId();
+          if (currentUserId && invite.toUserId && invite.toUserId !== currentUserId) {
+            return;
+          }
           if (optionsRef.current?.onRemoteGameInvite) {
             optionsRef.current.onRemoteGameInvite(invite);
           }
@@ -99,14 +110,33 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
       if (msg.type === 'CHAT_MESSAGE') {
         const payload = msg.payload as any;
         const isObj = typeof payload === 'object' && payload !== null;
+        const type: ChatMessageType = isObj && payload.type ? payload.type : 'PUBLIC';
+        const recipientName = isObj ? payload.recipientName : undefined;
+        const currentUserName = optionsRef.current?.currentUserName;
+        const currentUserId = optionsRef.current?.currentUserId || p2pManager.getCurrentUserId();
+
+        // Se for sussurro privado (WHISPER), só deve ser recebido por remetente ou destinatário
+        if (type === 'WHISPER') {
+          const isSender = (msg.senderId && msg.senderId === p2pManager.getRoomCode()) ||
+            (currentUserName && msg.senderName.trim().toLowerCase() === currentUserName.trim().toLowerCase());
+          const isRecipient = (recipientName && currentUserName && recipientName.trim().toLowerCase() === currentUserName.trim().toLowerCase()) ||
+            (msg.targetPeerId && msg.targetPeerId === p2pManager.getRoomCode()) ||
+            (msg.targetUserId && currentUserId && msg.targetUserId === currentUserId);
+
+          if (!isSender && !isRecipient) {
+            // Descartar imediatamente: terceiro participante não deve ver nem armazenar
+            return;
+          }
+        }
+
         const msgId = isObj && payload.id ? payload.id : `chat-${msg.timestamp || Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
         const chatMsg: ChatMessage = {
           id: msgId,
           senderId: msg.senderId || 'unknown',
           senderName: msg.senderName,
           text: isObj ? (payload.text || '') : String(payload),
-          type: isObj && payload.type ? payload.type : 'PUBLIC',
-          recipientName: isObj ? payload.recipientName : undefined,
+          type,
+          recipientName,
           diceRoll: isObj ? payload.diceRoll : undefined,
           suggestedActions: isObj ? payload.suggestedActions : undefined,
           requestedRoll: isObj ? payload.requestedRoll : undefined,
@@ -137,10 +167,10 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
     };
   }, []);
 
-  const createRoom = useCallback(async (userName: string, customCode?: string, avatarUrl?: string) => {
+  const createRoom = useCallback(async (userName: string, customCode?: string, avatarUrl?: string, userId?: string) => {
     setIsConnecting(true);
     try {
-      const code = await p2pManager.createRoom(userName, customCode, avatarUrl);
+      const code = await p2pManager.createRoom(userName, customCode, avatarUrl, userId);
       setRoomCode(code);
       setIsConnected(true);
       setIsHost(true);
@@ -155,11 +185,12 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
       code: string,
       userName: string,
       avatarUrl?: string,
-      characterData?: Partial<PeerUser>
+      characterData?: Partial<PeerUser>,
+      userId?: string
     ) => {
       setIsConnecting(true);
       try {
-        const success = await p2pManager.joinRoom(code, userName, avatarUrl, characterData);
+        const success = await p2pManager.joinRoom(code, userName, avatarUrl, characterData, userId);
         if (success) {
           setRoomCode(code);
           setIsConnected(true);
@@ -292,13 +323,30 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
       };
 
       if (p2pManager.isConnected()) {
-        p2pManager.broadcast({
-          type: 'CHAT_MESSAGE',
-          senderId: p2pManager.getRoomCode(),
-          senderName: senderName,
-          payload: payload,
-          timestamp,
-        });
+        if (type === 'WHISPER' && recipientName) {
+          const targetPeer = p2pManager.findPeerByName(recipientName);
+          if (targetPeer) {
+            p2pManager.sendDirected(targetPeer.peerId, {
+              type: 'CHAT_MESSAGE',
+              senderId: p2pManager.getRoomCode(),
+              senderName: senderName,
+              payload: payload,
+              timestamp,
+              targetPeerId: targetPeer.peerId,
+              targetUserId: targetPeer.userId,
+            });
+          } else {
+            console.warn(`[useMultiplayer] Destinatário "${recipientName}" não encontrado na sala P2P para envio direcionado do sussurro.`);
+          }
+        } else {
+          p2pManager.broadcast({
+            type: 'CHAT_MESSAGE',
+            senderId: p2pManager.getRoomCode(),
+            senderName: senderName,
+            payload: payload,
+            timestamp,
+          });
+        }
       }
 
       // Adiciona localmente ao histórico do chat com verificação de duplicação

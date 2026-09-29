@@ -14,6 +14,7 @@ import {
   sendGameInvite,
   subscribeToIncomingInvites,
   respondToGameInvite,
+  findUserByEmailOrId,
 } from '../firebase/presenceAndFriends';
 
 interface UseSocialPresenceProps {
@@ -32,6 +33,7 @@ export function useSocialPresence({
   const [onlineUsers, setOnlineUsers] = useState<OnlineUserPresence[]>([]);
   const [friends, setFriends] = useState<FriendUser[]>([]);
   const [pendingInvites, setPendingInvites] = useState<GameInvite[]>([]);
+  const [isUsingFallback, setIsUsingFallback] = useState(false);
 
   const userId = user?.uid || 'local_user';
   const userName = character?.name || user?.displayName || user?.email?.split('@')[0] || 'Aventureiro';
@@ -43,19 +45,40 @@ export function useSocialPresence({
   const isConnectedRef = useRef(isConnectedMultiplayer);
   isConnectedRef.current = isConnectedMultiplayer;
 
-  // 1. Atualização periódica de presença (Heartbeat a cada 30 segundos)
+  // Armazena em ref os dados mais recentes para evitar reiniciar o heartbeat a cada tecla digitada
+  const latestPresenceRef = useRef({
+    userId,
+    name: userName,
+    email: user?.email || undefined,
+    avatarUrl,
+    characterName: character?.name,
+    characterClass: character?.characterClass,
+    characterLevel: character?.level,
+  });
+  latestPresenceRef.current = {
+    userId,
+    name: userName,
+    email: user?.email || undefined,
+    avatarUrl,
+    characterName: character?.name,
+    characterClass: character?.characterClass,
+    characterLevel: character?.level,
+  };
+
+  // 1. Atualização periódica de presença com Heartbeat estável a cada 30s
   useEffect(() => {
     if (!userId) return;
 
     const reportPresence = () => {
+      const cur = latestPresenceRef.current;
       updateUserPresence({
-        userId,
-        name: userName,
-        email: user?.email || undefined,
-        avatarUrl,
-        characterName: character?.name,
-        characterClass: character?.characterClass,
-        characterLevel: character?.level,
+        userId: cur.userId,
+        name: cur.name,
+        email: cur.email,
+        avatarUrl: cur.avatarUrl,
+        characterName: cur.characterName,
+        characterClass: cur.characterClass,
+        characterLevel: cur.characterLevel,
         lastSeen: Date.now(),
         status: isConnectedRef.current && currentRoomRef.current ? 'in_game' : 'online',
         currentRoomCode: isConnectedRef.current ? currentRoomRef.current : undefined,
@@ -65,29 +88,38 @@ export function useSocialPresence({
       }
     };
 
-    // Reporta imediatamente
+    // Reporta imediatamente ao montar
     reportPresence();
 
-    // Heartbeat regular a cada 30 segundos
+    // Heartbeat regular estável
     const interval = setInterval(reportPresence, 30000);
 
     // Marca como offline ao fechar a janela
-    const handleBeforeUnload = () => {
+    const handleUnload = () => {
       setUserOffline(userId);
     };
-    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('beforeunload', handleUnload);
+    window.addEventListener('pagehide', handleUnload);
 
     return () => {
       clearInterval(interval);
-      window.removeEventListener('beforeunload', handleBeforeUnload);
+      // Limpa presença no Firestore ao desmontar o fluxo autenticado/logout
+      setUserOffline(userId);
+      window.removeEventListener('beforeunload', handleUnload);
+      window.removeEventListener('pagehide', handleUnload);
     };
-  }, [userId, userName, user?.email, avatarUrl, character?.name, character?.characterClass, character?.level]);
+  }, [userId]);
 
-  // 2. Escuta lista de usuários online em tempo real
+  // 2. Escuta lista de usuários online em tempo real e monitora status do Firestore
   useEffect(() => {
-    const unsubscribe = subscribeToOnlineUsers((users) => {
-      setOnlineUsers(users);
-    });
+    const unsubscribe = subscribeToOnlineUsers(
+      (users) => {
+        setOnlineUsers(users);
+      },
+      (isFallback) => {
+        setIsUsingFallback(isFallback);
+      }
+    );
 
     return () => unsubscribe();
   }, []);
@@ -103,7 +135,7 @@ export function useSocialPresence({
     return () => unsubscribe();
   }, [userId]);
 
-  // 4. Escuta convites de jogo recebidos (por ID ou por Nome de Usuário)
+  // 4. Escuta convites de jogo recebidos
   useEffect(() => {
     if (!userId) return;
 
@@ -118,51 +150,48 @@ export function useSocialPresence({
     return () => unsubscribe();
   }, [userId, userName]);
 
-  // Ação: Adicionar amigo por email, nome ou id
+  // Ação: Adicionar amigo por email ou userId real
   const handleAddFriend = useCallback(
     async (identifier: string): Promise<{ success: boolean; message: string }> => {
       const clean = identifier.trim();
-      if (!clean) return { success: false, message: 'Digite um nome ou email.' };
+      if (!clean) return { success: false, message: 'Digite um identificador ou e-mail válido.' };
 
-      // Procura primeiro nos usuários online
-      const matched = onlineUsers.find(
-        (u) =>
-          u.userId !== userId &&
-          ((u.name && u.name.toLowerCase() === clean.toLowerCase()) ||
-            (u.characterName && u.characterName.toLowerCase() === clean.toLowerCase()) ||
-            (u.email && u.email.toLowerCase() === clean.toLowerCase()))
-      );
+      // Busca conta real e autenticada (online ou offline)
+      const matched = await findUserByEmailOrId(clean);
 
-      let targetFriend: Omit<FriendUser, 'addedAt'>;
-
-      if (matched) {
-        targetFriend = {
-          userId: matched.userId,
-          name: matched.characterName || matched.name,
-          email: matched.email,
-          avatarUrl: matched.avatarUrl,
-          characterName: matched.characterName,
-          characterClass: matched.characterClass,
-          characterLevel: matched.characterLevel,
-        };
-      } else {
-        // Se não encontrou online, cria registro de amigo por identificador
-        const isEmail = clean.includes('@');
-        targetFriend = {
-          userId: `friend_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-          name: isEmail ? clean.split('@')[0] : clean,
-          email: isEmail ? clean.toLowerCase() : undefined,
+      if (!matched || matched.userId === userId) {
+        if (matched?.userId === userId) {
+          return { success: false, message: 'Você não pode adicionar a si mesmo como amigo.' };
+        }
+        return {
+          success: false,
+          message:
+            'Não foi possível confirmar o usuário com este e-mail ou identificador. Certifique-se de que a conta está cadastrada e o dado digitado está correto.',
         };
       }
 
-      const ok = await addFriend(userId, targetFriend);
-      if (ok) {
-        return { success: true, message: `"${targetFriend.name}" foi adicionado aos seus amigos!` };
-      } else {
-        return { success: false, message: 'Este jogador já está na sua lista de amigos.' };
+      const targetFriend: Omit<FriendUser, 'addedAt'> = {
+        userId: matched.userId,
+        name: matched.name,
+        email: matched.email,
+        avatarUrl: matched.avatarUrl,
+      };
+
+      try {
+        const ok = await addFriend(userId, targetFriend);
+        if (ok) {
+          return { success: true, message: `"${targetFriend.name}" foi adicionado aos seus amigos!` };
+        } else {
+          return { success: false, message: 'Este jogador já está na sua lista de amigos.' };
+        }
+      } catch (err: unknown) {
+        return {
+          success: false,
+          message: (err as Error).message || 'Falha ao salvar amigo no Firestore. Verifique sua conexão.',
+        };
       }
     },
-    [userId, onlineUsers]
+    [userId]
   );
 
   // Ação: Remover amigo
@@ -179,37 +208,36 @@ export function useSocialPresence({
       friendUserId: string,
       friendName: string,
       roomCodeToSend: string
-    ): Promise<{ ok: boolean; inviteId?: string }> => {
+    ): Promise<{ ok: boolean; inviteId?: string; error?: string }> => {
       if (!roomCodeToSend) {
-        return { ok: false };
+        return { ok: false, error: 'Código de sala inválido.' };
       }
 
-      // Se friendUserId for temporário (começa com friend_), tenta resolver o userId real nos usuários online
-      let finalToUserId = friendUserId;
-      if (friendUserId.startsWith('friend_')) {
-        const found = onlineUsers.find(
-          (u) =>
-            u.userId !== userId &&
-            ((u.name && u.name.toLowerCase() === friendName.toLowerCase()) ||
-              (u.characterName && u.characterName.toLowerCase() === friendName.toLowerCase()) ||
-              (u.email && u.email.toLowerCase() === friendName.toLowerCase()))
-        );
-        if (found) {
-          finalToUserId = found.userId;
-        }
+      if (!friendUserId || friendUserId.startsWith('friend_') || friendUserId === 'local_user') {
+        return {
+          ok: false,
+          error: 'Não é possível enviar convite para um identificador provisório não autenticado.',
+        };
       }
 
-      const inviteId = await sendGameInvite({
-        fromUserId: userId,
-        fromUserName: userName,
-        toUserId: finalToUserId,
-        toUserName: friendName,
-        roomCode: roomCodeToSend,
-      });
+      try {
+        const inviteId = await sendGameInvite({
+          fromUserId: userId,
+          fromUserName: userName,
+          toUserId: friendUserId,
+          toUserName: friendName,
+          roomCode: roomCodeToSend,
+        });
 
-      return { ok: true, inviteId };
+        return { ok: true, inviteId };
+      } catch (err) {
+        return {
+          ok: false,
+          error: (err as Error).message || 'Falha ao registrar convite no Firestore.',
+        };
+      }
     },
-    [userId, userName, onlineUsers]
+    [userId, userName]
   );
 
   // Ação: Aceitar convite de jogo
@@ -232,6 +260,7 @@ export function useSocialPresence({
     onlineUsers,
     friends,
     pendingInvites,
+    isUsingFallback,
     handleAddFriend,
     handleRemoveFriend,
     handleSendGameInvite,

@@ -325,6 +325,17 @@ export const SessionChatModal: React.FC<SessionChatModalProps> = ({
             const isGmRoll = msg.type === 'GM_ROLL';
             const isWhisper = msg.type === 'WHISPER';
             const canSeeGmRoll = isHost || isMe;
+            const isRecipient = Boolean(
+              msg.recipientName &&
+              currentUserName &&
+              msg.recipientName.trim().toLowerCase() === currentUserName.trim().toLowerCase()
+            );
+            const canSeeWhisper = !isWhisper || isMe || isRecipient;
+
+            // Mensagens privadas/sussurros nunca devem ser renderizados para terceiros
+            if (isWhisper && !canSeeWhisper) {
+              return null;
+            }
 
             if (isAiDm) {
               return (

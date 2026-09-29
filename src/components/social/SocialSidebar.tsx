@@ -14,6 +14,7 @@ import {
   MessageSquare,
   Send,
   ArrowLeft,
+  AlertCircle,
 } from 'lucide-react';
 import {
   type OnlineUserPresence,
@@ -22,6 +23,7 @@ import {
   subscribeToDirectMessages,
   sendDirectMessage,
   markDirectMessagesAsRead,
+  isPresenceUsingLocalFallback,
 } from '../../firebase/presenceAndFriends';
 import type { PeerUser } from '../../types/vtt';
 
@@ -36,6 +38,7 @@ interface SocialSidebarProps {
   connectedPeers?: PeerUser[];
   directMessages?: DirectMessage[];
   initialTab?: 'online' | 'friends' | 'messages';
+  isUsingFallback?: boolean;
   onAddFriend: (identifier: string) => Promise<{ success: boolean; message: string }>;
   onRemoveFriend: (friendUserId: string) => Promise<void>;
   onSendGameInvite: (friendUserId: string, friendName: string, roomCode: string) => Promise<{ ok: boolean }>;
@@ -56,6 +59,7 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
   connectedPeers = [],
   directMessages,
   initialTab,
+  isUsingFallback,
   onAddFriend,
   onRemoveFriend,
   onSendGameInvite,
@@ -72,6 +76,7 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
   } | null>(null);
   const [messageInput, setMessageInput] = useState('');
   const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
   const [internalMessages, setInternalMessages] = useState<DirectMessage[]>([]);
   const [addInput, setAddInput] = useState('');
   const [addFeedback, setAddFeedback] = useState<{ msg: string; isError?: boolean } | null>(null);
@@ -96,6 +101,7 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
   }, [isOpen, onToggle]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const isFallbackActive = isUsingFallback ?? isPresenceUsingLocalFallback();
 
   // Usa mensagens passadas via prop ou gerencia subscrição interna
   const messages = directMessages || internalMessages;
@@ -148,28 +154,18 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
       u.name.trim().toLowerCase() !== currentUserName.trim().toLowerCase()
   );
 
-  // Mapeia quem dos amigos está online no momento
+  // Mapeia quem dos amigos está online no momento (usando apenas identificadores únicos e estáveis)
   const friendsWithStatus = friends.map((f) => {
     const peerData = connectedPeers?.find(
-      (p) =>
-        p.peerId === f.userId ||
-        (f.name && p.name && (p.name.trim().toLowerCase() === f.name.trim().toLowerCase() ||
-          p.name.trim().toLowerCase().includes(f.name.trim().toLowerCase()) ||
-          f.name.trim().toLowerCase().includes(p.name.trim().toLowerCase())))
+      (p) => (p.userId && p.userId === f.userId) || p.peerId === f.userId
     );
 
     const onlineData = effectiveOnlineUsers.find(
       (u) =>
         u.userId === f.userId ||
-        (f.name && u.name && (u.name.trim().toLowerCase() === f.name.trim().toLowerCase() ||
-          u.name.trim().toLowerCase().includes(f.name.trim().toLowerCase()) ||
-          f.name.trim().toLowerCase().includes(u.name.trim().toLowerCase()))) ||
-        (f.name && u.characterName && (u.characterName.trim().toLowerCase() === f.name.trim().toLowerCase() ||
-          u.characterName.trim().toLowerCase().includes(f.name.trim().toLowerCase()) ||
-          f.name.trim().toLowerCase().includes(u.characterName.trim().toLowerCase()))) ||
         (f.email && u.email && u.email.trim().toLowerCase() === f.email.trim().toLowerCase())
     ) || (peerData ? {
-      userId: peerData.peerId,
+      userId: peerData.userId || peerData.peerId,
       name: peerData.name,
       avatarUrl: peerData.avatarUrl,
       status: 'in_game' as const,
@@ -263,21 +259,8 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
     if (!activeChatPartner || !messageInput.trim() || isSendingMessage) return;
 
     const text = messageInput.trim();
-    setMessageInput('');
     setIsSendingMessage(true);
-
-    // Inserção otimista imediata na interface
-    const tempMsg: DirectMessage = {
-      id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      fromUserId: currentUserId,
-      fromUserName: currentUserName,
-      toUserId: activeChatPartner.userId,
-      toUserName: activeChatPartner.name,
-      content: text,
-      timestamp: Date.now(),
-      read: false,
-    };
-    setInternalMessages((prev) => [...prev, tempMsg]);
+    setChatError(null);
 
     try {
       if (onSendDirectMessage) {
@@ -291,8 +274,12 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
           content: text,
         });
       }
-    } catch (err) {
+      // Limpa o campo apenas após a confirmação de entrega do meio de envio
+      setMessageInput('');
+      setChatError(null);
+    } catch (err: any) {
       console.error('Falha ao enviar mensagem direta:', err);
+      setChatError(err?.message || 'Falha ao entregar mensagem. O texto foi mantido para você tentar novamente.');
     } finally {
       setIsSendingMessage(false);
     }
@@ -319,23 +306,8 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
   };
 
   const handleInviteClick = async (friendUserId: string, friendName: string, targetRoom?: string) => {
-    let resolvedId = friendUserId;
-    const match = effectiveOnlineUsers.find(
-      (u) =>
-        u.userId !== currentUserId &&
-        (u.userId === friendUserId ||
-          (u.name && friendName && (u.name.toLowerCase() === friendName.toLowerCase() ||
-            u.name.toLowerCase().includes(friendName.toLowerCase()) ||
-            friendName.toLowerCase().includes(u.name.toLowerCase()))) ||
-          (u.characterName && friendName && (u.characterName.toLowerCase() === friendName.toLowerCase() ||
-            u.characterName.toLowerCase().includes(friendName.toLowerCase()) ||
-            friendName.toLowerCase().includes(u.characterName.toLowerCase()))) ||
-          (u.email && friendName && u.email.toLowerCase() === friendName.toLowerCase()))
-    );
-    if (match) {
-      resolvedId = match.userId;
-    }
-
+    // Usa a identificação estável e única do amigo, evitando associação por nomes parecidos
+    const resolvedId = friendUserId;
     const code = targetRoom || currentRoomCode;
     if (code) {
       const res = await onSendGameInvite(resolvedId, friendName, code);
@@ -351,9 +323,9 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
         }
       }
       if (res.ok) {
-        setInvitedFriends((prev) => ({ ...prev, [friendUserId]: true, [resolvedId]: true }));
+        setInvitedFriends((prev) => ({ ...prev, [friendUserId]: true }));
         setTimeout(() => {
-          setInvitedFriends((prev) => ({ ...prev, [friendUserId]: false, [resolvedId]: false }));
+          setInvitedFriends((prev) => ({ ...prev, [friendUserId]: false }));
         }, 8000);
       }
     } else if (onCreateAndInvite) {
@@ -410,10 +382,17 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
               <h3 className="font-serif font-bold text-sm text-amber-200 leading-tight">
                 Comunidade Arcana
               </h3>
-              <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-mono">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                {currentUserName || 'Você'}
-              </span>
+              {isFallbackActive ? (
+                <span className="text-[10px] text-amber-400 flex items-center gap-1 font-mono" title="Sem conexão com o Firestore online. Usando dados locais deste navegador.">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                  Modo Local (Offline)
+                </span>
+              ) : (
+                <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-mono">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  {currentUserName || 'Você'}
+                </span>
+              )}
             </div>
           </div>
 
@@ -426,6 +405,14 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
             <X size={18} />
           </button>
         </div>
+
+        {/* Banner de Aviso de Fallback Local */}
+        {isFallbackActive && (
+          <div className="bg-amber-950/70 border-b border-amber-600/30 px-3 py-1.5 text-[10px] text-amber-300 flex items-center gap-1.5 shrink-0">
+            <AlertCircle size={12} className="shrink-0 text-amber-400" />
+            <span>Usando dados locais (sem conexão com Firestore). A lista não está sincronizada entre contas ou dispositivos.</span>
+          </div>
+        )}
 
       {/* TELA DE CHAT ATIVO COM UM USUÁRIO */}
       {activeChatPartner ? (
@@ -546,12 +533,30 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
             <div ref={messagesEndRef} />
           </div>
 
+          {/* Alerta de erro de envio */}
+          {chatError && (
+            <div className="px-3 py-1.5 bg-rose-950/90 border-t border-rose-500/50 text-rose-200 text-xs flex items-center justify-between gap-2 shrink-0">
+              <span className="leading-tight">⚠️ {chatError}</span>
+              <button
+                type="button"
+                onClick={() => setChatError(null)}
+                className="text-rose-300 hover:text-white font-bold p-0.5 cursor-pointer"
+                title="Fechar aviso"
+              >
+                ×
+              </button>
+            </div>
+          )}
+
           {/* Campo de Envio de Mensagem */}
           <form onSubmit={handleSendMessageSubmit} className="p-2 border-t border-slate-800 bg-slate-900/80 flex items-center gap-1.5 shrink-0">
             <input
               type="text"
               value={messageInput}
-              onChange={(e) => setMessageInput(e.target.value)}
+              onChange={(e) => {
+                setMessageInput(e.target.value);
+                if (chatError) setChatError(null);
+              }}
               placeholder={`Sussurrar para ${activeChatPartner.name}...`}
               className="rpg-input flex-1 text-xs py-1.5 px-2.5"
               autoFocus
@@ -559,10 +564,10 @@ export const SocialSidebar: React.FC<SocialSidebarProps> = ({
             <button
               type="submit"
               disabled={isSendingMessage || !messageInput.trim()}
-              className="rpg-button bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold p-1.5 px-2.5 text-xs disabled:opacity-40 flex items-center justify-center transition active:scale-95 shadow"
+              className="rpg-button bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold p-1.5 px-2.5 text-xs disabled:opacity-40 flex items-center justify-center transition active:scale-95 shadow cursor-pointer"
               title="Enviar mensagem (Enter)"
             >
-              <Send size={13} />
+              {isSendingMessage ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
             </button>
           </form>
         </div>

@@ -11,6 +11,7 @@ import {
   getDocs,
   setDoc,
   updateDoc,
+  deleteDoc,
   collection,
   writeBatch,
 } from 'firebase/firestore';
@@ -597,6 +598,147 @@ describe('Firestore Security Rules - Campanhas e Índices', () => {
       delBatch.delete(campRef);
       delBatch.delete(codeRef);
       await assertSucceeds(delBatch.commit());
+    });
+  });
+
+  describe('5. Presença, Amigos e Mensagens Privadas', () => {
+    it('1 e 2: remetente e destinatário conseguem acessar a mensagem, mas um terceiro usuário não consegue ler', async () => {
+      // Alice envia uma mensagem direta para Bob
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const adminDb = context.firestore();
+        await setDoc(doc(adminDb, 'direct_messages', 'msg_alice_bob'), {
+          id: 'msg_alice_bob',
+          fromUserId: 'alice',
+          fromUserName: 'Alice',
+          toUserId: 'bob',
+          toUserName: 'Bob',
+          content: 'Mensagem confidencial entre Alice e Bob',
+          timestamp: Date.now(),
+          read: false,
+        });
+      });
+
+      const alice = testEnv.authenticatedContext('alice').firestore();
+      const bob = testEnv.authenticatedContext('bob').firestore();
+      const eve = testEnv.authenticatedContext('eve').firestore();
+
+      const msgRefAlice = doc(alice, 'direct_messages', 'msg_alice_bob');
+      const msgRefBob = doc(bob, 'direct_messages', 'msg_alice_bob');
+      const msgRefEve = doc(eve, 'direct_messages', 'msg_alice_bob');
+
+      // Remetente (Alice) acessa com sucesso
+      await assertSucceeds(getDoc(msgRefAlice));
+      // Destinatário (Bob) acessa com sucesso
+      await assertSucceeds(getDoc(msgRefBob));
+      // Terceiro usuário (Eve) é bloqueado pelas regras
+      await assertFails(getDoc(msgRefEve));
+    });
+
+    it('4. usuários só podem criar, modificar e apagar a própria presença', async () => {
+      const alice = testEnv.authenticatedContext('alice').firestore();
+      const bob = testEnv.authenticatedContext('bob').firestore();
+      const eve = testEnv.authenticatedContext('eve').firestore();
+
+      const alicePresence = doc(alice, 'online_users', 'alice');
+      const bobPresence = doc(bob, 'online_users', 'bob');
+      const eveTriesAlice = doc(eve, 'online_users', 'alice');
+
+      // Alice registra sua própria presença
+      await assertSucceeds(
+        setDoc(alicePresence, {
+          userId: 'alice',
+          name: 'Alice Aventureira',
+          lastSeen: Date.now(),
+          status: 'online',
+        })
+      );
+
+      // Eve NÃO pode modificar a presença da Alice
+      await assertFails(
+        updateDoc(eveTriesAlice, {
+          status: 'offline',
+          lastSeen: Date.now(),
+        })
+      );
+
+      // Eve NÃO pode apagar a presença da Alice
+      await assertFails(deleteDoc(eveTriesAlice));
+
+      // Alice PODE apagar seu próprio registro de presença ao sair
+      await assertSucceeds(deleteDoc(alicePresence));
+    });
+
+    it('4. usuários só podem modificar sua própria lista de amigos', async () => {
+      const alice = testEnv.authenticatedContext('alice').firestore();
+      const eve = testEnv.authenticatedContext('eve').firestore();
+
+      const aliceFriends = doc(alice, 'user_friends', 'alice');
+      const eveTriesAliceFriends = doc(eve, 'user_friends', 'alice');
+
+      // Alice atualiza sua lista de amigos
+      await assertSucceeds(
+        setDoc(aliceFriends, {
+          friends: [
+            {
+              userId: 'bob',
+              name: 'Bob',
+              addedAt: Date.now(),
+            },
+          ],
+        })
+      );
+
+      // Eve NÃO pode alterar os amigos da Alice
+      await assertFails(
+        setDoc(eveTriesAliceFriends, {
+          friends: [],
+        })
+      );
+    });
+
+    it('5. somente o destinatário pode marcar uma mensagem recebida como lida', async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const adminDb = context.firestore();
+        await setDoc(doc(adminDb, 'direct_messages', 'msg_read_test'), {
+          id: 'msg_read_test',
+          fromUserId: 'alice',
+          fromUserName: 'Alice',
+          toUserId: 'bob',
+          toUserName: 'Bob',
+          content: 'Você leu isso?',
+          timestamp: Date.now(),
+          read: false,
+        });
+      });
+
+      const alice = testEnv.authenticatedContext('alice').firestore();
+      const bob = testEnv.authenticatedContext('bob').firestore();
+      const eve = testEnv.authenticatedContext('eve').firestore();
+
+      const refAlice = doc(alice, 'direct_messages', 'msg_read_test');
+      const refBob = doc(bob, 'direct_messages', 'msg_read_test');
+      const refEve = doc(eve, 'direct_messages', 'msg_read_test');
+
+      // Terceiro (Eve) tenta marcar como lida -> Falha
+      await assertFails(
+        updateDoc(refEve, {
+          read: true,
+        })
+      );
+
+      // Remetente (Alice) tenta marcar mensagem enviada como lida -> Falha (apenas o destinatário Bob pode)
+      await assertFails(
+        updateDoc(refAlice, {
+          read: true,
+        })
+      );
+
+      // Destinatário (Bob) marca como lida -> Sucesso
+      await assertSucceeds(
+        updateDoc(refBob, {
+          read: true,
+        })
+      );
     });
   });
 });

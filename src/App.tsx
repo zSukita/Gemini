@@ -1200,6 +1200,7 @@ export function App() {
     onlineUsers,
     friends,
     pendingInvites,
+    isUsingFallback,
     handleAddFriend,
     handleRemoveFriend,
     handleSendGameInvite,
@@ -2602,6 +2603,7 @@ export function App() {
         onlineUsers={onlineUsers}
         friends={friends}
         directMessages={directMessages}
+        isUsingFallback={isUsingFallback}
         onSendDirectMessage={handleSendDirectMessage}
         onMarkMessagesAsRead={handleMarkDirectMessagesAsRead}
         onAddFriend={handleAddFriend}

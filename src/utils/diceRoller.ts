@@ -5,7 +5,20 @@ import type { AdvantageMode, DiceRollResult } from '../types/dnd5e';
  * Rola um dado de N faces (ex: 20, 6, 8, etc.)
  */
 export function rollDie(sides: number): number {
+  if (!Number.isInteger(sides) || sides < 2 || sides > 100) throw new RangeError('O dado deve ter entre 2 e 100 faces.');
   return Math.floor(Math.random() * sides) + 1;
+}
+
+export function isValidDiceFormula(formula: string): boolean {
+  const cleaned = formula.replace(/\s+/g, '');
+  const match = cleaned.match(/^(\d*)d(\d+)([+-]\d+)?$/i);
+  if (match) {
+    const count = match[1] ? Number(match[1]) : 1;
+    const sides = Number(match[2]);
+    const modifier = match[3] ? Number(match[3]) : 0;
+    return Number.isInteger(count) && count >= 1 && count <= 100 && Number.isInteger(sides) && sides >= 2 && sides <= 100 && Number.isSafeInteger(modifier) && Math.abs(modifier) <= 10000;
+  }
+  return /^-?\d{1,5}$/.test(cleaned) && Math.abs(Number(cleaned)) <= 10000;
 }
 
 /**
@@ -155,6 +168,9 @@ export function rollFormula(
   isCriticalDamage = false
 ): DiceRollResult {
   const cleaned = formula.replace(/\s+/g, '');
+  if (!isValidDiceFormula(cleaned)) {
+    return { id: `roll-${Date.now()}-invalid`, label, dieType: 'invalid', rolls: [], selectedRoll: 0, modifier: 0, total: 0, advantageMode: 'normal', invalidFormula: true, breakdown: 'Fórmula inválida (limite: 100 dados, 100 faces e modificador ±10.000)', timestamp: new Date().toLocaleTimeString('pt-BR') };
+  }
   // regex: /(\d*)d(\d+)([+-]\d+)?/i
   const match = cleaned.match(/^(\d*)d(\d+)([+-]\d+)?$/i);
 

@@ -148,6 +148,8 @@ export interface Character {
   tempHp: number;
   hitDice: HitDice;
   deathSaves: DeathSaves;
+  /** Estado excepcional que não pode ser inferido apenas dos contadores (morto/estável). */
+  deathStatus?: 'stable' | 'dead';
 
   // Atributos base
   abilities: Record<AbilityKey, { score: number; saveProficient: boolean }>;
@@ -254,6 +256,7 @@ export interface DiceRollResult {
   isCriticalSuccess?: boolean;
   isCriticalFailure?: boolean;
   isSecret?: boolean;
+  invalidFormula?: boolean;
   breakdown: string;
   timestamp: string;
 }
@@ -269,4 +272,3 @@ export interface QuickAction {
   spellLevel?: number;
   subtitle?: string;
 }
-

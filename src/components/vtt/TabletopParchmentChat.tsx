@@ -6,6 +6,7 @@ import type { MapToken } from '../../types/vtt';
 import type { AiLootReward } from '../../types/aiDm';
 import { rollFormula, rollD20 } from '../../utils/diceRoller';
 import { getDnd5eRollModifier } from '../../utils/calculations';
+import { isCharacterDead, isCharacterStable } from '../../utils/deathSaves';
 import { 
   Sparkles, 
   Dices, 
@@ -127,8 +128,8 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
   const isOtherPlayerTurn = Boolean(isCombatActive && isPlayerTurn && !isMyTurn);
   const isMonsterTurn = Boolean(isCombatActive && activeCombatant?.type === 'monster');
   const isUnconscious = Boolean(character && character.currentHp <= 0);
-  const isDead = Boolean((character?.deathSaves?.failures || 0) >= 3);
-  const isStable = Boolean((character?.deathSaves?.successes || 0) >= 3);
+  const isDead = Boolean(character && isCharacterDead(character));
+  const isStable = Boolean(character && isCharacterStable(character));
 
   // Localiza a mensagem da IA mais recente e as ações sugeridas ativas
   const lastAiMessage = [...chatLog].reverse().find(
@@ -345,34 +346,42 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
       onUpdateCharacter?.({
         currentHp: 1,
         deathSaves: { successes: 0, failures: 0 },
+        deathStatus: undefined,
       });
       announcement = `✨ **20 NATURAL NA SALVAGUARDA CONTRA A MORTE!** [${roll.breakdown}]\n` +
         `Um milagre de pura resiliência desperta **${character.name}**! Ele recupera **1 PV** e se ergue consciente!`;
       promptText = `@mestre [SALVAGUARDA CONTRA A MORTE]: ${character.name} tirou um 20 NATURAL! O herói recuperou 1 PV e despertou da beira da morte! Descreva este momento heroico e dramático!`;
     } else if (natural === 1) {
       newFailures = Math.min(3, currentFailures + 2);
-      onUpdateCharacter?.({
-        deathSaves: { successes: newSuccesses, failures: newFailures },
-      });
       const isDead = newFailures >= 3;
+      onUpdateCharacter?.({
+        deathSaves: { successes: isDead ? 0 : newSuccesses, failures: newFailures },
+        deathStatus: isDead ? 'dead' : undefined,
+      });
       announcement = `💀 **FALHA CRÍTICA (1 NATURAL) NA SALVAGUARDA!** [${roll.breakdown}]\n` +
         `O herói sofre **2 FALHAS** simultâneas (${newFailures}/3 falhas)! ${isDead ? '💀 **O PERSONAGEM FALECEU!**' : ''}`;
       promptText = `@mestre [SALVAGUARDA CONTRA A MORTE]: ${character.name} rolou 1 NATURAL sofrendo 2 falhas (${newFailures}/3). ${isDead ? 'O herói sucumbiu à morte!' : 'Ele está a um passo da morte.'} Narre o agravamento crítico dos ferimentos!`;
     } else if (roll.total >= 10) {
       newSuccesses = Math.min(3, currentSuccesses + 1);
+      const isStable = newSuccesses >= 3;
+      if (isStable) {
+        newSuccesses = 0;
+        newFailures = 0;
+      }
       onUpdateCharacter?.({
         deathSaves: { successes: newSuccesses, failures: newFailures },
+        deathStatus: isStable ? 'stable' : undefined,
       });
-      const isStable = newSuccesses >= 3;
       announcement = `🛡️ **SUCESSO NA SALVAGUARDA!** [${roll.breakdown}] = ${roll.total} (vs CD 10)\n` +
-        `Sucesso registrado (${newSuccesses}/3 sucessos)! ${isStable ? '✨ **O PERSONAGEM ESTABILIZOU!**' : ''}`;
+        `${isStable ? '✨ **O PERSONAGEM ESTABILIZOU!** Os contadores foram zerados.' : `Sucesso registrado (${newSuccesses}/3 sucessos).`}`;
       promptText = `@mestre [SALVAGUARDA CONTRA A MORTE]: ${character.name} obteve sucesso (${roll.total} vs CD 10), acumulando ${newSuccesses}/3 sucessos. ${isStable ? 'O herói estabilizou seu estado vital!' : ''} Narre sua respiração voltando ao ritmo constante.`;
     } else {
       newFailures = Math.min(3, currentFailures + 1);
-      onUpdateCharacter?.({
-        deathSaves: { successes: newSuccesses, failures: newFailures },
-      });
       const isDead = newFailures >= 3;
+      onUpdateCharacter?.({
+        deathSaves: { successes: isDead ? 0 : newSuccesses, failures: newFailures },
+        deathStatus: isDead ? 'dead' : undefined,
+      });
       announcement = `🩸 **FALHA NA SALVAGUARDA!** [${roll.breakdown}] = ${roll.total} (vs CD 10)\n` +
         `Falha registrada (${newFailures}/3 falhas)! ${isDead ? '💀 **O PERSONAGEM FALECEU!**' : ''}`;
       promptText = `@mestre [SALVAGUARDA CONTRA A MORTE]: ${character.name} falhou (${roll.total} vs CD 10), acumulando ${newFailures}/3 falhas. ${isDead ? 'O herói sucumbiu à morte!' : ''} Narre a escuridão que avança sobre ele.`;
@@ -1000,11 +1009,13 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                     onClick={() => {
                       const curr = character.deathSaves?.successes || 0;
                       const next = idx < curr ? idx : idx + 1;
+                      const becameStable = next >= 3;
                       onUpdateCharacter?.({
                         deathSaves: {
-                          successes: next,
-                          failures: character.deathSaves?.failures || 0,
+                          successes: becameStable ? 0 : next,
+                          failures: becameStable ? 0 : character.deathSaves?.failures || 0,
                         },
+                        deathStatus: becameStable ? 'stable' : undefined,
                       });
                     }}
                     className={`w-4 h-4 rounded-full border transition cursor-pointer ${
@@ -1029,11 +1040,13 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                     onClick={() => {
                       const curr = character.deathSaves?.failures || 0;
                       const next = idx < curr ? idx : idx + 1;
+                      const becameDead = next >= 3;
                       onUpdateCharacter?.({
                         deathSaves: {
-                          successes: character.deathSaves?.successes || 0,
+                          successes: becameDead ? 0 : character.deathSaves?.successes || 0,
                           failures: next,
                         },
+                        deathStatus: becameDead ? 'dead' : undefined,
                       });
                     }}
                     className={`w-4 h-4 rounded-full border transition cursor-pointer ${

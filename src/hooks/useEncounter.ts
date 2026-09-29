@@ -315,7 +315,7 @@ export function useEncounter() {
   };
 
   // Ajustar HP do combatente (+ cura / - dano)
-  const applyCombatantHpDelta = (id: string, delta: number, actor = 'Mestre') => {
+  const applyCombatantHpDelta = (id: string, delta: number, actor = 'Mestre', options: { critical?: boolean; restore?: boolean } = {}) => {
     setEncounter((prev) => {
       const target = prev.combatants.find((c) => c.id === id);
       if (!target) return prev;
@@ -350,6 +350,7 @@ export function useEncounter() {
             playerId: target.playerId,
             currentHp: newCurrent,
             tempHp: newTemp,
+            ...(options.restore ? { restoreHp: true } : delta < 0 ? { damageAmount: Math.abs(delta), criticalDamage: Boolean(options.critical) } : delta > 0 ? { healingAmount: delta } : {}),
           },
         });
       }
@@ -374,7 +375,7 @@ export function useEncounter() {
       const combatant = prev.combatants.find((item) => item.id === change.combatantId);
       if (!combatant) return { ...prev, lastHpChange: undefined };
       if (combatant.playerId) {
-        broadcastSyncMessage({ type: 'DM_COMBATANT_UPDATE', payload: { playerId: combatant.playerId, currentHp: change.currentHp, tempHp: change.tempHp } });
+        broadcastSyncMessage({ type: 'DM_COMBATANT_UPDATE', payload: { playerId: combatant.playerId, currentHp: change.currentHp, tempHp: change.tempHp, restoreHp: true } });
       }
       return {
         ...prev,

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { rollDie, rollD20, rollFormula } from './diceRoller';
+import { isValidDiceFormula, rollDie, rollD20, rollFormula } from './diceRoller';
 
 // Mock confetti e áudio para ambiente Node
 vi.mock('canvas-confetti', () => ({
@@ -55,5 +55,13 @@ describe('Rolador de Dados (Dice Roller)', () => {
 
     const crit = rollFormula('1d8 + 3', 'Dano Crítico', true);
     expect(crit.rolls.length).toBe(2); // 1d8 dobrado para 2d8
+    expect(crit.total - crit.rolls.reduce((sum, die) => sum + die, 0)).toBe(3); // modificador fixo entra uma vez
+  });
+
+  it('rejects formulas that could trigger excessive rolls or invalid dice', () => {
+    for (const formula of ['100000000d6', '1d1', '1d1000', '2d6+999999', 'abc']) {
+      expect(isValidDiceFormula(formula)).toBe(false);
+      expect(rollFormula(formula, 'Fórmula inválida').invalidFormula).toBe(true);
+    }
   });
 });

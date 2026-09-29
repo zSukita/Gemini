@@ -177,7 +177,7 @@ export function parseAiResponse(rawText: string): {
 
       const ppMatch = str.match(/(\d+)\s*(?:pp)(?![a-záàâãéêíóôõúçA-ZÀ-ÚÇ])/i);
       if (ppMatch && !spMatch) {
-        coins.sp = (coins.sp || 0) + parseInt(ppMatch[1], 10);
+        coins.pp = (coins.pp || 0) + parseInt(ppMatch[1], 10);
       }
 
       const cpMatch = str.match(/(\d+)\s*(?:pc|cp|\bpeças?\s+de\s+cobre|\bmoedas?\s+de\s+cobre)(?![a-záàâãéêíóôõúçA-ZÀ-ÚÇ])/i);

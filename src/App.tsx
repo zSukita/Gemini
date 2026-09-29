@@ -7,7 +7,9 @@ import { useMultiplayer } from './hooks/useMultiplayer';
 
 import type { AdvantageMode, DiceRollResult, Spell, ThemeId, CampaignNpc } from './types/dnd5e';
 import type { FogShape, MapToken, BattleMapConfig, PeerUser } from './types/vtt';
-import { rollD20, rollDie, rollFormula } from './utils/diceRoller';
+import { isValidDiceFormula, rollD20, rollDie, rollFormula } from './utils/diceRoller';
+import { applyCharacterDamage, applyCharacterHealing, isCharacterDead } from './utils/deathSaves';
+import { classifyCastingTime, makeTurnActionUseKey } from './utils/actionEconomy';
 import { broadcastSyncMessage } from './utils/syncChannel';
 
 import { Navbar, type AppMode } from './components/Navbar';
@@ -149,6 +151,10 @@ export function App() {
   });
   const [isBeginnerGuideOpen, setIsBeginnerGuideOpen] = useState(false);
   const [advantageMode, setAdvantageMode] = useState<AdvantageMode>('normal');
+  const [turnSpellUse, setTurnSpellUse] = useState<Record<string, true>>({});
+  useEffect(() => {
+    if (encounter.isRunning) setTurnSpellUse({});
+  }, [encounter.id, encounter.isRunning]);
   const [diceRolls, setDiceRolls] = useState<DiceRollResult[]>([]);
   const [lastRoll, setLastRoll] = useState<DiceRollResult | null>(null);
   const [activeRollAnimation, setActiveRollAnimation] = useState<DiceRollResult | null>(null);
@@ -605,11 +611,16 @@ export function App() {
 
   // Modificar PV de Combatente e Sincronizar Imediatamente os Tokens no Mapa e Rede P2P
   const handleHpDelta = useCallback(
-    (id: string, delta: number) => {
-      applyCombatantHpDelta(id, delta, character.name || user?.displayName || 'Mestre');
+    (id: string, delta: number, critical = false) => {
+      applyCombatantHpDelta(id, delta, character.name || user?.displayName || 'Mestre', { critical });
 
       const combatant = encounterRef.current?.combatants.find((c) => c.id === id);
       if (combatant) {
+        if (combatant.type === 'player' && combatant.playerId === character.id) {
+          updateCharacter((prev) => delta < 0
+            ? applyCharacterDamage(prev, Math.abs(delta), critical)
+            : delta > 0 ? applyCharacterHealing(prev, delta) : prev);
+        }
         let newHp = combatant.currentHp;
         let newTempHp = combatant.tempHp;
         if (delta < 0) {
@@ -647,7 +658,7 @@ export function App() {
         });
       }
     },
-    [applyCombatantHpDelta, isConnected, broadcastTokenMove, character.name, user?.displayName, setTokens]
+    [applyCombatantHpDelta, isConnected, broadcastTokenMove, character.id, character.name, user?.displayName, setTokens, updateCharacter]
   );
 
   const handleUndoLastHpChange = useCallback(() => {
@@ -1604,6 +1615,10 @@ export function App() {
   const handleRollFormula = useCallback(
     (formula: string, label: string, isCrit = false) => {
       const res = rollFormula(formula, label, isCrit);
+      if (res.invalidFormula) {
+        showNotification(res.breakdown);
+        return;
+      }
       if (isSecretRoll) {
         res.isSecret = true;
       }
@@ -1625,7 +1640,7 @@ export function App() {
         }
       }
     },
-    [isSecretRoll, addRollResult, isConnected, sendChatMessage, character.name, broadcastDiceRoll, recordCombatAction]
+    [isSecretRoll, addRollResult, isConnected, sendChatMessage, character.name, broadcastDiceRoll, recordCombatAction, showNotification]
   );
 
   // Rolar novamente a última rolagem ativa (Re-roll na animação 3D)
@@ -1648,17 +1663,24 @@ export function App() {
     (attack: MonsterAttackAction): Promise<void> => {
       return new Promise<void>((resolve) => {
         const currentEncounter = encounterRef.current;
-        const requestedTargetName = attack.target || character.name || 'o Herói';
-        const requestedTarget = currentEncounter?.combatants.find(
-          (c) => c.name.toLowerCase() === requestedTargetName.toLowerCase()
-        );
-        // Nunca aplique dano a personagem já inconsciente/morta. A seleção do alvo
-        // normalmente filtra isso antes, mas esta validação protege ataques propostos pela IA.
-        if (requestedTarget?.type === 'player' && requestedTarget.currentHp <= 0) {
-          showNotification(`${requestedTarget.name} está inconsciente e não pode ser alvo automático. O turno do monstro foi cancelado.`);
+        const monster = currentEncounter?.combatants.find((c) => c.type === 'monster' && c.name.toLowerCase() === attack.monsterName.toLowerCase() && c.currentHp > 0);
+        const storedAction = monster?.monsterData?.actions.find((a) => a.name.toLowerCase() === attack.attackName.toLowerCase());
+        const safeAttack = monster && storedAction
+          ? { ...attack, monsterName: monster.name, attackName: storedAction.name, attackBonus: storedAction.attackBonus ?? 0, damageFormula: storedAction.damageFormula || '' }
+          : null;
+        if (!safeAttack || !safeAttack.damageFormula || !isValidDiceFormula(safeAttack.damageFormula)) {
+          showNotification('Ação cancelada: ataque ou fórmula não consta na ficha válida do monstro.');
           resolve();
           return;
         }
+        const requestedTarget = currentEncounter?.combatants.find((c) => c.type === 'player' && c.name.toLowerCase() === (safeAttack.target || character.name || '').toLowerCase());
+        if (!requestedTarget || requestedTarget.currentHp <= 0) {
+          showNotification(`${safeAttack.target || 'O alvo'} não está consciente ou não pertence ao grupo. O ataque foi cancelado.`);
+          resolve();
+          return;
+        }
+        attack = safeAttack;
+        const requestedTargetName = requestedTarget.name;
         // 1. Notificação de início do ataque
         showNotification(`🐉 ${attack.monsterName} ataca com ${attack.attackName}!`);
 
@@ -1687,8 +1709,8 @@ export function App() {
 
           if (isHit) {
             const damageLabel = `${attack.monsterName}: Dano ${attack.attackName}`;
-            damageRoll = rollFormula(attack.damageFormula || '1d6', damageLabel);
-            finalDamage = isNat20 ? damageRoll.total * 2 : damageRoll.total;
+            damageRoll = rollFormula(attack.damageFormula, damageLabel, isNat20);
+            finalDamage = damageRoll.total;
             recordCombatAction(`${attack.monsterName}: dano ${damageRoll.breakdown} = ${finalDamage}${isNat20 ? ' (crítico)' : ''} contra ${targetName}.`, 'attack', attack.monsterName);
 
             // Se o herói local for o alvo, deduz vida na ficha e no mapa
@@ -1717,7 +1739,7 @@ export function App() {
                 (isLocalTarget && c.name.toLowerCase() === (character.name || '').toLowerCase())
             );
             if (hpTarget && finalDamage > 0) {
-              applyCombatantHpDelta(hpTarget.id, -finalDamage, attack.monsterName);
+              applyCombatantHpDelta(hpTarget.id, -finalDamage, attack.monsterName, { critical: isNat20 });
             }
           }
 
@@ -1790,6 +1812,11 @@ export function App() {
           description: 'Um golpe brutal com garras, presas ou armas rústicas.',
         };
 
+      if (!mon.monsterData?.actions.some((action) => action.name === chosenAction.name && action.damageFormula) || !chosenAction.damageFormula || !isValidDiceFormula(chosenAction.damageFormula)) {
+        showNotification(`${mon.name} não tem um ataque válido cadastrado. O turno automático foi cancelado.`);
+        return;
+      }
+
       const currentEncounter = encounterRef.current;
       const consciousTargets = (currentEncounter?.combatants || encounter.combatants)
         .filter((c) => c.type === 'player' && c.currentHp > 0);
@@ -1812,8 +1839,8 @@ export function App() {
       const attackAction: MonsterAttackAction = {
         monsterName: mon.name,
         attackName: chosenAction.name,
-        attackBonus: chosenAction.attackBonus ?? 3,
-        damageFormula: chosenAction.damageFormula ?? '1d6+1',
+        attackBonus: chosenAction.attackBonus ?? 0,
+        damageFormula: chosenAction.damageFormula,
         target: target.name,
       };
 
@@ -2059,6 +2086,21 @@ export function App() {
 
   // Conjurar Magia
   const handleCastSpell = (spell: Spell) => {
+    if (isCharacterDead(character) || character.currentHp <= 0) {
+      showNotification('Um personagem inconsciente ou morto não pode conjurar magia.');
+      return;
+    }
+    const activeCombatant = encounter.isRunning ? encounter.combatants[encounter.activeCombatantIndex] : null;
+    if (activeCombatant && (activeCombatant.type !== 'player' || (activeCombatant.id !== character.id && activeCombatant.name.toLowerCase() !== character.name.toLowerCase()))) {
+      showNotification('Aguarde o turno do seu personagem para conjurar durante o combate.');
+      return;
+    }
+    const actionType = classifyCastingTime(spell.castingTime);
+    const usageKey = actionType ? makeTurnActionUseKey(encounter.id, encounter.round, character.id, actionType) : '';
+    if (encounter.isRunning && usageKey && turnSpellUse[usageKey]) {
+      showNotification(`Você já usou sua ${actionType} nesta rodada.`);
+      return;
+    }
     if (spell.level > 0) {
       const slot = character.spellcasting.slots.find((s) => s.level === spell.level);
       if (slot && slot.used < slot.max) {
@@ -2066,7 +2108,16 @@ export function App() {
         showNotification(`Magia "${spell.name}" conjurada gastando 1 espaço de ${spell.level}º Círculo!`);
       } else {
         showNotification(`Aviso: Nenhum espaço de ${spell.level}º Círculo disponível para "${spell.name}"!`);
+        return;
       }
+    }
+
+    if (encounter.isRunning && usageKey) {
+      setTurnSpellUse((used) => {
+        const next = { ...used, [usageKey]: true as const };
+        const entries = Object.entries(next);
+        return entries.length > 60 ? Object.fromEntries(entries.slice(-40)) : next;
+      });
     }
 
     const match = spell.description.match(/(\d+d\d+(\s*[+-]\s*\d+)?)/i);

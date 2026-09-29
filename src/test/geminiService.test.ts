@@ -182,7 +182,7 @@ Vocês vasculham os restos do acampamento e encontram um baú com reforços de l
       expect(parsed.cleanText).toBe('Vocês vasculham os restos do acampamento e encontram um baú com reforços de latão!');
       expect(parsed.lootReward).toBeDefined();
       expect(parsed.lootReward?.coins?.gp).toBe(25);
-      expect(parsed.lootReward?.coins?.sp).toBe(50);
+      expect(parsed.lootReward?.coins?.pp).toBe(50);
       expect(parsed.lootReward?.items).toEqual([
         { name: 'Poção de Cura', quantity: 2 },
         { name: 'Adaga de Prata', quantity: 1 },

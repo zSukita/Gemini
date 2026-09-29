@@ -75,7 +75,7 @@ Você abre o baú reforçado de ferro.
     const result = parseAiResponse(raw);
     expect(result.lootReward).toBeDefined();
     expect(result.lootReward?.coins?.gp).toBe(50);
-    expect(result.lootReward?.coins?.sp).toBe(120);
+    expect(result.lootReward?.coins?.pp).toBe(120);
     expect(result.lootReward?.items).toHaveLength(2);
     expect(result.lootReward?.items?.[0].name).toBe('Poção de Cura');
   });

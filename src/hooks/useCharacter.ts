@@ -21,6 +21,7 @@ import {
   syncOnChange,
 } from '../firebase/characterSync';
 import { safeSetItem, safeSetJson } from '../utils/safeStorage';
+import { applyCharacterDamage, applyCharacterHealing, isCharacterDead } from '../utils/deathSaves';
 
 const STORAGE_KEY_ACTIVE = 'arcanasheet_active_character_id';
 const STORAGE_KEY_CHARACTERS = 'arcanasheet_characters_list';
@@ -156,17 +157,20 @@ export function useCharacter(userId?: string | null) {
           currentHp?: number;
           maxHp?: number;
           tempHp?: number;
+          damageAmount?: number;
+          criticalDamage?: boolean;
+          healingAmount?: number;
+          restoreHp?: boolean;
         };
 
         if (payload.playerId && payload.playerId === activeId) {
           setCharacters((prev) =>
             prev.map((c) => {
               if (c.id === activeId) {
-                return {
-                  ...c,
-                  currentHp: payload.currentHp !== undefined ? payload.currentHp : c.currentHp,
-                  tempHp: payload.tempHp !== undefined ? payload.tempHp : c.tempHp,
-                };
+                if (payload.restoreHp) return { ...c, currentHp: payload.currentHp ?? c.currentHp, tempHp: payload.tempHp ?? c.tempHp };
+                if (payload.damageAmount !== undefined) return applyCharacterDamage(c, payload.damageAmount, payload.criticalDamage);
+                if (payload.healingAmount !== undefined) return applyCharacterHealing(c, payload.healingAmount);
+                return { ...c, currentHp: payload.currentHp ?? c.currentHp, tempHp: payload.tempHp ?? c.tempHp };
               }
               return c;
             })
@@ -234,38 +238,14 @@ export function useCharacter(userId?: string | null) {
 
   // Aplicar dano (absorvido primeiro pelo HP temporário)
   const applyDamage = (amount: number) => {
-    if (amount <= 0) return;
-    updateCharacter((prev) => {
-      let remainingDamage = amount;
-      let newTempHp = prev.tempHp;
-
-      if (newTempHp > 0) {
-        if (newTempHp >= remainingDamage) {
-          newTempHp -= remainingDamage;
-          remainingDamage = 0;
-        } else {
-          remainingDamage -= newTempHp;
-          newTempHp = 0;
-        }
-      }
-
-      const newCurrentHp = Math.max(0, prev.currentHp - remainingDamage);
-
-      return {
-        ...prev,
-        tempHp: newTempHp,
-        currentHp: newCurrentHp,
-      };
-    });
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    updateCharacter((prev) => applyCharacterDamage(prev, amount));
   };
 
   // Aplicar cura
   const applyHealing = (amount: number) => {
-    if (amount <= 0) return;
-    updateCharacter((prev) => ({
-      ...prev,
-      currentHp: Math.min(prev.maxHp, prev.currentHp + amount),
-    }));
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    updateCharacter((prev) => applyCharacterHealing(prev, amount));
   };
 
   // Definir HP Temporário
@@ -304,7 +284,7 @@ export function useCharacter(userId?: string | null) {
 
   // Descanso Curto (Short Rest): pode gastar 1 dado de vida para curar
   const spendHitDie = (): { dieRoll: number; conMod: number; totalHealed: number } | null => {
-    if (activeCharacter.hitDice.current <= 0) return null;
+    if (isCharacterDead(activeCharacter) || activeCharacter.hitDice.current <= 0) return null;
 
     const sides = parseInt(activeCharacter.hitDice.dieType.replace('d', ''), 10) || 8;
     const dieRoll = rollDie(sides);
@@ -312,8 +292,7 @@ export function useCharacter(userId?: string | null) {
     const totalHealed = Math.max(1, dieRoll + conMod);
 
     updateCharacter((prev) => ({
-      ...prev,
-      currentHp: Math.min(prev.maxHp, prev.currentHp + totalHealed),
+      ...applyCharacterHealing(prev, totalHealed),
       hitDice: {
         ...prev.hitDice,
         current: Math.max(0, prev.hitDice.current - 1),
@@ -326,6 +305,8 @@ export function useCharacter(userId?: string | null) {
   // Descanso Longo (Long Rest): Recupera todo o HP, metade dos dados de vida (mín 1), zera slots gastos, death saves e recursos
   const performLongRest = () => {
     updateCharacter((prev) => {
+      // Descanso não ressuscita; uma magia/efeito de retorno precisa fazê-lo explicitamente.
+      if (isCharacterDead(prev)) return prev;
       const regainedHitDice = Math.max(1, Math.floor(prev.hitDice.total / 2));
       const newHitDiceCount = Math.min(prev.hitDice.total, prev.hitDice.current + regainedHitDice);
 
@@ -341,9 +322,10 @@ export function useCharacter(userId?: string | null) {
         return res;
       });
 
+      const healed = applyCharacterHealing(prev, prev.maxHp);
       return {
-        ...prev,
-        currentHp: prev.maxHp,
+        ...healed,
+        currentHp: healed.currentHp,
         tempHp: 0,
         hitDice: {
           ...prev.hitDice,

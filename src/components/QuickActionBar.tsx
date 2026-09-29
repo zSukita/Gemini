@@ -29,6 +29,7 @@ export const QuickActionBar: React.FC<QuickActionBarProps> = ({
   const [position, setPosition] = useState<'left' | 'right'>('left');
   const [activePressedSlot, setActivePressedSlot] = useState<number | null>(null);
   const [editingSlotIndex, setEditingSlotIndex] = useState<number | null>(null);
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   // Inicializar slots padrão se não houver quickActions definidas
   const getSlots = useCallback((): (QuickAction | null)[] => {
@@ -170,11 +171,154 @@ export const QuickActionBar: React.FC<QuickActionBarProps> = ({
   };
 
   return (
-    <div
-      className={`fixed top-1/2 -translate-y-1/2 z-40 select-none flex items-center transition-all duration-300 ${
-        position === 'left' ? 'left-2 sm:left-3' : 'right-2 sm:right-3 flex-row-reverse'
-      }`}
-    >
+    <>
+      {/* ─── VERSÃO MOBILE: BOTÃO FLUTUANTE COMPACTO + PAINEL INFERIOR RECOLHÍVEL ─── */}
+      <div className="md:hidden">
+        {!isMobileOpen && (
+          <div className="fixed bottom-3 left-3 z-40 pb-[env(safe-area-inset-bottom,0px)]">
+            <button
+              id="quick-action-mobile-btn"
+              type="button"
+              onClick={() => setIsMobileOpen(true)}
+              className="flex items-center gap-2 px-3.5 py-2.5 rounded-full bg-slate-900/95 hover:bg-slate-800 border-2 border-amber-500/70 text-amber-300 shadow-2xl shadow-black/90 backdrop-blur-md transition active:scale-95 cursor-pointer ring-1 ring-amber-500/30 min-h-[44px]"
+              title="Abrir atalhos rápidos de combate (1 a 6)"
+              aria-label="Abrir atalhos rápidos"
+            >
+              <Zap size={18} className="text-amber-400" />
+              <span className="text-xs font-bold text-amber-200">Atalhos</span>
+              <span className="w-5 h-5 rounded-full bg-slate-800 border border-slate-700 text-[10px] font-mono font-bold flex items-center justify-center text-slate-300">
+                {slots.filter(Boolean).length}
+              </span>
+            </button>
+          </div>
+        )}
+
+        {isMobileOpen && (
+          <>
+            <div 
+              className="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 animate-in fade-in"
+              onClick={() => setIsMobileOpen(false)}
+              aria-hidden="true"
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Atalhos Rápidos de Combate"
+              className="fixed bottom-0 inset-x-0 z-50 bg-slate-950/98 border-t-2 border-amber-500/70 rounded-t-3xl shadow-2xl shadow-black p-4 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] max-h-[85vh] overflow-y-auto animate-in slide-in-from-bottom duration-200 ring-1 ring-amber-500/20"
+            >
+              {/* Alça e Cabeçalho */}
+              <div className="w-10 h-1 bg-slate-700 rounded-full mx-auto mb-2" />
+              <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-slate-800">
+                <div className="flex items-center gap-2">
+                  <Zap size={18} className="text-amber-400" />
+                  <h3 className="font-serif font-black text-sm text-amber-200 tracking-wide">
+                    Atalhos Rápidos (1 a 6)
+                  </h3>
+                </div>
+                <button
+                  id="quick-action-close-btn"
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsMobileOpen(false);
+                  }}
+                  aria-label="Fechar atalhos rápidos"
+                  className="p-1.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 flex items-center gap-1.5 text-xs font-semibold active:scale-95 min-h-[36px] cursor-pointer"
+                >
+                  <X size={15} />
+                  <span>Fechar</span>
+                </button>
+              </div>
+
+              {/* Grade de Atalhos com Toque Confortável */}
+              <div className="grid grid-cols-2 gap-2.5">
+                {slots.map((action, idx) => {
+                  const isPressed = activePressedSlot === idx;
+                  return (
+                    <div key={idx} className="relative">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (action) {
+                            triggerSlot(idx);
+                          } else {
+                            setEditingSlotIndex(idx);
+                          }
+                        }}
+                        className={`w-full p-2.5 rounded-2xl border transition-all flex items-center gap-2.5 text-left active:scale-95 min-h-[58px] ${
+                          isPressed
+                            ? 'bg-amber-500/30 border-amber-400 shadow-lg shadow-amber-500/30 scale-95'
+                            : action
+                            ? 'bg-slate-900/90 hover:bg-slate-800 border-slate-700 hover:border-amber-500/50'
+                            : 'bg-slate-950/60 border-dashed border-slate-800 text-slate-500'
+                        }`}
+                      >
+                        <div className="w-7 h-7 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center font-mono font-bold text-xs text-amber-400 shrink-0">
+                          {idx + 1}
+                        </div>
+
+                        {action ? (
+                          <div className="flex-1 min-w-0 pr-6">
+                            <div className="flex items-center gap-1.5">
+                              {getSlotIcon(action)}
+                              <span className="font-serif font-bold text-xs text-slate-100 truncate">
+                                {action.name}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-0.5">
+                              {action.bonus !== undefined && (
+                                <span className="font-mono font-bold text-amber-300">
+                                  {action.bonus >= 0 ? `+${action.bonus}` : action.bonus}
+                                </span>
+                              )}
+                              {action.damageFormula && (
+                                <span className="font-mono text-slate-400 truncate">
+                                  {action.damageFormula}
+                                </span>
+                              )}
+                              {!action.bonus && !action.damageFormula && action.subtitle && (
+                                <span className="truncate">{action.subtitle}</span>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5 text-slate-500 text-xs">
+                            <Plus size={14} />
+                            <span>Configurar</span>
+                          </div>
+                        )}
+                      </button>
+
+                      {/* Botão de Edição do Slot */}
+                      {action && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingSlotIndex(idx);
+                          }}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-slate-500 hover:text-amber-400 transition"
+                          title="Editar ou trocar este atalho"
+                        >
+                          <Settings2 size={15} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ─── VERSÃO DESKTOP: BARRA LATERAL FIXA COM POSIÇÃO ESQUERDA/DIREITA ─── */}
+      <div
+        id="quick-action-desktop-bar"
+        className={`hidden md:flex fixed top-1/2 -translate-y-1/2 z-40 select-none items-center transition-all duration-300 ${
+          position === 'left' ? 'left-2 sm:left-3' : 'right-2 sm:right-3 flex-row-reverse'
+        }`}
+      >
       {/* Botão de aba quando encolhido */}
       {isCollapsed ? (
         <button
@@ -298,6 +442,7 @@ export const QuickActionBar: React.FC<QuickActionBarProps> = ({
           </div>
         </div>
       )}
+      </div>
 
       {/* Modal / Popover de Configuração de Slot */}
       {editingSlotIndex !== null && (
@@ -462,6 +607,6 @@ export const QuickActionBar: React.FC<QuickActionBarProps> = ({
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };

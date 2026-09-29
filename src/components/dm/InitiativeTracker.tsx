@@ -120,13 +120,13 @@ export const InitiativeTracker: React.FC<InitiativeTrackerProps> = ({
           </div>
 
           {/* Lado Direito: Botões de Navegação de Turno */}
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-start">
             {!encounter.isRunning ? (
               <button
                 type="button"
                 onClick={onStartEncounter}
                 disabled={encounter.combatants.length === 0}
-                className="rpg-button bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2 text-xs shadow-lg shadow-amber-500/20 disabled:opacity-40"
+                className="rpg-button bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2.5 text-xs shadow-lg shadow-amber-500/20 disabled:opacity-40 w-full sm:w-auto min-h-[44px] justify-center"
               >
                 <Play size={14} fill="currentColor" />
                 <span>Iniciar Combate</span>
@@ -136,7 +136,7 @@ export const InitiativeTracker: React.FC<InitiativeTrackerProps> = ({
                 <button
                   type="button"
                   onClick={onPreviousTurn}
-                  className="rpg-button bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs py-2 px-3"
+                  className="rpg-button bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs py-2 px-3 flex-1 sm:flex-none justify-center min-h-[44px]"
                   title="Turno anterior"
                 >
                   <ChevronLeft size={16} />
@@ -146,7 +146,7 @@ export const InitiativeTracker: React.FC<InitiativeTrackerProps> = ({
                 <button
                   type="button"
                   onClick={onNextTurn}
-                  className="rpg-button bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs py-2 px-4 shadow-lg shadow-amber-500/20"
+                  className="rpg-button bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs py-2 px-4 shadow-lg shadow-amber-500/20 flex-1 sm:flex-none justify-center min-h-[44px]"
                   title="Avançar para o próximo turno"
                 >
                   <span>Próximo Turno</span>
@@ -162,7 +162,7 @@ export const InitiativeTracker: React.FC<InitiativeTrackerProps> = ({
                   onResetEncounter();
                 }
               }}
-              className="rpg-button bg-slate-800/80 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 border border-slate-700 text-xs py-2 px-2.5"
+              className="rpg-button bg-slate-800/80 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 border border-slate-700 text-xs py-2 px-3 min-h-[44px] shrink-0"
               title="Resetar combate e limpar participantes"
             >
               <RotateCcw size={14} />
@@ -171,11 +171,11 @@ export const InitiativeTracker: React.FC<InitiativeTrackerProps> = ({
         </div>
 
         {/* Barra de Ações Rápidas do Mestre */}
-        <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-slate-800">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 mt-4 pt-4 border-t border-slate-800">
           <button
             type="button"
             onClick={onOpenBestiary}
-            className="rpg-button bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40 text-xs"
+            className="rpg-button bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40 text-xs justify-center min-h-[40px]"
           >
             <BookOpen size={14} />
             <span>Bestiário SRD</span>
@@ -184,49 +184,49 @@ export const InitiativeTracker: React.FC<InitiativeTrackerProps> = ({
           <button
             type="button"
             onClick={() => onImportPlayers(charactersList)}
-            className="rpg-button bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-700/60 text-xs"
+            className="rpg-button bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-700/60 text-xs justify-center min-h-[40px]"
             title="Importa fichas de personagens ativas para o rastreador"
           >
             <Users size={14} />
-            <span>Importar Jogadores ({charactersList.length})</span>
+            <span>Importar ({charactersList.length})</span>
           </button>
 
           <button
             type="button"
             onClick={onOpenCustomMonster}
-            className="rpg-button bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs"
+            className="rpg-button bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs justify-center min-h-[40px]"
           >
             <UserPlus size={14} />
-            <span>Criar Monstro / NPC</span>
+            <span>Criar Monstro</span>
           </button>
 
           <button
             type="button"
             onClick={onRollAllMonsters}
             disabled={encounter.combatants.filter((c) => c.type === 'monster').length === 0}
-            className="rpg-button bg-slate-800 hover:bg-amber-600/30 text-amber-300 border border-slate-700 hover:border-amber-500/40 text-xs disabled:opacity-40"
+            className="rpg-button bg-slate-800 hover:bg-amber-600/30 text-amber-300 border border-slate-700 hover:border-amber-500/40 text-xs disabled:opacity-40 justify-center min-h-[40px]"
             title="Rola d20 + DES para todos os monstros automaticamente"
           >
             <Dices size={14} />
-            <span>Rolar Iniciativa dos Monstros</span>
+            <span className="truncate">Rolar Monstros</span>
           </button>
 
           <button
             type="button"
             onClick={onSortInitiative}
             disabled={encounter.combatants.length < 2}
-            className="rpg-button bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs disabled:opacity-40"
+            className="rpg-button bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs disabled:opacity-40 justify-center min-h-[40px]"
             title="Reordenar participantes por valor de iniciativa decrescente"
           >
             <ArrowDownUp size={14} />
-            <span>Ordenar por Iniciativa</span>
+            <span>Ordenar</span>
           </button>
 
           {/* Dificuldade Oficial D&D 5e e Resumo de XP */}
           {encounter.combatants.some((c) => c.type === 'monster') && (
-            <div className="ml-auto flex flex-wrap items-center gap-2">
+            <div className="col-span-2 sm:col-span-1 sm:ml-auto w-full sm:w-auto flex items-center justify-center sm:justify-start">
               <div
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border text-xs font-bold transition shadow ${
+                className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition shadow w-full sm:w-auto min-h-[38px] ${
                   difficultyResult.difficulty === 'deadly'
                     ? 'bg-rose-950/80 text-rose-300 border-rose-600/80 shadow-rose-950/50 animate-pulse'
                     : difficultyResult.difficulty === 'hard'

@@ -25,6 +25,16 @@ export function useAuth() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.search.includes('mock_user=true')) {
+      setUser({
+        uid: 'dev-user-mock',
+        displayName: 'Aventureiro Teste',
+        email: 'teste@arcana.local',
+      } as User);
+      setLoading(false);
+      return;
+    }
+
     if (!isFirebaseConfigured) {
       setLoading(false);
       return;

@@ -886,49 +886,57 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
 
   return (
     <div className="tabletop-parchment flex flex-col h-full rounded-xl overflow-hidden shadow-2xl">
-      {/* Cabeçalho de Pergaminho */}
-      <div className="tabletop-parchment-header px-4 py-2 flex items-center justify-between select-none">
-        <div className="flex items-center gap-2">
-          <ScrollText size={18} className="text-amber-900" />
-          <h2 className="font-serif font-black text-sm tracking-wider uppercase text-amber-950">
-            Crônica da Aventura
-          </h2>
+      {/* Cabeçalho de Pergaminho Responsivo */}
+      <div className="tabletop-parchment-header px-3 sm:px-4 py-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 select-none w-full max-w-full overflow-hidden">
+        {/* Linha Superior: Título + Badge de Status no mobile */}
+        <div className="flex items-center justify-between w-full sm:w-auto min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <ScrollText size={16} className="text-amber-900 shrink-0" />
+            <h2 className="font-serif font-black text-xs sm:text-sm tracking-wider uppercase text-amber-950 truncate">
+              Crônica da Aventura
+            </h2>
+          </div>
+          <span className="sm:hidden text-[9px] font-serif font-bold text-amber-900/80 bg-amber-900/10 px-1.5 py-0.5 rounded border border-amber-900/20 shrink-0">
+            Mestre IA
+          </span>
         </div>
-        <div className="flex items-center gap-1.5">
+
+        {/* Linha de Controles: no mobile permite scroll horizontal suave dos botões sem comprimir textos */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar w-full sm:w-auto py-0.5 shrink-0">
           <button
             type="button"
             onClick={() => setIsCampaignMemoryOpen(true)}
-            className="text-[10px] font-serif font-bold text-amber-950 hover:text-amber-900 bg-amber-900/10 hover:bg-amber-900/20 px-2 py-0.5 rounded border border-amber-900/30 flex items-center gap-1 transition shadow-xs cursor-pointer"
+            className="text-[10px] font-serif font-bold text-amber-950 hover:text-amber-900 bg-amber-900/10 hover:bg-amber-900/20 px-2.5 py-1 rounded-md border border-amber-900/30 flex items-center gap-1 transition shadow-xs cursor-pointer shrink-0 min-h-[28px]"
             title="Visualizar e gerenciar a Memória de Longo Prazo da Campanha"
           >
-            <BookOpen size={10} />
+            <BookOpen size={11} />
             <span>Memória IA</span>
           </button>
           <button
             type="button"
             onClick={handleToggleAutoVoice}
-            className={`text-[10px] font-serif font-bold px-2 py-0.5 rounded border flex items-center gap-1 transition shadow-xs cursor-pointer ${
+            className={`text-[10px] font-serif font-bold px-2.5 py-1 rounded-md border flex items-center gap-1 transition shadow-xs cursor-pointer shrink-0 min-h-[28px] ${
               autoVoice
                 ? 'bg-amber-800 text-amber-100 border-amber-900 shadow-sm'
                 : 'text-amber-950 hover:text-amber-900 bg-amber-900/10 hover:bg-amber-900/20 border-amber-900/30'
             }`}
             title={autoVoice ? 'Voz do Mestre IA Ativada (Clique para silenciar)' : 'Ativar Narração por Voz do Mestre IA (TTS Gratuito)'}
           >
-            {autoVoice ? <Volume2 size={11} className="text-amber-300 animate-pulse" /> : <VolumeX size={11} />}
+            {autoVoice ? <Volume2 size={12} className="text-amber-300 animate-pulse" /> : <VolumeX size={12} />}
             <span>{autoVoice ? 'Voz ON' : 'Voz OFF'}</span>
           </button>
           {autoVoice && (
             <button
               type="button"
               onClick={handleToggleVoiceMode}
-              className="text-[10px] font-serif font-bold text-amber-950 hover:text-amber-900 bg-amber-900/10 hover:bg-amber-900/20 px-2 py-0.5 rounded border border-amber-900/30 flex items-center gap-1 transition shadow-xs cursor-pointer"
+              className="text-[10px] font-serif font-bold text-amber-950 hover:text-amber-900 bg-amber-900/10 hover:bg-amber-900/20 px-2.5 py-1 rounded-md border border-amber-900/30 flex items-center gap-1 transition shadow-xs cursor-pointer shrink-0 min-h-[28px]"
               title={
                 voiceMode === 'story_only'
                   ? 'Modo: Apenas História e Falas (Recomendado). Clique para narrar também rolagens.'
                   : 'Modo: Narrar Tudo (História e Rolagens em fila). Clique para narrar apenas história.'
               }
             >
-              <span>{voiceMode === 'story_only' ? '📖 Apenas História' : '🎲 Narrar Tudo'}</span>
+              <span>{voiceMode === 'story_only' ? '📖 História' : '🎲 Tudo'}</span>
             </button>
           )}
           {isSpeakingAny && (
@@ -939,24 +947,24 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                 setSpeakingMsgId(null);
                 setIsSpeakingAny(false);
               }}
-              className="text-[10px] font-serif font-bold text-rose-100 bg-rose-800 hover:bg-rose-700 px-2 py-0.5 rounded border border-rose-600 flex items-center gap-1 transition shadow-xs cursor-pointer animate-pulse"
+              className="text-[10px] font-serif font-bold text-rose-100 bg-rose-800 hover:bg-rose-700 px-2.5 py-1 rounded-md border border-rose-600 flex items-center gap-1 transition shadow-xs cursor-pointer animate-pulse shrink-0 min-h-[28px]"
               title="Interromper fala atual do Mestre IA"
             >
-              <Square size={9} fill="currentColor" />
+              <Square size={10} fill="currentColor" />
               <span>Silenciar</span>
             </button>
           )}
-          <span className="text-[10px] font-serif font-bold text-amber-900/80 bg-amber-900/10 px-2 py-0.5 rounded border border-amber-900/20">
+          <span className="hidden sm:inline-flex text-[10px] font-serif font-bold text-amber-900/80 bg-amber-900/10 px-2 py-0.5 rounded border border-amber-900/20 shrink-0">
             Mestre IA Ativo
           </span>
           {onOpenEndSessionModal && (
             <button
               type="button"
               onClick={onOpenEndSessionModal}
-              className="text-[10px] font-serif font-bold text-red-950 hover:text-red-900 bg-red-900/10 hover:bg-red-900/20 px-2 py-0.5 rounded border border-red-900/30 flex items-center gap-1 transition shadow-xs cursor-pointer"
+              className="text-[10px] font-serif font-bold text-red-950 hover:text-red-900 bg-red-900/10 hover:bg-red-900/20 px-2.5 py-1 rounded-md border border-red-900/30 flex items-center gap-1 transition shadow-xs cursor-pointer shrink-0 min-h-[28px]"
               title="Finalizar esta mesa ou iniciar outra aventura"
             >
-              <RotateCcw size={10} />
+              <RotateCcw size={11} />
               <span>Nova Mesa</span>
             </button>
           )}
@@ -1098,7 +1106,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
       )}
 
       {/* Corpo do Log de Chat */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3 font-serif text-xs select-text">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 space-y-3 font-serif text-xs select-text">
         {chatLog.length === 0 ? (
           <div className="h-full flex flex-col justify-start p-4 space-y-3.5 text-amber-950 overflow-y-auto">
             <div className="text-center space-y-1 py-1.5 border-b border-amber-900/20">

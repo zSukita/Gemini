@@ -309,23 +309,23 @@ export const CharacterWizardModal: React.FC<CharacterWizardModalProps> = ({
             </div>
 
             {/* Alternador de Modo: Heróis Prontos vs Passo a Passo */}
-            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-semibold">
+            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-semibold w-full sm:w-auto justify-center">
               <button
                 type="button"
                 onClick={() => setCreationMode('presets')}
-                className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition ${
+                className={`flex-1 sm:flex-initial px-2.5 sm:px-3 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition text-[11px] sm:text-xs ${
                   creationMode === 'presets'
                     ? 'bg-amber-500 text-slate-950 font-bold shadow'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
                 <Zap size={13} className={creationMode === 'presets' ? 'text-slate-950' : 'text-amber-400'} />
-                <span>Heróis Prontos (Rápido)</span>
+                <span>Heróis Prontos<span className="hidden sm:inline"> (Rápido)</span></span>
               </button>
               <button
                 type="button"
                 onClick={() => setCreationMode('custom')}
-                className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition ${
+                className={`flex-1 sm:flex-initial px-2.5 sm:px-3 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition text-[11px] sm:text-xs ${
                   creationMode === 'custom'
                     ? 'bg-amber-500 text-slate-950 font-bold shadow'
                     : 'text-slate-400 hover:text-slate-200'
@@ -960,16 +960,16 @@ export const CharacterWizardModal: React.FC<CharacterWizardModalProps> = ({
     </div>
 
     {/* Rodapé com Navegação */}
-    <div className="p-4 border-t border-slate-800 bg-slate-900/95 flex items-center justify-between">
+    <div className="p-3 sm:p-4 border-t border-slate-800 bg-slate-900/95 flex items-center justify-between gap-2 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] sm:pb-4">
       {creationMode === 'presets' ? (
         <div className="w-full flex items-center justify-between flex-wrap gap-2">
           <span className="text-xs text-slate-400">
-            Quer escolher cada atributo, talento e histórico por conta própria?
+            Quer escolher cada detalhe por conta própria?
           </span>
           <button
             type="button"
             onClick={() => setCreationMode('custom')}
-            className="rpg-button bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs py-2 px-4 rounded-xl flex items-center gap-1.5 border border-slate-700 transition"
+            className="rpg-button w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs py-2 px-4 rounded-xl flex items-center justify-center gap-1.5 border border-slate-700 transition min-h-[40px]"
           >
             <Sparkles size={14} />
             <span>Criar Ficha do Zero Passo a Passo</span>
@@ -981,7 +981,7 @@ export const CharacterWizardModal: React.FC<CharacterWizardModalProps> = ({
             <button
               type="button"
               onClick={() => setStep((s) => (s - 1) as any)}
-              className="rpg-button bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs py-2 px-4 rounded-xl"
+              className="rpg-button bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs py-2 px-3 sm:px-4 rounded-xl min-h-[40px] flex items-center gap-1"
             >
               <ChevronLeft size={14} />
               <span>Voltar</span>
@@ -990,10 +990,10 @@ export const CharacterWizardModal: React.FC<CharacterWizardModalProps> = ({
             <button
               type="button"
               onClick={() => setCreationMode('presets')}
-              className="rpg-button bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-2 px-3 rounded-xl flex items-center gap-1"
+              className="rpg-button bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-2 px-3 rounded-xl flex items-center gap-1 min-h-[40px]"
             >
               <Zap size={13} className="text-amber-400" />
-              <span>Voltar para Heróis Prontos</span>
+              <span><span className="hidden sm:inline">Voltar para </span>Heróis Prontos</span>
             </button>
           )}
 
@@ -1001,7 +1001,7 @@ export const CharacterWizardModal: React.FC<CharacterWizardModalProps> = ({
             <button
               type="button"
               onClick={() => setStep((s) => (s + 1) as any)}
-              className="rpg-button bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs py-2 px-5 rounded-xl shadow"
+              className="rpg-button bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs py-2 px-4 sm:px-5 rounded-xl shadow min-h-[40px] flex items-center gap-1"
             >
               <span>Avançar</span>
               <ChevronRight size={14} />
@@ -1010,10 +1010,10 @@ export const CharacterWizardModal: React.FC<CharacterWizardModalProps> = ({
             <button
               type="button"
               onClick={handleFinishCreation}
-              className="rpg-button bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 font-black text-xs py-2.5 px-6 rounded-xl shadow-lg flex items-center gap-2 animate-pulse"
+              className="rpg-button bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 font-black text-xs py-2.5 px-4 sm:px-6 rounded-xl shadow-lg flex items-center gap-2 animate-pulse min-h-[40px]"
             >
               <Check size={16} />
-              <span>Concluir e Criar Personagem</span>
+              <span><span className="hidden sm:inline">Concluir e </span>Criar Personagem</span>
             </button>
           )}
         </>

@@ -284,9 +284,10 @@ export function App() {
   const [isSocialSidebarOpen, setIsSocialSidebarOpen] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem('arcanasheet_social_sidebar_open');
-      return saved !== null ? saved === 'true' : true;
+      if (saved !== null) return saved === 'true';
+      return typeof window !== 'undefined' ? window.innerWidth >= 1024 : false;
     } catch {
-      return true;
+      return false;
     }
   });
 

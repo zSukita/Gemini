@@ -146,6 +146,23 @@ export interface AiLootReward {
   rawText?: string;
 }
 
+export interface EncounterCombatantSummary {
+  name: string;
+  type: 'player' | 'monster' | 'npc';
+  currentHp: number;
+  maxHp: number;
+  armorClass: number;
+  initiative: number;
+}
+
+export interface AiEncounterContext {
+  isRunning: boolean;
+  round: number;
+  activeCombatantName?: string;
+  isPlayerTurn: boolean;
+  combatants: EncounterCombatantSummary[];
+}
+
 export interface AiMessage {
   id: string;
   role: 'narrator' | 'player' | 'system';
@@ -225,6 +242,7 @@ export interface AiDmConfig {
   includeCharacterStats: boolean;
   campaignSummary?: string;
   dmStyle?: AiDmStyle;
+  encounterContext?: AiEncounterContext;
 }
 
 export type AiOracleAction = 

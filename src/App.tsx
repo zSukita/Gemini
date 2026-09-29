@@ -753,6 +753,26 @@ export function App() {
           timestamp: msg.timestamp,
         }));
 
+        const currentEnc = encounterRef.current || encounter;
+        const activeCombatant = currentEnc.combatants[currentEnc.activeCombatantIndex];
+        const isPlayerTurn = activeCombatant?.type === 'player';
+        const encounterContext = currentEnc.isRunning
+          ? {
+              isRunning: true,
+              round: currentEnc.round,
+              activeCombatantName: activeCombatant?.name,
+              isPlayerTurn,
+              combatants: currentEnc.combatants.map((c) => ({
+                name: c.name,
+                type: c.type,
+                currentHp: c.currentHp,
+                maxHp: c.maxHp,
+                armorClass: c.armorClass,
+                initiative: c.initiative,
+              })),
+            }
+          : undefined;
+
         const aiReply = await sendToAiDungeonMaster(
           promptText,
           recentTurns,
@@ -760,8 +780,28 @@ export function App() {
           {
             customInstructions:
               'Você é o Mestre Supremo em uma mesa multiplayer online ao vivo de D&D 5e. Narre em português do Brasil com grande riqueza sensorial e desafie o grupo.',
+            encounterContext,
           }
         );
+
+        // Filtragem inteligente de spawns duplicados:
+        // Se o combate já está em andamento e monstros desse tipo já existem, descarta spawn repetitivo
+        if (aiReply.monsterSpawns && aiReply.monsterSpawns.length > 0) {
+          const currentMonsters = currentEnc.combatants.filter((c) => c.type === 'monster' || c.type === 'npc');
+          const filteredSpawns = aiReply.monsterSpawns.filter((spawn) => {
+            const rawWanted = spawn.monsterName.toLowerCase().replace(/\s*\([^)]*\)/g, '').replace(/\s*\d+$/, '').trim();
+            const alreadyInCombat = currentMonsters.some((c) => {
+              const cName = c.name.toLowerCase().replace(/\s*\([^)]*\)/g, '').replace(/\s*\d+$/, '').trim();
+              return cName === rawWanted || cName.includes(rawWanted) || rawWanted.includes(cName);
+            });
+            if (currentEnc.isRunning && alreadyInCombat) {
+              console.info(`[AI DM] Spawn ignorado: "${spawn.monsterName}" já está presente no combate.`);
+              return false;
+            }
+            return true;
+          });
+          aiReply.monsterSpawns = filteredSpawns.length > 0 ? filteredSpawns : undefined;
+        }
 
         const hasMechanicalProposal = Boolean(
           aiReply.monsterSpawns?.length || aiReply.mapMoves?.length || aiReply.monsterAttack
@@ -2004,6 +2044,12 @@ export function App() {
     }
   }, [startEncounter, isConnected, isHost, broadcastRoomSync]);
 
+  const handleRemoveCombatant = useCallback((id: string) => {
+    removeCombatant(id);
+    setTokens((prev) => prev.filter((t) => t.combatantId !== id && t.id !== id && t.id !== `token-${id}`));
+    showNotification('Combatente removido do encontro e do mapa.');
+  }, [removeCombatant, setTokens, showNotification]);
+
   // Descanso Curto (Abre modal interativo para gastar dados de vida e recarregar recursos)
   const handleShortRest = () => {
     setIsShortRestOpen(true);
@@ -2212,7 +2258,20 @@ export function App() {
     setPendingAiAction(null);
     (proposal.monsterSpawns || []).forEach((spawn) => {
       const wanted = spawn.monsterName.toLowerCase().replace(/\s*\([^)]*\)/g, '').trim();
-      const monster = SRD_MONSTERS.find((item) => item.name.toLowerCase() === wanted || item.name.toLowerCase().includes(wanted));
+      const rawWanted = wanted.replace(/\s*\d+$/, '').trim();
+      const currentMonsters = encounterRef.current?.combatants.filter((c) => c.type === 'monster' || c.type === 'npc') || [];
+      const alreadyInCombat = currentMonsters.some((c) => {
+        const cName = c.name.toLowerCase().replace(/\s*\([^)]*\)/g, '').replace(/\s*\d+$/, '').trim();
+        return cName === rawWanted || cName.includes(rawWanted) || rawWanted.includes(cName);
+      });
+      if (encounterRef.current?.isRunning && alreadyInCombat) {
+        showNotification(`A criatura "${spawn.monsterName}" já está no combate; spawn duplicado ignorado.`);
+        return;
+      }
+      const monster = SRD_MONSTERS.find((item) => {
+        const iName = item.name.toLowerCase();
+        return iName === wanted || iName.includes(wanted) || wanted.includes(iName);
+      });
       if (monster) {
         addMonsterCombatant(monster, Math.max(1, Math.min(20, spawn.count)));
         return;
@@ -2405,7 +2464,7 @@ export function App() {
             onUndoLastHpChange={handleUndoLastHpChange}
             onToggleCondition={handleToggleCombatantCondition}
             onUpdateInitiative={updateCombatantInitiative}
-            onRemoveCombatant={removeCombatant}
+            onRemoveCombatant={handleRemoveCombatant}
             onAddMonster={addMonsterCombatant}
             onAddCustomCombatant={addCustomCombatant}
             onRollMonsterAttack={(monName, actName, bonus) =>
@@ -2468,7 +2527,7 @@ export function App() {
             onHpDelta={handleHpDelta}
             onToggleCondition={handleToggleCombatantCondition}
             onUpdateInitiative={updateCombatantInitiative}
-            onRemoveCombatant={removeCombatant}
+            onRemoveCombatant={handleRemoveCombatant}
             onRollMonsterAttack={(monName, actName, bonus) =>
               handleRollD20(`${monName}: ${actName}`, bonus)
             }

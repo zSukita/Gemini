@@ -50,6 +50,23 @@ describe('geminiService', () => {
       expect(prompt).toContain('distância, terreno, cobertura');
     });
 
+    it('deve incorporar contexto de combate ativo e regras contra spawn duplicado', () => {
+      const encounterContext = {
+        isRunning: true,
+        round: 2,
+        activeCombatantName: 'Thorgar',
+        isPlayerTurn: true,
+        combatants: [
+          { name: 'Thorgar', type: 'player' as const, currentHp: 28, maxHp: 28, armorClass: 18, initiative: 15 },
+          { name: 'Esqueleto Guerreiro', type: 'monster' as const, currentHp: 13, maxHp: 13, armorClass: 13, initiative: 12 },
+        ],
+      };
+      const prompt = buildSystemPrompt(null, 'heroic', undefined, undefined, 'tactical', encounterContext);
+      expect(prompt).toContain('SITUAÇÃO DO COMBATE TÁTICO D&D 5E (RODADA 2)');
+      expect(prompt).toContain('Esqueleto Guerreiro');
+      expect(prompt).toContain('NUNCA EMITA [SPAWN_MONSTRO] DURANTE COMBATE EM ANDAMENTO');
+    });
+
     it('deve incorporar estatísticas e perícias do personagem selecionado', () => {
       const mockChar: Partial<Character> = {
         name: 'Thorgar Quebra-Machado',

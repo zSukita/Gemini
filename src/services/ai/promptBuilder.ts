@@ -1,5 +1,5 @@
 import { type Character, SKILLS } from '../../types/dnd5e';
-import type { AdventureTone, AiDmStyle } from '../../types/aiDm';
+import type { AdventureTone, AiDmStyle, AiEncounterContext } from '../../types/aiDm';
 
 /**
  * Cria o prompt de sistema especializado para o Mestre de RPG D&D 5e
@@ -9,7 +9,8 @@ export function buildSystemPrompt(
   tone: AdventureTone = 'heroic',
   customInstructions?: string,
   campaignSummary?: string,
-  dmStyle: AiDmStyle = 'beginner'
+  dmStyle: AiDmStyle = 'beginner',
+  encounterContext?: AiEncounterContext
 ): string {
   let charContext = 'Nenhum personagem selecionado (Aventureiro Desconhecido).';
 
@@ -63,6 +64,41 @@ DADOS DO PERSONAGEM DO JOGADOR:
     rules_faithful: 'Condução fiel às regras: separe texto narrativo de mecânica, cite a regra aplicável quando conhecida e peça ao Mestre que decida ambiguidades; nunca invente certeza sobre uma regra.',
   };
 
+  let encounterSection = '';
+  if (encounterContext?.isRunning) {
+    const heroes = encounterContext.combatants
+      .filter((c) => c.type === 'player')
+      .map((c) => `${c.name} (${c.currentHp}/${c.maxHp} PV, CA ${c.armorClass}, Inic ${c.initiative})`)
+      .join(', ') || 'Nenhum';
+
+    const monsters = encounterContext.combatants
+      .filter((c) => c.type === 'monster' || c.type === 'npc')
+      .map((c) => `${c.name} (${c.currentHp}/${c.maxHp} PV, CA ${c.armorClass}, Inic ${c.initiative})`)
+      .join(', ') || 'Nenhum';
+
+    encounterSection = `
+SITUAÇÃO DO COMBATE TÁTICO D&D 5E (RODADA ${encounterContext.round}):
+- Batalha em andamento!
+- Turno Atual na Iniciativa: ${encounterContext.activeCombatantName || 'Indeterminado'} (${encounterContext.isPlayerTurn ? 'Vez do Jogador' : 'Vez dos Inimigos'})
+- Heróis na batalha: ${heroes}
+- Inimigos / Monstros PRESENTES na batalha: ${monsters}
+
+🚨 REGRAS ABSOLUTAS DE COMBATE TÁTICO:
+1. NUNCA EMITA [SPAWN_MONSTRO] DURANTE COMBATE EM ANDAMENTO: Todos os inimigos (${monsters}) já estão no mapa tático e no combate! É TERMINANTEMENTE PROIBIDO emitir a tag [SPAWN_MONSTRO] para criaturas que já estão no combate ou a cada turno narrativo.
+2. RESOLUÇÃO DE ATAQUE DO HERÓI:
+   - Se o jogador enviou o resultado de um ataque (acertou ou errou):
+     * Narre cinematograficamente o desfecho do golpe (o impacto, a esquiva ou a defesa).
+     * O herói já gastou sua Ação de Ataque do turno.
+     * Narre a postura dos monstros se preparando para reagir e oriente o herói que, se não for usar ação bônus ou movimento restante, deve clicar em "Finalizar Turno" para a vez dos monstros na ordem de iniciativa.
+     * Suas 3 opções em [AÇÕES] DEVEM SER focadas no encerramento do turno ou utilidade:
+       - Finalizar o turno e aguardar a iniciativa dos inimigos
+       - Mover-se estrategicamente pelo mapa tático
+       - Usar uma Ação Bônus disponível (como Fúria ou magia bônus) antes de passar a vez
+     * NUNCA peça uma nova rolagem de ataque com a arma principal no mesmo turno!
+3. REAÇÃO DOS MONSTROS: Monstros NUNCA atacam de forma independente no texto como reação imediata ao ataque do jogador. Os monstros atacam exclusivamente quando o aplicativo convocar o turno deles na ordem de iniciativa!
+`.trim();
+  }
+
   return `
 Você é o Mestre Supremo de RPG do ArcanaSheet (Dungeon Master para D&D 5ª Edição).
 Seu objetivo é conduzir uma narrativa interativa de RPG de altíssima qualidade, imersiva, empolgante e totalmente adaptada às escolhas do jogador.
@@ -83,6 +119,8 @@ DIRETRIZES FUNDAMENTAIS DE REGRAS E COMBATE D&D 5e:
 
 ${charContext}
 
+${encounterSection ? `\n${encounterSection}\n` : ''}
+
 ${campaignSummary ? `\nMEMÓRIA DE LONGO PRAZO DA CAMPANHA (RESUMO DOS FATOS ANTERIORES):\n${campaignSummary}\n` : ''}
 
 ${customInstructions ? `INSTRUÇÕES ADICIONAIS DO USUÁRIO:\n${customInstructions}\n` : ''}
@@ -102,7 +140,7 @@ REGRAS DE FORMATAÇÃO ESPECIAL (MANDATÓRIO):
   [SPAWN_MONSTRO: Nome do Monstro | Quantidade]
   Exemplo: [SPAWN_MONSTRO: Orc Guerreiro | 2]
   Exemplo: [SPAWN_MONSTRO: Goblin Sentinela | 1]
-  (REGRA CRÍTICA: Declare [SPAWN_MONSTRO] APENAS na PRIMEIRA vez em que novos inimigos surgirem na cena. NUNCA repita o spawn de monstros que já estão no combate atual!)
+  (REGRA CRÍTICA: Declare [SPAWN_MONSTRO] APENAS na PRIMEIRA vez em que novos inimigos surgirem na cena. NUNCA repita o spawn de monstros que já estão no combate atual! Se o combate estiver em andamento, JAMAIS gere spawn dos mesmos monstros que já estão lutando.)
 - Se personagens ou monstros se moverem no campo de batalha tático, declare a tag:
   [MOVER: Nome do Token | Ação ou Direção | Quantidade de Casas]
   Exemplo: [MOVER: Goblin Sentinela | recua para as sombras | 4]

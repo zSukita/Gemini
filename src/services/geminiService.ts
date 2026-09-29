@@ -363,7 +363,8 @@ export async function sendToAiDungeonMaster(
     fullConfig.tone,
     fullConfig.customInstructions,
     campaignSummary,
-    fullConfig.dmStyle
+    fullConfig.dmStyle,
+    fullConfig.encounterContext
   );
 
   // 1. Provedor GROQ (Llama 3.3 70B - Ultra Rápido)

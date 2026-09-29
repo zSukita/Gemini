@@ -70,8 +70,14 @@ export function useBattleMap(
     if (!encounter) return;
 
     setTokens((prevTokens) => {
-      // 1. Atualiza tokens existentes com referências imutáveis
-      const updated = prevTokens.map((token) => {
+      // 1. Remove tokens cujos combatentes associados foram removidos do combate
+      const remainingTokens = prevTokens.filter((token) => {
+        if (!token.combatantId) return true;
+        return encounter.combatants.some((c) => c.id === token.combatantId);
+      });
+
+      // 2. Atualiza tokens existentes com referências imutáveis
+      const updated = remainingTokens.map((token) => {
         const matchingCombatant = encounter.combatants.find((c) => {
           if (token.combatantId && token.combatantId === c.id) return true;
           return token.name.toLowerCase() === c.name.toLowerCase();

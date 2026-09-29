@@ -586,7 +586,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
 
         const promptText = `@mestre [RESULTADO DO ATAQUE]: ${hitStatus} com rolagem ${rollRes.total} (vs CA ${req.dc}) causando ${damageVal} de dano em ${targetDisplayName}. ` +
           (targetMonster ? `O alvo ficou com ${newHp}/${targetMonster.maxHp} PV ${isDefeated ? 'e caiu derrotado em combate!' : 'e continua em combate.'} ` : '') +
-          `Descreva cinematograficamente o impacto do golpe em ${targetDisplayName} e como a batalha prossegue!`;
+          `Descreva cinematograficamente o impacto do golpe em ${targetDisplayName} e como a batalha prossegue!${isCombatActive ? ' (Ação de ataque do herói concluída; narre o impacto e oriente o jogador a finalizar o turno para a vez dos monstros na iniciativa.)' : ''}`;
 
         onSendMessage(
           {
@@ -622,7 +622,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
 
         const missStatus = isCritMiss ? '💨 FALHA CRÍTICA (1 natural - Erro Automático)!' : '❌ ERROU!';
         const missAnnouncement = `${missStatus} [${rollRes.breakdown}] = ${rollRes.total} (vs CA ${req.dc}). O ataque não conseguiu superar a defesa de ${targetDisplayName}.`;
-        const promptText = `@mestre [RESULTADO DO ATAQUE]: ${missStatus} com rolagem ${rollRes.total} (vs CA ${req.dc}). O golpe não acertou ${targetDisplayName}. Descreva a esquiva ou defesa do adversário e como a batalha prossegue!`;
+        const promptText = `@mestre [RESULTADO DO ATAQUE]: ${missStatus} com rolagem ${rollRes.total} (vs CA ${req.dc}). O golpe não acertou ${targetDisplayName}. Descreva a esquiva ou defesa do adversário e como a batalha prossegue!${isCombatActive ? ' (Ação de ataque do herói concluída; narre a esquiva/defesa e oriente o jogador a finalizar o turno para a vez dos monstros na iniciativa.)' : ''}`;
 
         onSendMessage(
           {
@@ -1390,7 +1390,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
                     className="w-full mt-2 py-1.5 px-3 rounded-lg bg-amber-800 hover:bg-amber-900 text-amber-100 font-bold text-xs transition flex items-center justify-center gap-1.5 shadow cursor-pointer active:scale-98"
                     title="Finalizar turno e passar para o próximo combatente na iniciativa"
                   >
-                    <span>⚔️ Finalizar Meu Turno</span>
+                    <span>⚔️ Finalizar Meu Turno (Passar a Vez aos Inimigos)</span>
                     <ArrowRight size={13} />
                   </button>
                 )}

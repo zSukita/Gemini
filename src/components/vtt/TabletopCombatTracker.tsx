@@ -11,7 +11,8 @@ import {
   Heart, 
   Shield, 
   Skull,
-  Play
+  Play,
+  Trash2
 } from 'lucide-react';
 
 interface TabletopCombatTrackerProps {
@@ -43,6 +44,7 @@ export const TabletopCombatTracker: React.FC<TabletopCombatTrackerProps> = ({
   onSortInitiative,
   onResetEncounter,
   onHpDelta,
+  onRemoveCombatant,
   onOpenBestiary,
   onAiMonsterAttack,
 }) => {
@@ -229,6 +231,19 @@ export const TabletopCombatTracker: React.FC<TabletopCombatTrackerProps> = ({
                           title={`Comandar ataque de ${c.name} pela IA com dados 3D`}
                         >
                           <Swords size={10} />
+                        </button>
+                      )}
+                      {onRemoveCombatant && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onRemoveCombatant(c.id);
+                          }}
+                          className="p-0.5 hover:scale-125 transition text-amber-900/50 hover:text-red-700 cursor-pointer ml-0.5"
+                          title={`Remover ${c.name} do combate`}
+                        >
+                          <Trash2 size={11} />
                         </button>
                       )}
                     </div>

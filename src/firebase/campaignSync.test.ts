@@ -12,6 +12,8 @@ import {
   deleteCampaign,
   broadcastHandoutToCampaign,
   dismissCampaignHandout,
+  createCampaignInvite,
+  reauthorizeCampaignMember,
   type CampaignPartyMember,
 } from './campaignSync';
 
@@ -91,6 +93,22 @@ describe('Sistema de Campanhas na Nuvem & Pistas (campaignSync)', () => {
     await dismissCampaignHandout(camp.id);
     const dismissed = await findCampaignByCode(camp.code);
     expect(dismissed?.activeHandout).toBeNull();
+  });
+
+  it('deve criar e reautorizar convite para jogador na campanha', async () => {
+    const invite = await createCampaignInvite('camp-100', 'player-xyz', 'dm-100', {
+      campaignName: 'Aventura Real',
+      dmName: 'Mestre Solene',
+    });
+
+    expect(invite.id).toBe('camp-100_player-xyz');
+    expect(invite.status).toBe('pending');
+    expect(invite.campaignId).toBe('camp-100');
+    expect(invite.userId).toBe('player-xyz');
+
+    const reauth = await reauthorizeCampaignMember('camp-100', 'player-xyz', 'dm-100');
+    expect(reauth.status).toBe('pending');
+    expect(reauth.id).toBe('camp-100_player-xyz');
   });
 
   it('deve permitir deletar uma campanha', async () => {

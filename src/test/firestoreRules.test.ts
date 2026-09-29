@@ -299,6 +299,146 @@ describe('Firestore Security Rules - Campanhas e Índices', () => {
 
       await assertFails(batch.commit());
     });
+
+    it('deve impedir ingresso direto na campanha se o convite estiver marcado como used (sem atualizar o convite)', async () => {
+      // Convite já usado
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const adminDb = context.firestore();
+        await setDoc(doc(adminDb, 'campaign_invites', 'camp_alice_bob'), {
+          id: 'camp_alice_bob',
+          campaignId: 'camp_alice',
+          userId: 'bob',
+          dmId: 'alice',
+          status: 'used',
+          createdAt: Date.now(),
+        });
+      });
+
+      const bob = testEnv.authenticatedContext('bob').firestore();
+      const campRef = doc(bob, 'campaigns', 'camp_alice');
+
+      // Tenta se adicionar diretamente na campanha tendo apenas um convite used
+      await assertFails(
+        updateDoc(campRef, {
+          'members.bob': {
+            userId: 'bob',
+            characterId: 'char_bob',
+            name: 'Bob Ladino',
+            characterClass: 'Ladino',
+            level: 1,
+            currentHp: 10,
+            maxHp: 10,
+            armorClass: 14,
+            passivePerception: 13,
+            updatedAt: Date.now(),
+          },
+          updatedAt: Date.now(),
+        })
+      );
+    });
+
+    it('deve permitir que o Mestre reautorize um jogador cujo convite era used e este consiga ingressar novamente', async () => {
+      // 1. Convite usado previamente
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const adminDb = context.firestore();
+        await setDoc(doc(adminDb, 'campaign_invites', 'camp_alice_bob'), {
+          id: 'camp_alice_bob',
+          campaignId: 'camp_alice',
+          userId: 'bob',
+          dmId: 'alice',
+          status: 'used',
+          createdAt: Date.now(),
+        });
+      });
+
+      const alice = testEnv.authenticatedContext('alice').firestore();
+      const bob = testEnv.authenticatedContext('bob').firestore();
+      const inviteRefAlice = doc(alice, 'campaign_invites', 'camp_alice_bob');
+      const inviteRefBob = doc(bob, 'campaign_invites', 'camp_alice_bob');
+      const campRefBob = doc(bob, 'campaigns', 'camp_alice');
+
+      // Alice (Mestre) reautoriza Bob (muda de 'used' para 'accepted')
+      await assertSucceeds(
+        updateDoc(inviteRefAlice, {
+          status: 'accepted',
+          updatedAt: Date.now(),
+        })
+      );
+
+      // Agora Bob consegue ingressar novamente e marcar como used
+      const batch = writeBatch(bob);
+      batch.update(campRefBob, {
+        'members.bob': {
+          userId: 'bob',
+          characterId: 'char_bob',
+          name: 'Bob Ladino',
+          characterClass: 'Ladino',
+          level: 1,
+          currentHp: 10,
+          maxHp: 10,
+          armorClass: 14,
+          passivePerception: 13,
+          updatedAt: Date.now(),
+        },
+        updatedAt: Date.now(),
+      });
+      batch.update(inviteRefBob, {
+        status: 'used',
+        updatedAt: Date.now(),
+      });
+
+      await assertSucceeds(batch.commit());
+    });
+
+    it('deve permitir que o jogador remova seu membro e exclua seu convite ao sair da campanha', async () => {
+      // Alice Mestre, Bob membro ativo
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const adminDb = context.firestore();
+        await setDoc(doc(adminDb, 'campaigns', 'camp_alice'), {
+          id: 'camp_alice',
+          code: 'ARC-ALICE1',
+          dmId: 'alice',
+          name: 'Campanha da Alice',
+          members: {
+            bob: {
+              userId: 'bob',
+              characterId: 'char_bob',
+              name: 'Bob Ladino',
+              characterClass: 'Ladino',
+              level: 1,
+              currentHp: 10,
+              maxHp: 10,
+              armorClass: 14,
+              passivePerception: 13,
+              updatedAt: Date.now(),
+            },
+          },
+          createdAt: Date.now(),
+        });
+        await setDoc(doc(adminDb, 'campaign_invites', 'camp_alice_bob'), {
+          id: 'camp_alice_bob',
+          campaignId: 'camp_alice',
+          userId: 'bob',
+          dmId: 'alice',
+          status: 'used',
+          createdAt: Date.now(),
+        });
+      });
+
+      const bob = testEnv.authenticatedContext('bob').firestore();
+      const campRef = doc(bob, 'campaigns', 'camp_alice');
+      const inviteRef = doc(bob, 'campaign_invites', 'camp_alice_bob');
+
+      // Bob sai da campanha e exclui o convite consumido
+      const batch = writeBatch(bob);
+      batch.update(campRef, {
+        members: {},
+        updatedAt: Date.now(),
+      });
+      batch.delete(inviteRef);
+
+      await assertSucceeds(batch.commit());
+    });
   });
 
   describe('3. Proteção de Membros e Handouts', () => {

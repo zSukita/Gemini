@@ -88,7 +88,7 @@ service cloud.firestore {
              exists(invitePath) &&
              get(invitePath).data.userId == request.auth.uid &&
              get(invitePath).data.campaignId == campaignId &&
-             get(invitePath).data.status in ['accepted', 'used'];
+             get(invitePath).data.status in ['accepted'];
     }
 
     function isValidMemberUpdate() {
@@ -153,7 +153,7 @@ service cloud.firestore {
 
       // Atualização:
       // - Jogador convidado aceita o convite ou o marca como usado na entrada
-      // - Mestre pode gerenciar/revogar
+      // - Mestre pode gerenciar, revogar ou reautorizar convites consumidos ('used' -> 'pending' ou 'accepted')
       allow update: if isAuthenticated() && (
         (
           resource.data.userId == request.auth.uid &&
@@ -163,7 +163,12 @@ service cloud.firestore {
             (resource.data.status == 'accepted' && request.resource.data.status == 'used')
           )
         ) || (
-          resource.data.dmId == request.auth.uid
+          resource.data.dmId == request.auth.uid &&
+          request.resource.data.dmId == resource.data.dmId &&
+          request.resource.data.id == resource.data.id &&
+          request.resource.data.campaignId == resource.data.campaignId &&
+          request.resource.data.userId == resource.data.userId &&
+          request.resource.data.status in ['pending', 'accepted', 'revoked']
         )
       );
 

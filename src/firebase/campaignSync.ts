@@ -151,7 +151,9 @@ export async function createCampaign(
 }
 
 /**
- * Cria ou gera um convite oficial para autorizar um jogador a entrar na campanha
+ * Cria ou renova uma autorização/convite para um jogador ingressar na campanha (apenas Mestre).
+ * Se o jogador possuir um convite antigo que foi consumido ('used') ou revogado, renova-o como 'pending'
+ * para que possa ser aceito e consumido em uma nova entrada autorizada pelo Mestre.
  */
 export async function createCampaignInvite(
   campaignId: string,
@@ -176,12 +178,24 @@ export async function createCampaignInvite(
       const inviteRef = doc(db, 'campaign_invites', inviteId);
       await setDoc(inviteRef, invite);
     } catch (e) {
-      console.error('Erro ao criar convite de campanha no Firestore:', e);
-      throw new Error(`Falha ao criar convite: ${(e as Error).message || e}`);
+      console.error('Erro ao criar ou renovar convite de campanha no Firestore:', e);
+      throw new Error(`Falha ao autorizar jogador: ${(e as Error).message || e}`);
     }
   }
 
   return invite;
+}
+
+/**
+ * Reautoriza explicitamente um jogador cujo convite anterior foi consumido ('used') ou revogado.
+ */
+export async function reauthorizeCampaignMember(
+  campaignId: string,
+  userId: string,
+  dmId: string,
+  metadata?: { campaignName?: string; dmName?: string }
+): Promise<CampaignInvite> {
+  return createCampaignInvite(campaignId, userId, dmId, metadata);
 }
 
 /**
@@ -282,7 +296,7 @@ export async function findCampaignByCode(code: string): Promise<Campaign | null>
 
 /**
  * Jogador ingressa em uma campanha existente.
- * Usa writeBatch para atualizar os membros da campanha e marcar o convite como 'used' atomicamente.
+ * Valida o convite e usa writeBatch para atualizar os membros da campanha e marcar o convite como 'used' atomicamente.
  */
 export async function joinCampaign(
   campaignId: string,
@@ -290,16 +304,43 @@ export async function joinCampaign(
 ): Promise<void> {
   if (db) {
     try {
+      const campRef = doc(db, 'campaigns', campaignId);
+      const campSnap = await getDoc(campRef);
+      const isDm = campSnap.exists() && campSnap.data().dmId === member.userId;
+
+      // Se for o próprio Mestre, ele não necessita de convite para sincronizar seu personagem
+      if (isDm) {
+        await updateDoc(campRef, {
+          [`members.${member.userId}`]: member,
+          updatedAt: Date.now(),
+        });
+        return;
+      }
+
       const inviteId = `${campaignId}_${member.userId}`;
       const inviteRef = doc(db, 'campaign_invites', inviteId);
-      const campRef = doc(db, 'campaigns', campaignId);
+      const inviteSnap = await getDoc(inviteRef);
+
+      if (!inviteSnap.exists()) {
+        throw new Error('Você não possui autorização ou convite para esta campanha. Solicite ao Mestre.');
+      }
+
+      const inviteData = inviteSnap.data() as CampaignInvite;
+      if (inviteData.status === 'used') {
+        throw new Error('Este convite já foi consumido. Solicite uma nova autorização ao Mestre da campanha.');
+      }
+
+      // Se o convite ainda estiver pending, aceita antes de marcar como used no batch
+      if (inviteData.status === 'pending') {
+        await acceptCampaignInvite(campaignId, member.userId);
+      }
 
       const batch = writeBatch(db);
       batch.update(campRef, {
         [`members.${member.userId}`]: member,
         updatedAt: Date.now(),
       });
-      // Marca o convite como 'used' atomicamente
+      // Marca o convite aceito como 'used' (consumido) atomicamente
       batch.update(inviteRef, {
         status: 'used',
         updatedAt: Date.now(),
@@ -372,7 +413,9 @@ export async function syncMemberStats(
 }
 
 /**
- * Jogador sai da campanha
+ * Jogador sai da campanha.
+ * Remove o membro da campanha e exclui o convite consumido, garantindo que
+ * uma autorização antiga não persista e permitindo nova autorização limpa do Mestre.
  */
 export async function leaveCampaign(
   campaignId: string,
@@ -386,7 +429,18 @@ export async function leaveCampaign(
         const camp = snap.data() as Campaign;
         const newMembers = { ...camp.members };
         delete newMembers[userId];
-        await updateDoc(ref, { members: newMembers });
+
+        const batch = writeBatch(db);
+        batch.update(ref, { 
+          members: newMembers,
+          updatedAt: Date.now(),
+        });
+
+        // Limpa/exclui o convite consumido do jogador ao sair da campanha
+        const inviteRef = doc(db, 'campaign_invites', `${campaignId}_${userId}`);
+        batch.delete(inviteRef);
+
+        await batch.commit();
       }
       return;
     } catch (e) {

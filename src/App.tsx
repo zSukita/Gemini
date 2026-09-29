@@ -57,6 +57,7 @@ import { SRD_MONSTERS } from './data/srdMonsters';
 import { SRD_CLASSES } from './data/srdClasses';
 import { type AiAdventureScenario } from './data/aiAdventureScenarios';
 import { getXpForCr } from './utils/encounterDifficulty';
+import { stopNarrativeVoice } from './utils/narrationVoice';
 
 function PageFallback() {
   return (
@@ -1124,6 +1125,7 @@ export function App() {
   // Iniciar Aventura Solo Diretamente no Mapa Tático (VTT)
   const handleStartSoloAdventureOnMap = useCallback(
     (scenario: AiAdventureScenario, customPrompt?: string) => {
+      stopNarrativeVoice();
       // 1. Carrega o preset do mapa tático correspondente
       const targetPreset =
         DEFAULT_MAP_PRESETS.find((p) => p.id === scenario.mapPresetId) ||
@@ -1206,6 +1208,7 @@ export function App() {
 
   // Handlers para Finalizar Mesa / Iniciar Nova Aventura
   const handleStartNewAdventure = useCallback(() => {
+    stopNarrativeVoice();
     clearStoredChatHistory();
     clearChatLog();
     resetEncounter();
@@ -1216,6 +1219,7 @@ export function App() {
   }, [clearChatLog, resetEncounter, setTokens, showNotification, setIsEndSessionOpen, setIsMultiplayerOpen]);
 
   const handleClearMonstersAndCombat = useCallback(() => {
+    stopNarrativeVoice();
     resetEncounter();
     setTokens((prev) => prev.filter((t) => t.type === 'player'));
     setIsEndSessionOpen(false);
@@ -1223,6 +1227,7 @@ export function App() {
   }, [resetEncounter, setTokens, showNotification, setIsEndSessionOpen]);
 
   const handleDisconnectAndExit = useCallback(() => {
+    stopNarrativeVoice();
     if (isConnected) {
       disconnect();
     }

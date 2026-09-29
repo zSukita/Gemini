@@ -91,6 +91,43 @@ Ele sussurra: *"Vocês nunca sairão vivos daqui!"*`;
     // Narrativas do Mestre IA devem ser narradas
     expect(isNarratableMessage({ text: 'A névoa espessa se abre revelando a entrada de uma cripta ancestral envolta por runas arcanas.' })).toBe(true);
     expect(isNarratableMessage({ text: 'O carniçal recua sibilando de dor enquanto o fogo da tocha ilumina suas presas ensanguentadas.' })).toBe(true);
+
+    // Prólogos de aventura e cenários devem ser narrados
+    expect(
+      isNarratableMessage({
+        text: '📜 **Prólogo da Aventura Solo: A Cripta dos Reis Esquecidos**\n\nVocês descem pelas escadarias úmidas de pedra antiga e entram na Cripta dos Reis Esquecidos. O ar cheira a pó e cinzas antigas.',
+      })
+    ).toBe(true);
+
+    // Turno narrativo do monstro deve ser narrado
+    expect(
+      isNarratableMessage({
+        text: '⚔️ **Turno do Monstro:** O Mestre IA comanda **Esqueleto**, que avança ferozmente e desfere **Espada Curta** contra os heróis!',
+      })
+    ).toBe(true);
+
+    // Vitória no combate com texto de epílogo deve ser narrada
+    expect(
+      isNarratableMessage({
+        text: '🏆 **VITÓRIA NO COMBATE!**\n\nTodos os inimigos foram derrotados na **Rodada 2**!\n\n_A poeira da batalha assenta e os corações acalmam. Vocês triunfaram! O que desejam fazer agora?_',
+      })
+    ).toBe(true);
+  });
+
+  it('deve limpar dados complexos e avisos de sistema mecânicos na síntese', () => {
+    const input = `O esqueleto avança cambaleante!
+[d20 (13) + 2] = 15
+⚖️ Ações mecânicas aguardam revisão do Mestre.
+Ele golpeia com força! [d20 (14) + 4] ➜ ⚔️ ACERTOU!`;
+
+    const cleaned = cleanNarrativeForSpeech(input);
+
+    expect(cleaned).not.toContain('[d20 (13) + 2]');
+    expect(cleaned).not.toContain('= 15');
+    expect(cleaned).not.toContain('Ações mecânicas aguardam');
+    expect(cleaned).not.toContain('➜');
+    expect(cleaned).toContain('O esqueleto avança cambaleante!');
+    expect(cleaned).toContain('Ele golpeia com força!');
   });
 
   it('deve gerenciar estado de auto-narração no localStorage', () => {

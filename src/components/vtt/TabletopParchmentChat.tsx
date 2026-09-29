@@ -44,6 +44,7 @@ import {
   getVoiceNarrationMode,
   toggleVoiceNarrationMode,
   onSpeakingStateChange,
+  isNarrativeSpeaking,
   type VoiceNarrationMode,
 } from '../../utils/narrationVoice';
 
@@ -936,7 +937,7 @@ export const TabletopParchmentChat: React.FC<TabletopParchmentChatProps> = ({
               <span>{voiceMode === 'story_only' ? '📖 História' : '🎲 Tudo'}</span>
             </button>
           )}
-          {isSpeakingAny && (
+          {(isSpeakingAny || Boolean(speakingMsgId) || isNarrativeSpeaking()) && (
             <button
               type="button"
               onClick={() => {

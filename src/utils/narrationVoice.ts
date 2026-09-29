@@ -38,6 +38,8 @@ let speechQueue: QueueItem[] = [];
 let isProcessingQueue = false;
 let currentSpeakingId: string | null = null;
 let activeKeepAliveTimer: ReturnType<typeof setInterval> | null = null;
+let playbackSessionId = 0;
+let activeUtterance: SpeechSynthesisUtterance | null = null;
 const stateListeners: Set<(isSpeaking: boolean, id: string | null) => void> = new Set();
 
 function notifyStateListeners(isSpeaking: boolean, id: string | null) {
@@ -131,6 +133,10 @@ export function cleanNarrativeForSpeech(text: string): string {
     .replace(/@dm\b/gi, '')
     .replace(/\/mestre\b/gi, '')
     .replace(/\/ia\b/gi, '')
+    // Remove avisos de sistema e disclaimers mecânicos
+    .replace(/⚖️?\s*Ações mecânicas aguardam revisão do Mestre\.?/gi, '')
+    .replace(/🔮\s*O Mestre hesitou em meio ao véu arcano:[^.]*\.?/gi, '')
+    .replace(/⚠️\s*O Mestre IA precisa de configuração[^.]*\.?/gi, '')
     // Remove cabeçalhos Markdown (# Título)
     .replace(/^#+\s+/gm, '')
     // Remove negrito e itálico (*texto* ou **texto**)
@@ -142,9 +148,11 @@ export function cleanNarrativeForSpeech(text: string): string {
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     // Remove blocos de comandos internos entre colchetes mecânicos [RESULTADO DO ATAQUE:...] ou [ROLAGEM...]
     .replace(/\[(?:ROLAGEM|RESULTADO|SALVAGUARDA|TESTE|DANO|ATAQUE)[^\]]*\]/gi, '')
-    // Remove anotações matemáticas de dados crus ex: [1d20+4] = 18 ou [2d6] = 8
-    .replace(/\[\d+d\d+[^\]]*\]\s*=\s*\d+/gi, '')
-    .replace(/\[\d+d\d+[^\]]*\]/gi, '')
+    // Remove anotações matemáticas e rolagens completas de dados ex: [d20 (13) + 2] = 15 ou [1d20+4] = 18 ou [2d6 (4) + 2] = 6
+    .replace(/\[\s*(?:\d+)?d\d+[^\]]*\]\s*(?:=\s*\d+)?/gi, '')
+    .replace(/\[\s*(?:d\d+|\d+d\d+)[^\]]*\]/gi, '')
+    // Remove setas e caracteres direcionais de logs mecânicos
+    .replace(/[➜➔→⇒]/g, ' ')
     // Substitui abreviações comuns de D&D por pronúncia natural
     .replace(/\b(\d+)\s*PVs?\b/gi, '$1 pontos de vida')
     .replace(/\bPVs?\b/gi, 'pontos de vida')
@@ -330,20 +338,23 @@ function processQueue() {
   isProcessingQueue = true;
   const currentItem = speechQueue[0];
   currentSpeakingId = currentItem.id || null;
+  const currentSession = playbackSessionId;
   notifyStateListeners(true, currentSpeakingId);
   startKeepAlive();
 
   playSentences(
     currentItem.sentences,
     0,
+    currentSession,
     currentItem.options,
     () => {
-      // Sentenças do item atual concluídas com sucesso
+      if (currentSession !== playbackSessionId) return;
       currentItem.options.onEnd?.();
       speechQueue.shift();
       processQueue();
     },
     (err) => {
+      if (currentSession !== playbackSessionId) return;
       currentItem.options.onError?.(err);
       speechQueue.shift();
       processQueue();
@@ -352,15 +363,21 @@ function processQueue() {
 }
 
 /**
- * Executa uma lista de sentenças sequencialmente
+ * Executa uma lista de sentenças sequencialmente com validação estrita de sessão
  */
 function playSentences(
   sentences: string[],
   index: number,
+  sessionId: number,
   options: SpeakOptions,
   onComplete: () => void,
   onFailure: (err?: unknown) => void
 ) {
+  // Se a reprodução foi cancelada ou silenciada, aborta imediatamente
+  if (sessionId !== playbackSessionId || !isProcessingQueue) {
+    return;
+  }
+
   if (index >= sentences.length) {
     onComplete();
     return;
@@ -368,6 +385,7 @@ function playSentences(
 
   const sentence = sentences[index];
   const utterance = new SpeechSynthesisUtterance(sentence);
+  activeUtterance = utterance; // Previne coleta de lixo prematura pelo V8/Chromium
   utterance.lang = 'pt-BR';
   utterance.rate = options.rate ?? 1.02;
   utterance.pitch = options.pitch ?? 0.95;
@@ -380,6 +398,14 @@ function playSentences(
   let hasEnded = false;
 
   utterance.onstart = () => {
+    if (sessionId !== playbackSessionId || !isProcessingQueue) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch {
+        // ignore
+      }
+      return;
+    }
     if (index === 0) {
       options.onStart?.();
     }
@@ -388,23 +414,43 @@ function playSentences(
   utterance.onend = () => {
     if (hasEnded) return;
     hasEnded = true;
-    playSentences(sentences, index + 1, options, onComplete, onFailure);
+    if (activeUtterance === utterance) {
+      activeUtterance = null;
+    }
+    // Não avança para a próxima sentença se foi silenciado
+    if (sessionId !== playbackSessionId || !isProcessingQueue) {
+      return;
+    }
+    playSentences(sentences, index + 1, sessionId, options, onComplete, onFailure);
   };
 
   utterance.onerror = (e) => {
-    // Erros de interrupção intencional não devem quebrar o fluxo
-    if (e.error === 'interrupted' || e.error === 'canceled') {
-      return;
-    }
     if (hasEnded) return;
     hasEnded = true;
+    if (activeUtterance === utterance) {
+      activeUtterance = null;
+    }
+    // Erros de cancelamento ou interrupção intencional encerram silenciosamente sem avançar
+    if (
+      sessionId !== playbackSessionId ||
+      !isProcessingQueue ||
+      e.error === 'interrupted' ||
+      e.error === 'canceled'
+    ) {
+      return;
+    }
     onFailure(e);
   };
 
   try {
     window.speechSynthesis.speak(utterance);
   } catch (err) {
-    onFailure(err);
+    if (activeUtterance === utterance) {
+      activeUtterance = null;
+    }
+    if (sessionId === playbackSessionId && isProcessingQueue) {
+      onFailure(err);
+    }
   }
 }
 
@@ -458,19 +504,27 @@ export function speakNarrative(
 }
 
 /**
- * Interrompe qualquer narração de voz em andamento e esvazia a fila
+ * Interrompe qualquer narração de voz em andamento e esvazia a fila de forma irreversível e imediata
  */
 export function stopNarrativeVoice(): void {
-  if (!isSpeechSynthesisSupported()) return;
+  playbackSessionId++; // Invalida qualquer sentença ou item futuro em execução
   speechQueue = [];
   isProcessingQueue = false;
   currentSpeakingId = null;
+  activeUtterance = null;
   stopKeepAlive();
-  try {
-    window.speechSynthesis.cancel();
-  } catch {
-    // ignore
+
+  if (isSpeechSynthesisSupported()) {
+    try {
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+      }
+      window.speechSynthesis.cancel();
+    } catch {
+      // ignore
+    }
   }
+
   notifyStateListeners(false, null);
 }
 
@@ -479,7 +533,7 @@ export function stopNarrativeVoice(): void {
  */
 export function isNarrativeSpeaking(): boolean {
   if (!isSpeechSynthesisSupported()) return false;
-  return isProcessingQueue || window.speechSynthesis.speaking;
+  return isProcessingQueue;
 }
 
 /**

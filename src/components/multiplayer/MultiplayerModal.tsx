@@ -541,6 +541,13 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
                     <span>Entrar no Tabuleiro Tático (Jogar Agora)</span>
                   </button>
                 )}
+
+                <div className="flex items-start gap-1.5 text-[10px] text-slate-400 bg-slate-950/60 px-2.5 py-1.5 rounded-lg border border-slate-800/80 mt-1">
+                  <Shield size={12} className="text-amber-400/80 shrink-0 mt-0.5" />
+                  <span>
+                    Mesa P2P Direta (WebRTC): O estado é sincronizado ponto a ponto com proteções locais de regras. Ideal para grupos de confiança mútua (não utiliza autoridade central).
+                  </span>
+                </div>
               </div>
 
               {/* Lista de Usuários Conectados */}

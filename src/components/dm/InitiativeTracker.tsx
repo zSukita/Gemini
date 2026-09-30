@@ -122,20 +122,34 @@ export const InitiativeTracker: React.FC<InitiativeTrackerProps> = ({
                 )}
               </h2>
               {activeCombatant && (
-                <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                <div
+                  className="flex flex-wrap items-center gap-1.5 mt-1.5"
+                  role="status"
+                  aria-live="polite"
+                  aria-atomic="true"
+                >
                   {activeCombatant.currentHp <= 0 && (
-                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${
-                      activeCombatant.type === 'player'
-                        ? 'bg-rose-950/80 text-rose-300 border-rose-600/70 animate-pulse'
-                        : 'bg-slate-900 text-slate-400 border-slate-700'
-                    }`}>
-                      {activeCombatant.type === 'player' ? '💀 0 PV — Salvaguarda de Morte' : '💀 0 PV — Derrotado'}
+                    <span
+                      role="alert"
+                      className={`text-[11px] font-bold px-2 py-0.5 rounded-md border flex items-center gap-1 ${
+                        activeCombatant.type === 'player'
+                          ? 'bg-rose-950/80 text-rose-300 border-rose-600/70 animate-pulse'
+                          : 'bg-slate-900 text-slate-400 border-slate-700'
+                      }`}
+                    >
+                      {activeCombatant.type === 'player'
+                        ? '💀 0 PV — Salvaguarda contra a Morte pendente'
+                        : '💀 0 PV — Monstro Derrotado'}
                     </span>
                   )}
                   {activeCombatant.conditions
                     .filter((c) => ['incapacitated', 'paralyzed', 'petrified', 'stunned', 'unconscious'].includes(c))
                     .map((c) => (
-                      <span key={c} className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-purple-950/80 text-purple-200 border border-purple-600/60">
+                      <span
+                        key={c}
+                        role="alert"
+                        className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-purple-950/80 text-purple-200 border border-purple-600/60"
+                      >
                         ⚠️ {c} (Incapaz de agir)
                       </span>
                     ))}
@@ -241,7 +255,7 @@ export const InitiativeTracker: React.FC<InitiativeTrackerProps> = ({
             onClick={onSortInitiative}
             disabled={encounter.combatants.length < 2}
             className="rpg-button bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs disabled:opacity-40 justify-center min-h-[40px]"
-            title="Reordenar participantes por valor de iniciativa decrescente"
+            title="Reordenar participantes por valor de iniciativa decrescente (com desempate oficial por Destreza, tipo e ID)"
           >
             <ArrowDownUp size={14} />
             <span>Ordenar</span>

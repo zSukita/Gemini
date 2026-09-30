@@ -68,6 +68,10 @@ export class P2PNetworkManager {
     );
   }
 
+  public getMyPeerId(): string {
+    return this.peer?.id || '';
+  }
+
   public isConnected(): boolean {
     return this.peer !== null && !this.peer.destroyed;
   }
@@ -403,8 +407,12 @@ export class P2PNetworkManager {
         return;
       }
 
-      // 3. Proteção contra falsificação de identidade (Anti-Spoofing):
-      // O peer conectado não pode fingir ser o Host ou outro participante
+      // 3. Sanitização de identidade de transporte e limites da arquitetura P2P:
+      // O identificador da conexão WebRTC (conn.peer) é utilizado pelo Host para forçar
+      // o senderId recebido, evitando que um cliente declare arbitrariamente o ID de outro peer.
+      // NOTA TÉCNICA: Em uma rede P2P direta sem autoridade central ou assinaturas assimétricas,
+      // essa proteção atua como barreira contra erros de rede e clientes padrão, mas não impede
+      // adulterações se o próprio anfitrião for malicioso ou se participantes alterarem o cliente.
       if (this.isHost) {
         // Bloquear tipos de mensagens administrativas exclusivas do Host
         if (msg.type === 'PEER_LIST' || msg.type === 'ROOM_SYNC') {

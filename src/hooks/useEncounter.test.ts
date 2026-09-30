@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useEncounter, sanitizeEncounter } from './useEncounter';
+import {
+  useEncounter,
+  sanitizeEncounter,
+  sortCombatantsByInitiativeOrder,
+} from './useEncounter';
+import type { Combatant } from '../types/combat';
 
 describe('useEncounter hook', () => {
   beforeEach(() => {
@@ -493,6 +498,428 @@ describe('useEncounter hook', () => {
     expect(sanitized.combatants[0].conditions).toEqual(['poisoned']);
     expect(sanitized.activeCombatantId).toBe('c-1');
     expect(sanitized.activeCombatantIndex).toBe(0);
+  });
+  describe('sortCombatantsByInitiativeOrder', () => {
+    it('ordena por total de iniciativa decrescente (Critério 1)', () => {
+      const combatants: Combatant[] = [
+        {
+          id: 'c1',
+          name: 'Baixo',
+          type: 'player',
+          initiative: 5,
+          armorClass: 10,
+          maxHp: 10,
+          currentHp: 10,
+          tempHp: 0,
+          conditions: [],
+        },
+        {
+          id: 'c2',
+          name: 'Alto',
+          type: 'player',
+          initiative: 22,
+          armorClass: 10,
+          maxHp: 10,
+          currentHp: 10,
+          tempHp: 0,
+          conditions: [],
+        },
+        {
+          id: 'c3',
+          name: 'Médio',
+          type: 'monster',
+          initiative: 14,
+          armorClass: 10,
+          maxHp: 10,
+          currentHp: 10,
+          tempHp: 0,
+          conditions: [],
+        },
+      ];
+
+      const sorted = sortCombatantsByInitiativeOrder(combatants);
+      expect(sorted.map((c) => c.name)).toEqual(['Alto', 'Médio', 'Baixo']);
+    });
+
+    it('desempata pela Destreza efetiva quando as iniciativas são iguais (Critério 2)', () => {
+      const combatants: Combatant[] = [
+        {
+          id: 'c-dex10',
+          name: 'Destreza 10',
+          type: 'player',
+          initiative: 15,
+          dexterity: 10,
+          armorClass: 10,
+          maxHp: 10,
+          currentHp: 10,
+          tempHp: 0,
+          conditions: [],
+        },
+        {
+          id: 'c-dex18',
+          name: 'Destreza 18',
+          type: 'player',
+          initiative: 15,
+          dexterity: 18,
+          armorClass: 10,
+          maxHp: 10,
+          currentHp: 10,
+          tempHp: 0,
+          conditions: [],
+        },
+        {
+          id: 'c-dex14',
+          name: 'Destreza 14',
+          type: 'monster',
+          initiative: 15,
+          dexterity: 14,
+          armorClass: 10,
+          maxHp: 10,
+          currentHp: 10,
+          tempHp: 0,
+          conditions: [],
+        },
+      ];
+
+      const sorted = sortCombatantsByInitiativeOrder(combatants);
+      expect(sorted.map((c) => c.name)).toEqual(['Destreza 18', 'Destreza 14', 'Destreza 10']);
+    });
+
+    it('desempata pelo tipo (jogador antes de monstro) quando iniciativa e destreza são iguais (Critério 3)', () => {
+      const combatants: Combatant[] = [
+        {
+          id: 'monster-a',
+          name: 'Monstro Empatado',
+          type: 'monster',
+          initiative: 15,
+          dexterity: 14,
+          armorClass: 10,
+          maxHp: 10,
+          currentHp: 10,
+          tempHp: 0,
+          conditions: [],
+        },
+        {
+          id: 'player-a',
+          name: 'Jogador Empatado',
+          type: 'player',
+          initiative: 15,
+          dexterity: 14,
+          armorClass: 10,
+          maxHp: 10,
+          currentHp: 10,
+          tempHp: 0,
+          conditions: [],
+        },
+      ];
+
+      const sorted = sortCombatantsByInitiativeOrder(combatants);
+      expect(sorted[0].name).toBe('Jogador Empatado');
+      expect(sorted[1].name).toBe('Monstro Empatado');
+    });
+
+    it('desempata deterministicamente por ID estável quando todos os outros critérios empatam (Critério 4)', () => {
+      const combatants: Combatant[] = [
+        {
+          id: 'z-combatant',
+          name: 'Combatente Z',
+          type: 'player',
+          initiative: 15,
+          dexterity: 14,
+          armorClass: 10,
+          maxHp: 10,
+          currentHp: 10,
+          tempHp: 0,
+          conditions: [],
+        },
+        {
+          id: 'a-combatant',
+          name: 'Combatente A',
+          type: 'player',
+          initiative: 15,
+          dexterity: 14,
+          armorClass: 10,
+          maxHp: 10,
+          currentHp: 10,
+          tempHp: 0,
+          conditions: [],
+        },
+        {
+          id: 'm-combatant',
+          name: 'Combatente M',
+          type: 'player',
+          initiative: 15,
+          dexterity: 14,
+          armorClass: 10,
+          maxHp: 10,
+          currentHp: 10,
+          tempHp: 0,
+          conditions: [],
+        },
+      ];
+
+      const sorted = sortCombatantsByInitiativeOrder(combatants);
+      expect(sorted.map((c) => c.id)).toEqual(['a-combatant', 'm-combatant', 'z-combatant']);
+    });
+
+    it('é idempotente: reordenar uma lista já ordenada preserva exatamente a mesma ordem', () => {
+      const combatants: Combatant[] = [
+        { id: 'c1', name: 'Alpha', type: 'player', initiative: 18, dexterity: 14, armorClass: 10, maxHp: 10, currentHp: 10, tempHp: 0, conditions: [] },
+        { id: 'c2', name: 'Beta', type: 'monster', initiative: 18, dexterity: 14, armorClass: 10, maxHp: 10, currentHp: 10, tempHp: 0, conditions: [] },
+        { id: 'c3', name: 'Gamma', type: 'monster', initiative: 12, dexterity: 16, armorClass: 10, maxHp: 10, currentHp: 10, tempHp: 0, conditions: [] },
+        { id: 'c4', name: 'Delta', type: 'player', initiative: 12, dexterity: 12, armorClass: 10, maxHp: 10, currentHp: 10, tempHp: 0, conditions: [] },
+      ];
+
+      const sortedOnce = sortCombatantsByInitiativeOrder(combatants);
+      const sortedTwice = sortCombatantsByInitiativeOrder(sortedOnce);
+      const sortedThrice = sortCombatantsByInitiativeOrder(sortedTwice);
+
+      expect(sortedTwice.map((c) => c.id)).toEqual(sortedOnce.map((c) => c.id));
+      expect(sortedThrice.map((c) => c.id)).toEqual(sortedOnce.map((c) => c.id));
+    });
+  });
+
+  describe('comportamento de 0 PV e nextTurn', () => {
+    it('avança rodadas a cada turno quando há exatamente um combatente', () => {
+      const { result } = renderHook(() => useEncounter());
+
+      act(() => {
+        result.current.addCustomCombatant({
+          name: 'Guerreiro Solitário',
+          type: 'player',
+          initiative: 15,
+          armorClass: 16,
+          maxHp: 20,
+          currentHp: 20,
+          tempHp: 0,
+          conditions: [],
+        });
+        result.current.startEncounter();
+      });
+
+      expect(result.current.encounter.round).toBe(1);
+      expect(result.current.encounter.activeCombatantIndex).toBe(0);
+
+      act(() => {
+        result.current.nextTurn();
+      });
+      expect(result.current.encounter.round).toBe(2);
+      expect(result.current.encounter.activeCombatantIndex).toBe(0);
+
+      act(() => {
+        result.current.nextTurn();
+      });
+      expect(result.current.encounter.round).toBe(3);
+      expect(result.current.encounter.activeCombatantIndex).toBe(0);
+    });
+
+    it('registra aviso para salvaguarda de morte quando combatente único está com 0 PV', () => {
+      const { result } = renderHook(() => useEncounter());
+
+      act(() => {
+        result.current.addCustomCombatant({
+          name: 'Hero Caído',
+          type: 'player',
+          initiative: 15,
+          armorClass: 14,
+          maxHp: 20,
+          currentHp: 0,
+          tempHp: 0,
+          conditions: ['unconscious'],
+        });
+        result.current.startEncounter();
+      });
+
+      act(() => {
+        result.current.nextTurn();
+      });
+
+      expect(result.current.encounter.round).toBe(2);
+      const logsCombined = result.current.encounter.actionLog?.map((l) => l.message).join(' ') || '';
+      expect(logsCombined).toContain('Salvaguarda contra a Morte pendente');
+      expect(logsCombined).toContain('incapaz de realizar ações/reações');
+    });
+
+    it('pula múltiplos monstros derrotados em sequência e incrementa a rodada apenas uma vez na virada', () => {
+      const { result } = renderHook(() => useEncounter());
+
+      act(() => {
+        // Combatente 0: Jogador A (vivo)
+        result.current.addCustomCombatant({
+          name: 'Jogador A',
+          type: 'player',
+          initiative: 25,
+          armorClass: 15,
+          maxHp: 20,
+          currentHp: 20,
+          tempHp: 0,
+          conditions: [],
+        });
+        // Combatente 1: Monstro 1 (morto)
+        result.current.addCustomCombatant({
+          name: 'Monstro 1',
+          type: 'monster',
+          initiative: 20,
+          armorClass: 12,
+          maxHp: 15,
+          currentHp: 0,
+          tempHp: 0,
+          conditions: [],
+        });
+        // Combatente 2: Monstro 2 (morto)
+        result.current.addCustomCombatant({
+          name: 'Monstro 2',
+          type: 'monster',
+          initiative: 15,
+          armorClass: 12,
+          maxHp: 15,
+          currentHp: 0,
+          tempHp: 0,
+          conditions: [],
+        });
+        // Combatente 3: Jogador B (vivo)
+        result.current.addCustomCombatant({
+          name: 'Jogador B',
+          type: 'player',
+          initiative: 10,
+          armorClass: 14,
+          maxHp: 18,
+          currentHp: 18,
+          tempHp: 0,
+          conditions: [],
+        });
+      });
+
+      // Ativa skipDefeatedMonsters
+      act(() => {
+        result.current.toggleSkipDefeatedMonsters();
+      });
+      expect(result.current.encounter.skipDefeatedMonsters).toBe(true);
+
+      act(() => {
+        result.current.startEncounter();
+      });
+
+      expect(result.current.encounter.round).toBe(1);
+      expect(result.current.encounter.combatants[result.current.encounter.activeCombatantIndex].name).toBe('Jogador A');
+
+      // Avança turno: deve pular Monstro 1 e Monstro 2 e ir diretamente para Jogador B (ainda na rodada 1)
+      act(() => {
+        result.current.nextTurn();
+      });
+
+      expect(result.current.encounter.round).toBe(1);
+      expect(result.current.encounter.combatants[result.current.encounter.activeCombatantIndex].name).toBe('Jogador B');
+
+      // Avança turno: de Jogador B, deve pular o fim da lista e os monstros caídos, retornando a Jogador A
+      // A rodada deve avançar para 2 (exatamente um incremento de rodada)
+      act(() => {
+        result.current.nextTurn();
+      });
+
+      expect(result.current.encounter.round).toBe(2);
+      expect(result.current.encounter.combatants[result.current.encounter.activeCombatantIndex].name).toBe('Jogador A');
+    });
+
+    it('NÃO pula monstros derrotados quando skipDefeatedMonsters estiver desativado', () => {
+      const { result } = renderHook(() => useEncounter());
+
+      act(() => {
+        result.current.addCustomCombatant({
+          name: 'Herói',
+          type: 'player',
+          initiative: 20,
+          armorClass: 15,
+          maxHp: 20,
+          currentHp: 20,
+          tempHp: 0,
+          conditions: [],
+        });
+        result.current.addCustomCombatant({
+          name: 'Goblin Morto',
+          type: 'monster',
+          initiative: 10,
+          armorClass: 12,
+          maxHp: 7,
+          currentHp: 0, // Derrotado
+          tempHp: 0,
+          conditions: [],
+        });
+        result.current.startEncounter();
+      });
+
+      expect(result.current.encounter.skipDefeatedMonsters).toBe(false);
+      expect(result.current.encounter.activeCombatantIndex).toBe(0);
+
+      // Com skipDefeatedMonsters = false, o turno de Goblin Morto não é pulado
+      act(() => {
+        result.current.nextTurn();
+      });
+
+      expect(result.current.encounter.activeCombatantIndex).toBe(1);
+      expect(result.current.encounter.combatants[1].name).toBe('Goblin Morto');
+      expect(result.current.encounter.actionLog?.[0].message).toContain('Criatura caída/derrotada');
+
+      // Alterna a opção para true e no próximo ciclo o monstro derrotado é pulado
+      act(() => {
+        result.current.toggleSkipDefeatedMonsters();
+      });
+      expect(result.current.encounter.skipDefeatedMonsters).toBe(true);
+
+      // Avança para o Herói (rodada 2)
+      act(() => {
+        result.current.nextTurn();
+      });
+      expect(result.current.encounter.round).toBe(2);
+      expect(result.current.encounter.combatants[result.current.encounter.activeCombatantIndex].name).toBe('Herói');
+
+      // Agora que skipDefeatedMonsters está true, ao avançar turno deve pular Goblin Morto e continuar no Herói (rodada 3)
+      act(() => {
+        result.current.nextTurn();
+      });
+      expect(result.current.encounter.round).toBe(3);
+      expect(result.current.encounter.combatants[result.current.encounter.activeCombatantIndex].name).toBe('Herói');
+    });
+
+    it('jogadores a 0 PV NUNCA são pulados, mesmo com skipDefeatedMonsters ativo', () => {
+      const { result } = renderHook(() => useEncounter());
+
+      act(() => {
+        result.current.addCustomCombatant({
+          name: 'Orc Guerreiro',
+          type: 'monster',
+          initiative: 20,
+          armorClass: 13,
+          maxHp: 15,
+          currentHp: 15,
+          tempHp: 0,
+          conditions: [],
+        });
+        result.current.addCustomCombatant({
+          name: 'Mago Caído',
+          type: 'player',
+          initiative: 10,
+          armorClass: 12,
+          maxHp: 14,
+          currentHp: 0, // 0 PV!
+          tempHp: 0,
+          conditions: ['unconscious'],
+        });
+        result.current.toggleSkipDefeatedMonsters(); // true
+        result.current.startEncounter();
+      });
+
+      expect(result.current.encounter.skipDefeatedMonsters).toBe(true);
+
+      // Avança o turno: deve ir para o Mago Caído, permitindo sua salvaguarda de morte
+      act(() => {
+        result.current.nextTurn();
+      });
+
+      expect(result.current.encounter.activeCombatantIndex).toBe(1);
+      expect(result.current.encounter.combatants[1].name).toBe('Mago Caído');
+      expect(result.current.encounter.actionLog?.[0].message).toContain('Salvaguarda contra a Morte pendente');
+    });
   });
 });
 

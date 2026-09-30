@@ -112,17 +112,262 @@ describe('multiplayerValidation - validateRemoteTokens', () => {
     expect(thorin?.y).toBe(200);
   });
 
-  it('descarta mensagens fora de ordem se a versão recebida for inferior à versão atual', () => {
-    const incoming = [
-      // token-hero-1 já está na versão 5; uma mensagem defasada de versão 3 deve ser ignorada
+  it('descarta mensagens fora de ordem se a versão recebida for inferior ou igual à versão atual', () => {
+    // Caso 1: Versão inferior (3 < 5) deve ser ignorada
+    const incomingOlder = [
       { id: 'token-hero-1', x: 50, y: 50, version: 3, ownerId: 'peer-player-1' },
     ];
+    const resultOlder = validateRemoteTokens(incomingOlder, currentTokens, 'Eldrin', false, 'peer-player-1');
+    const heroOlder = resultOlder.find((t) => t.id === 'token-hero-1');
+    expect(heroOlder?.x).toBe(100);
+    expect(heroOlder?.y).toBe(100);
 
-    const result = validateRemoteTokens(incoming, currentTokens, 'Eldrin', false, 'peer-player-1');
+    // Caso 2: Versão igual (5 == 5, mensagem duplicada) deve ser ignorada
+    const incomingSame = [
+      { id: 'token-hero-1', x: 75, y: 75, version: 5, ownerId: 'peer-player-1' },
+    ];
+    const resultSame = validateRemoteTokens(incomingSame, currentTokens, 'Eldrin', false, 'peer-player-1');
+    const heroSame = resultSame.find((t) => t.id === 'token-hero-1');
+    expect(heroSame?.x).toBe(100);
+    expect(heroSame?.y).toBe(100);
+  });
+
+  it('rejeita criação de tokens falsos por jogadores comuns (IDs desconhecidos não são adicionados)', () => {
+    const incomingWithFake = [
+      {
+        id: 'token-infiltrator-fake',
+        name: 'Monstro Invasor',
+        x: 300,
+        y: 300,
+        type: 'monster',
+        version: 1,
+      },
+    ];
+
+    const result = validateRemoteTokens(incomingWithFake, currentTokens, 'Eldrin', false, 'peer-player-1');
+    expect(result.find((t) => t.id === 'token-infiltrator-fake')).toBeUndefined();
+    expect(result.length).toBe(currentTokens.length);
+  });
+
+  it('preserva estritamente todos os campos protegidos (PV, condições, nome, tipo, tamanho, etc.) quando o jogador move seu próprio token', () => {
+    const maliciousIncoming = [
+      {
+        id: 'token-hero-1',
+        x: 180,
+        y: 180,
+        version: 6,
+        // Tentativas maliciosas de adulteração de campos protegidos:
+        name: 'Super Eldrin Imortal',
+        type: 'monster',
+        ownerId: 'peer-player-999',
+        combatantId: 'hacked-id',
+        currentHp: 999,
+        maxHp: 999,
+        tempHp: 100,
+        conditions: ['invisible'],
+        size: 4,
+        color: '#000000',
+        avatarUrl: 'https://evil.example.com/exploit.png',
+        hasTorch: true,
+      },
+    ];
+
+    const result = validateRemoteTokens(maliciousIncoming, currentTokens, 'Eldrin', false, 'peer-player-1');
     const hero = result.find((t) => t.id === 'token-hero-1');
 
-    expect(hero?.x).toBe(100);
-    expect(hero?.y).toBe(100);
+    // Apenas posição x, y e versão/updatedAt devem ser aplicados
+    expect(hero?.x).toBe(180);
+    expect(hero?.y).toBe(180);
+    expect(hero?.version).toBe(6);
+
+    // Todos os campos protegidos devem ser rigorosamente preservados do estado anterior:
+    expect(hero?.name).toBe('Eldrin');
+    expect(hero?.type).toBe('player');
+    expect(hero?.ownerId).toBe('peer-player-1');
+    expect(hero?.currentHp).toBe(20);
+    expect(hero?.maxHp).toBe(20);
+    expect(hero?.tempHp).toBe(0);
+    expect(hero?.conditions).toEqual([]);
+    expect(hero?.size).toBe(1);
+    expect(hero?.color).toBe('#10b981');
+    expect(hero?.combatantId).toBeUndefined();
+  });
+
+  it('não autentica propriedade apenas pelo nome exibido se a identidade de rede (peerId) não conferir', () => {
+    // Atacante com peerId 'peer-impostor' se passa por 'Thorin' no nome para mover token de Thorin
+    const incoming = [
+      { id: 'token-hero-2', x: 800, y: 800, version: 10 },
+    ];
+
+    const result = validateRemoteTokens(incoming, currentTokens, 'Thorin', false, 'peer-impostor');
+    const thorin = result.find((t) => t.id === 'token-hero-2');
+
+    // O movimento deve ser rejeitado porque peer-impostor !== peer-player-2
+    expect(thorin?.x).toBe(200);
+    expect(thorin?.y).toBe(200);
+  });
+
+  it('permite autenticar propriedade via senderUserId persistente quando configurado', () => {
+    const tokensWithUserId: MapToken[] = [
+      {
+        ...currentTokens[0],
+        ownerId: 'user-auth-uuid-42',
+      },
+    ];
+
+    const incoming = [
+      { id: 'token-hero-1', x: 190, y: 190, version: 6 },
+    ];
+
+    // PeerId mudou após reconexão, mas senderUserId é o mesmo
+    const result = validateRemoteTokens(
+      incoming,
+      tokensWithUserId,
+      'Eldrin',
+      false,
+      'new-volatile-peer-id',
+      { senderUserId: 'user-auth-uuid-42' }
+    );
+    const hero = result.find((t) => t.id === 'token-hero-1');
+
+    expect(hero?.x).toBe(190);
+    expect(hero?.y).toBe(190);
+  });
+
+  it('garante que uma mensagem parcial contendo apenas o token movido NÃO apague os outros tokens do mapa', () => {
+    // Jogador move apenas seu token (payload com 1 item)
+    const singleTokenPayload = [
+      { id: 'token-hero-1', x: 120, y: 120, version: 6 },
+    ];
+
+    const result = validateRemoteTokens(singleTokenPayload, currentTokens, 'Eldrin', false, 'peer-player-1');
+
+    // A lista retornada DEVE conter todos os 3 tokens
+    expect(result.length).toBe(3);
+    expect(result.find((t) => t.id === 'token-hero-1')?.x).toBe(120);
+    expect(result.find((t) => t.id === 'token-hero-2')?.x).toBe(200); // Thorin mantido
+    expect(result.find((t) => t.id === 'token-goblin-1')?.x).toBe(500); // Goblin mantido
+  });
+
+  it('rejeita coordenadas fora dos limites ou não finitas (NaN, Infinity) enviadas por jogadores e aceita posições válidas', () => {
+    const options = {
+      mapWidth: 2000,
+      mapHeight: 1500,
+      gridSize: 50,
+    };
+
+    // 1. Tentativa com coordenadas fora dos limites (negativas ou além da largura/altura do mapa):
+    // Deve ser rejeitada para jogadores, mantendo a posição original inalterada
+    const incomingOutOfBounds = [
+      { id: 'token-hero-1', x: -500, y: 99999, version: 6 },
+    ];
+    const resultBounds = validateRemoteTokens(
+      incomingOutOfBounds,
+      currentTokens,
+      'Eldrin',
+      false,
+      'peer-player-1',
+      options
+    );
+    const heroBounds = resultBounds.find((t) => t.id === 'token-hero-1');
+    expect(heroBounds?.x).toBe(100);
+    expect(heroBounds?.y).toBe(100);
+
+    // 2. Tentativa com NaN ou Infinity: mantém as coordenadas anteriores
+    const incomingNaN = [
+      { id: 'token-hero-1', x: NaN, y: Infinity, version: 7 },
+    ];
+    const resultNaN = validateRemoteTokens(
+      incomingNaN,
+      currentTokens,
+      'Eldrin',
+      false,
+      'peer-player-1',
+      options
+    );
+    const heroNaN = resultNaN.find((t) => t.id === 'token-hero-1');
+    expect(heroNaN?.x).toBe(100);
+    expect(heroNaN?.y).toBe(100);
+
+    // 3. Coordenadas válidas dentro dos limites: são aplicadas com sucesso
+    const incomingValid = [
+      { id: 'token-hero-1', x: 450, y: 600, version: 8 },
+    ];
+    const resultValid = validateRemoteTokens(
+      incomingValid,
+      currentTokens,
+      'Eldrin',
+      false,
+      'peer-player-1',
+      options
+    );
+    const heroValid = resultValid.find((t) => t.id === 'token-hero-1');
+    expect(heroValid?.x).toBe(450);
+    expect(heroValid?.y).toBe(600);
+    expect(heroValid?.version).toBe(8);
+  });
+
+  it('permite ao Host sincronizar a sala completa (isFullRoomSync) com sanitização de todos os tokens', () => {
+    const roomSyncPayload = [
+      {
+        id: 'token-new-dragon',
+        name: 'Dragão Vermelho',
+        x: 400,
+        y: 300,
+        type: 'monster',
+        size: 3,
+        currentHp: 200,
+        maxHp: 200,
+        version: 1,
+      },
+    ];
+
+    const result = validateRemoteTokens(
+      roomSyncPayload,
+      currentTokens,
+      'Mestre',
+      true,
+      'host-peer',
+      { isFullRoomSync: true }
+    );
+
+    expect(result.length).toBe(1);
+    expect(result[0].id).toBe('token-new-dragon');
+    expect(result[0].name).toBe('Dragão Vermelho');
+    expect(result[0].type).toBe('monster');
+    expect(result[0].currentHp).toBe(200);
+  });
+
+  it('impede que jogadores comuns usem isFullRoomSync para sobrescrever tokens de outros jogadores ou criar monstros', () => {
+    const roomSyncPayload = [
+      {
+        id: 'token-new-dragon',
+        name: 'Dragão Invasor',
+        x: 400,
+        y: 300,
+        type: 'monster',
+        version: 1,
+      },
+      {
+        id: 'token-hero-2',
+        x: 900,
+        y: 900,
+        version: 10,
+      },
+    ];
+
+    const result = validateRemoteTokens(
+      roomSyncPayload,
+      currentTokens,
+      'Eldrin',
+      false, // Não é host!
+      'peer-player-1',
+      { isFullRoomSync: true }
+    );
+
+    // O dragão não deve ser adicionado e o Thorin não deve ter sua posição movida pelo player 1
+    expect(result.find((t) => t.id === 'token-new-dragon')).toBeUndefined();
+    expect(result.find((t) => t.id === 'token-hero-2')?.x).toBe(200);
   });
 
   it('retorna os tokens atuais inalterados se a entrada não for um array', () => {

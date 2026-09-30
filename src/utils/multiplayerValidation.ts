@@ -1,111 +1,287 @@
 import type { MapToken, FogShape, BattleMapConfig } from '../types/vtt';
 
 /**
+ * OPÇÕES DE VALIDAÇÃO DE TOKENS REMOTOS
+ */
+export interface ValidateRemoteTokensOptions {
+  mapWidth?: number;
+  mapHeight?: number;
+  gridSize?: number;
+  senderUserId?: string;
+  isFullRoomSync?: boolean;
+}
+
+/**
  * Valida e sanitiza tokens recebidos via rede P2P.
- * Aplica controle estrito de permissões: jogadores (não-host) só podem mover seus próprios tokens.
- * Mensagens fora de ordem são descartadas se a versão do token for menor que a atual.
+ *
+ * LIMITAÇÕES DE SEGURANÇA E DA AUTORIDADE P2P:
+ * 1. Arquitetura Descentralizada (WebRTC / PeerJS):
+ *    Em uma rede P2P direta sem autoridade centralizada, as conexões são intermediadas
+ *    apenas por servidores de sinalização (signaling), sem inspeção ou assinatura de pacotes.
+ *    O Host da sala é um cliente no navegador como qualquer outro.
+ * 2. Limite das Permissões Locais (Guardrails):
+ *    As validações a seguir atuam como proteções essenciais de integridade contra erros de rede,
+ *    mensagens fora de ordem, sobrecarga acidental e comportamento padrão da aplicação cliente.
+ *    Entretanto, NÃO devem ser interpretadas como segurança criptográfica absoluta ou inviolável
+ *    contra um participante malicioso que execute código modificado no console do navegador.
+ * 3. Identidade e Códigos de Sala:
+ *    A identidade do remetente é baseada no peerId atribuído na conexão PeerJS. Códigos de sala
+ *    e metadados em trânsito não possuem chaves assimétricas atestadas por autoridade de certificação.
+ * 4. Requisitos para Autoridade Central (caso necessária no futuro):
+ *    Se for indispensável garantir controle de acesso contra clientes modificados, o sistema
+ *    precisará de um backend autoritativo central (ex: Node/Go/Cloud Functions) com autenticação
+ *    de sessão (JWT), resolução de ações no servidor (server-side state engine) e diffs canônicos.
  */
 export function validateRemoteTokens(
   incoming: unknown,
   currentTokens: MapToken[],
-  senderName: string,
+  _senderName: string,
   isSenderHost: boolean,
-  senderPeerId?: string
+  senderPeerId?: string,
+  options?: ValidateRemoteTokensOptions
 ): MapToken[] {
   if (!Array.isArray(incoming)) {
     return currentTokens;
   }
 
+  const mapWidth = options?.mapWidth && Number.isFinite(options.mapWidth) && options.mapWidth > 0
+    ? options.mapWidth
+    : 10000;
+  const mapHeight = options?.mapHeight && Number.isFinite(options.mapHeight) && options.mapHeight > 0
+    ? options.mapHeight
+    : 10000;
+  const gridSize = options?.gridSize && Number.isFinite(options.gridSize) && options.gridSize > 0
+    ? options.gridSize
+    : 50;
+
   // Limite razoável de segurança para evitar sobrecarga de memória (DDoS/payloads anômalos)
   const safeIncoming = incoming.slice(0, 150);
-  const currentMap = new Map<string, MapToken>(currentTokens.map((t) => [t.id, t]));
-  const normalizedSenderName = (senderName || '').trim().toLowerCase();
 
-  const validatedTokens: MapToken[] = [];
+  // ── CASO 1: Sincronização Completa de Sala vinda do Host ──
+  // Apenas o anfitrião legítimo pode sincronizar o estado integral da sala
+  if (isSenderHost && options?.isFullRoomSync) {
+    const fullTokens: MapToken[] = [];
+    for (const raw of safeIncoming) {
+      if (!raw || typeof raw !== 'object') continue;
+      const item = raw as Partial<MapToken>;
+      if (typeof item.id !== 'string' || !item.id.trim()) continue;
+
+      const id = item.id.trim().slice(0, 80);
+      const name = typeof item.name === 'string' && item.name.trim() ? item.name.slice(0, 80).trim() : 'Token';
+      const size = typeof item.size === 'number' && [1, 2, 3, 4].includes(item.size) ? item.size : 1;
+      const color = typeof item.color === 'string' ? item.color.slice(0, 30) : '#ffffff';
+      const type: 'player' | 'monster' | 'npc' = item.type === 'player' || item.type === 'monster' || item.type === 'npc'
+        ? item.type
+        : 'player';
+
+      const tokenPixelSize = size * gridSize;
+      const maxX = Math.max(0, mapWidth - tokenPixelSize);
+      const maxY = Math.max(0, mapHeight - tokenPixelSize);
+
+      const rawX = typeof item.x === 'number' && Number.isFinite(item.x) ? Math.round(item.x) : 0;
+      const rawY = typeof item.y === 'number' && Number.isFinite(item.y) ? Math.round(item.y) : 0;
+      const x = Math.min(maxX, Math.max(0, rawX));
+      const y = Math.min(maxY, Math.max(0, rawY));
+
+      const currentHp = typeof item.currentHp === 'number' && Number.isFinite(item.currentHp) ? Math.round(item.currentHp) : 10;
+      const maxHp = typeof item.maxHp === 'number' && Number.isFinite(item.maxHp) && item.maxHp > 0 ? Math.round(item.maxHp) : 10;
+      const tempHp = typeof item.tempHp === 'number' && Number.isFinite(item.tempHp) && item.tempHp >= 0 ? Math.round(item.tempHp) : 0;
+
+      const conditions = Array.isArray(item.conditions)
+        ? item.conditions.filter((c) => typeof c === 'string').map((c) => (c as string).slice(0, 40))
+        : [];
+
+      const ownerId = typeof item.ownerId === 'string' && item.ownerId.trim() ? item.ownerId.trim().slice(0, 80) : undefined;
+      const combatantId = typeof item.combatantId === 'string' && item.combatantId.trim() ? item.combatantId.trim().slice(0, 80) : undefined;
+      const avatarUrl = typeof item.avatarUrl === 'string' ? item.avatarUrl.slice(0, 10000) : undefined;
+      const hasTorch = Boolean(item.hasTorch);
+      const version = typeof item.version === 'number' && Number.isFinite(item.version) && item.version > 0
+        ? Math.floor(item.version)
+        : 1;
+
+      fullTokens.push({
+        id,
+        name,
+        size,
+        color,
+        type,
+        x,
+        y,
+        currentHp,
+        maxHp,
+        tempHp,
+        conditions,
+        ownerId,
+        combatantId,
+        avatarUrl,
+        hasTorch,
+        version,
+        updatedAt: typeof item.updatedAt === 'number' && Number.isFinite(item.updatedAt) ? item.updatedAt : Date.now(),
+      });
+    }
+    return fullTokens;
+  }
+
+  // ── CASO 2: Mensagem Parcial de Movimento (TOKEN_MOVE) ──
+  // GARANTIA: Tokens já existentes na mesa NÃO são removidos por mensagens parciais!
+  // Clonamos o mapa do estado atual para preservar todos os tokens existentes.
+  const tokenMap = new Map<string, MapToken>(currentTokens.map((t) => [t.id, { ...t }]));
+
+  // Processamento para mensagens enviadas por JOGADORES (não-host)
+  if (!isSenderHost) {
+    for (const raw of safeIncoming) {
+      if (!raw || typeof raw !== 'object') continue;
+      const item = raw as Partial<MapToken>;
+
+      // 1. Rejeitar IDs inválidos ou ausentes
+      if (typeof item.id !== 'string' || !item.id.trim()) continue;
+      const id = item.id.trim();
+
+      const existing = tokenMap.get(id);
+      // 2. Rejeitar tokens desconhecidos: Jogador NUNCA pode criar tokens
+      if (!existing) {
+        continue;
+      }
+
+      // 3. Autenticação estrita de posse do token:
+      // O jogador deve possuir o token comprovado pelo seu identificador confiável de remetente (senderPeerId ou senderUserId).
+      // NUNCA aceitar apenas o nome de exibição como autenticação (nomes podem duplicar ou ser fraudados).
+      const hasDirectOwnerMatch = Boolean(
+        (existing.ownerId && senderPeerId && existing.ownerId === senderPeerId) ||
+        (existing.ownerId && options?.senderUserId && existing.ownerId === options.senderUserId)
+      );
+
+      // Jogadores não podem mover monstros, NPCs ou tokens que não lhes pertençam
+      if (!hasDirectOwnerMatch || existing.type === 'monster' || existing.type === 'npc') {
+        continue;
+      }
+
+      // 4. Verificação de versão: Descarta mensagens fora de ordem, defasadas ou repetidas
+      if (typeof item.version !== 'number' || !Number.isFinite(item.version)) {
+        continue;
+      }
+      const incomingVersion = Math.floor(item.version);
+      if (incomingVersion <= (existing.version || 0)) {
+        // Mensagem defasada ou repetida: descartada
+        continue;
+      }
+
+      // 5. Validação de coordenadas: Rejeitar valores não finitos ou ausentes
+      if (typeof item.x !== 'number' || !Number.isFinite(item.x) || typeof item.y !== 'number' || !Number.isFinite(item.y)) {
+        continue;
+      }
+
+      // 6. Verificação de limites do mapa: Rejeitar coordenadas fora do tabuleiro
+      const tokenPixelSize = (existing.size || 1) * gridSize;
+      const maxX = Math.max(0, mapWidth - tokenPixelSize);
+      const maxY = Math.max(0, mapHeight - tokenPixelSize);
+
+      if (item.x < 0 || item.y < 0 || item.x > maxX || item.y > maxY) {
+        continue;
+      }
+
+      // 7. Aplicação autorizada de alteração:
+      // O jogador tem autorização EXCLUSIVA para atualizar a POSIÇÃO e metadados de ordenação (versão/timestamp).
+      // TODOS os campos protegidos (nome, tipo, proprietário, combatantId, PV, condições, avatar, tamanho, etc.)
+      // são PRESERVADOS incondicionalmente a partir de existing.
+      existing.x = Math.round(item.x);
+      existing.y = Math.round(item.y);
+      existing.version = incomingVersion;
+      existing.updatedAt = typeof item.updatedAt === 'number' && Number.isFinite(item.updatedAt)
+        ? item.updatedAt
+        : Date.now();
+    }
+
+    // Retorna a lista completa atualizada preservando a ordem original dos tokens existentes
+    return currentTokens.map((t) => tokenMap.get(t.id) || t);
+  }
+
+  // Processamento para mensagens parciais enviadas pelo HOST (Mestre)
+  // O Host tem autoridade para mover qualquer token ou adicionar novos tokens ao mapa
+  const newlyAddedByHost: MapToken[] = [];
 
   for (const raw of safeIncoming) {
     if (!raw || typeof raw !== 'object') continue;
     const item = raw as Partial<MapToken>;
-
     if (typeof item.id !== 'string' || !item.id.trim()) continue;
+
     const id = item.id.trim();
+    const existing = tokenMap.get(id);
 
-    const existing = currentMap.get(id);
+    const incomingVersion = typeof item.version === 'number' && Number.isFinite(item.version)
+      ? Math.floor(item.version)
+      : undefined;
 
-    // Validação de tipos e campos básicos
-    const name = typeof item.name === 'string' && item.name.trim() ? item.name.slice(0, 80).trim() : (existing?.name || 'Token');
-    const size = typeof item.size === 'number' && [1, 2, 3, 4].includes(item.size) ? item.size : (existing?.size || 1);
-    const color = typeof item.color === 'string' ? item.color.slice(0, 30) : (existing?.color || '#ffffff');
-    const type: 'player' | 'monster' | 'npc' = item.type === 'player' || item.type === 'monster' || item.type === 'npc'
-      ? item.type
-      : (existing?.type || 'player');
-
-    const incomingX = typeof item.x === 'number' && Number.isFinite(item.x) ? Math.round(item.x) : (existing?.x || 0);
-    const incomingY = typeof item.y === 'number' && Number.isFinite(item.y) ? Math.round(item.y) : (existing?.y || 0);
-
-    const currentHp = typeof item.currentHp === 'number' && Number.isFinite(item.currentHp) ? Math.round(item.currentHp) : (existing?.currentHp || 10);
-    const maxHp = typeof item.maxHp === 'number' && Number.isFinite(item.maxHp) && item.maxHp > 0 ? Math.round(item.maxHp) : (existing?.maxHp || 10);
-    const tempHp = typeof item.tempHp === 'number' && Number.isFinite(item.tempHp) && item.tempHp >= 0 ? Math.round(item.tempHp) : (existing?.tempHp || 0);
-
-    const conditions = Array.isArray(item.conditions)
-      ? item.conditions.filter((c) => typeof c === 'string').map((c) => (c as string).slice(0, 40))
-      : (existing?.conditions || []);
-
-    const ownerId = typeof item.ownerId === 'string' ? item.ownerId : existing?.ownerId;
-    const combatantId = typeof item.combatantId === 'string' ? item.combatantId : existing?.combatantId;
-    const avatarUrl = typeof item.avatarUrl === 'string' ? item.avatarUrl : existing?.avatarUrl;
-    const hasTorch = Boolean(item.hasTorch ?? existing?.hasTorch);
-    const incomingVersion = typeof item.version === 'number' && Number.isFinite(item.version) ? item.version : undefined;
-
-    // Regra de Controle de Acesso:
-    // Se o remetente for o Mestre (Host), ele tem autoridade total para mover qualquer token.
-    // Se o remetente for um Jogador comum:
-    // 1. Só pode mover tokens que pertençam a ele (ownerId coincidente ou nome coincidente).
-    // 2. Não pode mover monstros, NPCs ou tokens de outros jogadores.
-    let finalX = incomingX;
-    let finalY = incomingY;
-
-    if (!isSenderHost && existing) {
-      const isOwner = (ownerId && senderPeerId && ownerId === senderPeerId) ||
-        (existing.name.trim().toLowerCase() === normalizedSenderName);
-
-      if (!isOwner || existing.type === 'monster') {
-        // Ignora alteração de coordenadas não autorizada
-        finalX = existing.x;
-        finalY = existing.y;
-      } else if (
-        incomingVersion !== undefined &&
-        existing.version !== undefined &&
-        incomingVersion < existing.version
-      ) {
-        // Mensagem desordenada mais antiga: mantém a posição mais recente
-        finalX = existing.x;
-        finalY = existing.y;
+    // Se o token já existe na mesa:
+    if (existing) {
+      if (incomingVersion !== undefined && existing.version !== undefined && incomingVersion < existing.version) {
+        // Mensagem desordenada mais antiga: mantém versão mais recente
+        continue;
       }
-    }
 
-    validatedTokens.push({
-      id,
-      combatantId,
-      ownerId,
-      name,
-      x: finalX,
-      y: finalY,
-      size,
-      color,
-      avatarUrl,
-      currentHp,
-      maxHp,
-      tempHp,
-      type,
-      conditions,
-      hasTorch,
-      version: Math.max(existing?.version || 0, incomingVersion || 0),
-      updatedAt: Date.now(),
-    });
+      const size = typeof item.size === 'number' && [1, 2, 3, 4].includes(item.size) ? item.size : existing.size;
+      const tokenPixelSize = size * gridSize;
+      const maxX = Math.max(0, mapWidth - tokenPixelSize);
+      const maxY = Math.max(0, mapHeight - tokenPixelSize);
+
+      const rawX = typeof item.x === 'number' && Number.isFinite(item.x) ? Math.round(item.x) : existing.x;
+      const rawY = typeof item.y === 'number' && Number.isFinite(item.y) ? Math.round(item.y) : existing.y;
+
+      existing.x = Math.min(maxX, Math.max(0, rawX));
+      existing.y = Math.min(maxY, Math.max(0, rawY));
+      existing.size = size;
+
+      if (typeof item.name === 'string' && item.name.trim()) existing.name = item.name.slice(0, 80).trim();
+      if (typeof item.color === 'string') existing.color = item.color.slice(0, 30);
+      if (item.type === 'player' || item.type === 'monster' || item.type === 'npc') existing.type = item.type;
+      if (typeof item.currentHp === 'number' && Number.isFinite(item.currentHp)) existing.currentHp = Math.round(item.currentHp);
+      if (typeof item.maxHp === 'number' && Number.isFinite(item.maxHp) && item.maxHp > 0) existing.maxHp = Math.round(item.maxHp);
+      if (typeof item.tempHp === 'number' && Number.isFinite(item.tempHp) && item.tempHp >= 0) existing.tempHp = Math.round(item.tempHp);
+      if (Array.isArray(item.conditions)) {
+        existing.conditions = item.conditions.filter((c) => typeof c === 'string').map((c) => (c as string).slice(0, 40));
+      }
+      if (typeof item.ownerId === 'string') existing.ownerId = item.ownerId.slice(0, 80);
+      if (typeof item.combatantId === 'string') existing.combatantId = item.combatantId.slice(0, 80);
+      if (typeof item.avatarUrl === 'string') existing.avatarUrl = item.avatarUrl.slice(0, 10000);
+      if (item.hasTorch !== undefined) existing.hasTorch = Boolean(item.hasTorch);
+
+      existing.version = Math.max(existing.version || 0, incomingVersion || (existing.version || 0) + 1);
+      existing.updatedAt = typeof item.updatedAt === 'number' && Number.isFinite(item.updatedAt) ? item.updatedAt : Date.now();
+    } else {
+      // Novo token criado pelo Host
+      const size = typeof item.size === 'number' && [1, 2, 3, 4].includes(item.size) ? item.size : 1;
+      const tokenPixelSize = size * gridSize;
+      const maxX = Math.max(0, mapWidth - tokenPixelSize);
+      const maxY = Math.max(0, mapHeight - tokenPixelSize);
+
+      const rawX = typeof item.x === 'number' && Number.isFinite(item.x) ? Math.round(item.x) : 0;
+      const rawY = typeof item.y === 'number' && Number.isFinite(item.y) ? Math.round(item.y) : 0;
+
+      const newToken: MapToken = {
+        id,
+        name: typeof item.name === 'string' && item.name.trim() ? item.name.slice(0, 80).trim() : 'Token',
+        size,
+        color: typeof item.color === 'string' ? item.color.slice(0, 30) : '#ffffff',
+        type: item.type === 'player' || item.type === 'monster' || item.type === 'npc' ? item.type : 'player',
+        x: Math.min(maxX, Math.max(0, rawX)),
+        y: Math.min(maxY, Math.max(0, rawY)),
+        currentHp: typeof item.currentHp === 'number' && Number.isFinite(item.currentHp) ? Math.round(item.currentHp) : 10,
+        maxHp: typeof item.maxHp === 'number' && Number.isFinite(item.maxHp) && item.maxHp > 0 ? Math.round(item.maxHp) : 10,
+        tempHp: typeof item.tempHp === 'number' && Number.isFinite(item.tempHp) && item.tempHp >= 0 ? Math.round(item.tempHp) : 0,
+        conditions: Array.isArray(item.conditions) ? item.conditions.filter((c) => typeof c === 'string').map((c) => (c as string).slice(0, 40)) : [],
+        ownerId: typeof item.ownerId === 'string' ? item.ownerId.slice(0, 80) : undefined,
+        combatantId: typeof item.combatantId === 'string' ? item.combatantId.slice(0, 80) : undefined,
+        avatarUrl: typeof item.avatarUrl === 'string' ? item.avatarUrl.slice(0, 10000) : undefined,
+        hasTorch: Boolean(item.hasTorch),
+        version: incomingVersion && incomingVersion > 0 ? incomingVersion : 1,
+        updatedAt: typeof item.updatedAt === 'number' && Number.isFinite(item.updatedAt) ? item.updatedAt : Date.now(),
+      };
+      tokenMap.set(id, newToken);
+      newlyAddedByHost.push(newToken);
+    }
   }
 
-  return validatedTokens;
+  return [...currentTokens.map((t) => tokenMap.get(t.id) || t), ...newlyAddedByHost];
 }
 
 /**

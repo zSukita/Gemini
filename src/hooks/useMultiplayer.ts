@@ -6,6 +6,7 @@ import type { ChatMessage, ChatMessageType } from '../types/chat';
 import type { MonsterSpawnAction, MapMoveAction, AiLootReward } from '../types/aiDm';
 import { getLocalDirectMessages, saveLocalDirectMessages, type DirectMessage, type GameInvite } from '../firebase/presenceAndFriends';
 import type { Encounter } from '../types/combat';
+import { sanitizeEncounter } from './useEncounter';
 import {
   validateRemoteTokens,
   validateRemoteFog,
@@ -16,6 +17,8 @@ export interface UseMultiplayerOptions {
   currentUserId?: string;
   currentUserName?: string;
   getCurrentTokens?: () => MapToken[];
+  getMapConfig?: () => BattleMapConfig | undefined;
+  getPeerUserId?: (peerId: string) => string | undefined;
   onRemoteDiceRoll?: (roll: DiceRollResult) => void;
   onRemoteTokenMove?: (tokens: MapToken[]) => void;
   onRemoteFogUpdate?: (shapes: FogShape[]) => void;
@@ -76,10 +79,22 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
           safeSync.mapConfig = validateRemoteMapConfig(payload.mapConfig);
         }
         if (payload?.tokens) {
-          safeSync.tokens = validateRemoteTokens(payload.tokens, [], msg.senderName, true, msg.senderId);
+          safeSync.tokens = validateRemoteTokens(payload.tokens, [], msg.senderName, true, msg.senderId, {
+            isFullRoomSync: true,
+            mapWidth: safeSync.mapConfig?.width,
+            mapHeight: safeSync.mapConfig?.height,
+            gridSize: safeSync.mapConfig?.gridSize,
+          });
+        }
+        if (payload?.fogShapes) {
+          safeSync.fogShapes = validateRemoteFog(
+            payload.fogShapes,
+            safeSync.mapConfig?.width,
+            safeSync.mapConfig?.height
+          );
         }
         if (payload?.encounter) {
-          safeSync.encounter = payload.encounter;
+          safeSync.encounter = sanitizeEncounter(payload.encounter);
         }
         if (payload?.chatLog && Array.isArray(payload.chatLog)) {
           setChatLog(payload.chatLog);
@@ -108,12 +123,23 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
           ? false
           : (msg.senderId === `arcanasheet-room-${currentRoomCode.toLowerCase()}` || msg.senderId === currentRoomCode);
 
+        const connectedPeers = p2pManager.getConnectedPeers();
+        const senderPeer = connectedPeers.find((p) => p.peerId === msg.senderId);
+        const senderUserId = senderPeer?.userId || optionsRef.current?.getPeerUserId?.(msg.senderId);
+        const mapConfig = optionsRef.current?.getMapConfig?.();
+
         const validated = validateRemoteTokens(
           msg.payload,
           currentTokens,
           msg.senderName,
           isSenderHost,
-          msg.senderId
+          msg.senderId,
+          {
+            mapWidth: mapConfig?.width,
+            mapHeight: mapConfig?.height,
+            gridSize: mapConfig?.gridSize,
+            senderUserId,
+          }
         );
         optionsRef.current.onRemoteTokenMove(validated);
       }
@@ -302,7 +328,7 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
       if (!p2pManager.isConnected()) return;
       p2pManager.broadcast({
         type: 'DICE_ROLL',
-        senderId: p2pManager.getRoomCode(),
+        senderId: p2pManager.getMyPeerId() || p2pManager.getRoomCode(),
         senderName: playerName,
         payload: roll,
         timestamp: Date.now(),
@@ -316,7 +342,7 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
       if (!p2pManager.isConnected()) return;
       p2pManager.broadcast({
         type: 'TOKEN_MOVE',
-        senderId: p2pManager.getRoomCode(),
+        senderId: p2pManager.getMyPeerId() || p2pManager.getRoomCode(),
         senderName: playerName,
         payload: tokens,
         timestamp: Date.now(),
@@ -330,7 +356,7 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
       if (!p2pManager.isConnected()) return;
       p2pManager.broadcast({
         type: 'FOG_UPDATE',
-        senderId: p2pManager.getRoomCode(),
+        senderId: p2pManager.getMyPeerId() || p2pManager.getRoomCode(),
         senderName: 'Mestre',
         payload: shapes,
         timestamp: Date.now(),
@@ -505,7 +531,7 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
       if (!p2pManager.isConnected()) return;
       const msg: P2PMessage = {
         type: 'ROOM_SYNC',
-        senderId: p2pManager.getRoomCode(),
+        senderId: p2pManager.getMyPeerId() || p2pManager.getRoomCode(),
         senderName: 'Mestre',
         payload: roomState,
         timestamp: Date.now(),
@@ -523,7 +549,7 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
     if (!p2pManager.isConnected()) return;
     p2pManager.broadcast({
       type: 'REQUEST_ROOM_STATE',
-      senderId: p2pManager.getRoomCode(),
+      senderId: p2pManager.getMyPeerId() || p2pManager.getRoomCode(),
       senderName: 'Jogador',
       payload: null,
       timestamp: Date.now(),
@@ -534,7 +560,7 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
     if (!p2pManager.isConnected()) return;
     p2pManager.broadcast({
       type: 'DIRECT_MESSAGE',
-      senderId: p2pManager.getRoomCode(),
+      senderId: p2pManager.getMyPeerId() || p2pManager.getRoomCode(),
       senderName: dm.fromUserName || 'Aventureiro',
       payload: dm,
       timestamp: Date.now(),
@@ -545,7 +571,7 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
     if (!p2pManager.isConnected()) return;
     p2pManager.broadcast({
       type: 'GAME_INVITE',
-      senderId: p2pManager.getRoomCode(),
+      senderId: p2pManager.getMyPeerId() || p2pManager.getRoomCode(),
       senderName: invite.fromUserName || 'Aventureiro',
       payload: invite,
       timestamp: Date.now(),

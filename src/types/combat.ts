@@ -75,6 +75,7 @@ export interface Combatant {
   monsterData?: Monster;
   playerId?: string;
   notes?: string;
+  dexterity?: number;
 }
 
 export interface Encounter {

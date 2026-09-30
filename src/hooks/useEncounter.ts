@@ -104,6 +104,12 @@ export function sanitizeEncounter(data: unknown): Encounter {
 
     const monsterData =
       c.monsterData && typeof c.monsterData === 'object' ? (c.monsterData as Monster) : undefined;
+    const dexterity =
+      typeof c.dexterity === 'number' && Number.isFinite(c.dexterity)
+        ? Math.floor(c.dexterity)
+        : typeof monsterData?.abilities?.dex === 'number' && Number.isFinite(monsterData.abilities.dex)
+        ? Math.floor(monsterData.abilities.dex)
+        : undefined;
 
     combatants.push({
       id: cId,
@@ -119,6 +125,7 @@ export function sanitizeEncounter(data: unknown): Encounter {
       monsterData,
       playerId,
       notes,
+      dexterity,
     });
   }
 
@@ -168,25 +175,33 @@ export function sanitizeEncounter(data: unknown): Encounter {
 
 /**
  * Ordenação de iniciativa estável e previsível conforme regras do D&D 5e:
- * 1. Iniciativa (decrescente)
- * 2. Destreza (desempate)
- * 3. Jogador antes de monstro
- * 4. ID (ordem estável)
+ * 1. Total de Iniciativa (decrescente): O combatente com maior iniciativa total age primeiro.
+ *    (A iniciativa salva no combatente já inclui d20 rolado, modificador de Destreza e bônus de iniciativa;
+ *    portanto, bônus de iniciativa NÃO é reaplicado como critério avulso para evitar dupla contagem).
+ * 2. Destreza Efetiva (desempate D&D 5e): Em empate de iniciativa, maior Destreza desempata
+ *    (campo dexterity do combatente ou monsterData.abilities.dex, com valor neutro padrão 10).
+ * 3. Prioridade de Tipo: Em empate de iniciativa e Destreza, jogadores têm prioridade sobre monstros/NPCs.
+ * 4. Identificador Único Estável (ID): Desempate determinístico via localeCompare no ID do combatente,
+ *    garantindo que ordenações sucessivas da mesma lista sejam 100% estáveis e idempotentes.
  */
 export function sortCombatantsByInitiativeOrder(combatants: Combatant[]): Combatant[] {
   return [...combatants].sort((a, b) => {
+    // 1. Iniciativa total decrescente
     if (b.initiative !== a.initiative) {
       return b.initiative - a.initiative;
     }
-    const aDex = a.monsterData?.abilities?.dex ?? (a.type === 'player' ? 12 : 10);
-    const bDex = b.monsterData?.abilities?.dex ?? (b.type === 'player' ? 12 : 10);
+    // 2. Destreza efetiva (desempate oficial D&D 5e)
+    const aDex = a.dexterity ?? a.monsterData?.abilities?.dex ?? 10;
+    const bDex = b.dexterity ?? b.monsterData?.abilities?.dex ?? 10;
     if (bDex !== aDex) {
       return bDex - aDex;
     }
+    // 3. Jogador age antes de monstro ou NPC
     if (a.type !== b.type) {
       if (a.type === 'player') return -1;
       if (b.type === 'player') return 1;
     }
+    // 4. Critério estável e determinístico por ID único
     return a.id.localeCompare(b.id);
   });
 }
@@ -339,6 +354,7 @@ export function useEncounter() {
           tempHp: 0,
           conditions: [],
           monsterData: monster,
+          dexterity: monster.abilities?.dex ?? 10,
         });
       }
 
@@ -373,6 +389,7 @@ export function useEncounter() {
           currentHp: matchingChar.currentHp,
           maxHp: matchingChar.maxHp,
           armorClass: matchingChar.armorClass,
+          dexterity: matchingChar.abilities.dex.score,
         };
       });
 
@@ -395,6 +412,7 @@ export function useEncounter() {
             tempHp: char.tempHp,
             conditions: [],
             playerId: char.id,
+            dexterity: char.abilities.dex.score,
           };
         });
 
@@ -417,6 +435,7 @@ export function useEncounter() {
       const newEntry: Combatant = {
         ...combatant,
         id: `combatant-custom-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        dexterity: combatant.dexterity ?? combatant.monsterData?.abilities?.dex ?? 10,
       };
       const updated = [...prev.combatants, newEntry];
       const activeId = prev.activeCombatantId || updated[0]?.id;
@@ -545,37 +564,87 @@ export function useEncounter() {
     setEncounter((prev) => {
       if (prev.combatants.length === 0) return prev;
 
+      // Se há exatamente 1 combatente: completa a rodada e avança de turno
+      if (prev.combatants.length === 1) {
+        const actor = prev.combatants[0];
+        const nextRound = prev.round + 1;
+        let notice = '';
+        if (actor.type === 'player' && actor.currentHp <= 0) {
+          notice = ' (0 PV — Salvaguarda contra a Morte pendente!)';
+        } else if (actor.currentHp <= 0) {
+          notice = ' (0 PV — Criatura caída/derrotada)';
+        }
+        const activeIncapacitating = actor.conditions.filter((cond) =>
+          INCAPACITATING_CONDITIONS.includes(cond)
+        );
+        if (activeIncapacitating.length > 0) {
+          notice += ` [Condições: ${activeIncapacitating.join(', ')} — incapaz de realizar ações/reações]`;
+        }
+
+        return {
+          ...prev,
+          round: nextRound,
+          activeCombatantId: actor.id,
+          activeCombatantIndex: 0,
+          actionLog: [
+            {
+              id: `log-round-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              timestamp: Date.now(),
+              round: nextRound,
+              actor: 'Mestre',
+              kind: 'turn' as const,
+              message: `Começou a rodada ${nextRound}.`,
+            },
+            {
+              id: `log-turn-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              timestamp: Date.now() + 1,
+              round: nextRound,
+              actor: 'Mestre',
+              kind: 'turn' as const,
+              message: `Turno de ${actor.name}${notice}.`,
+            },
+            ...(prev.actionLog || []),
+          ].slice(0, 50),
+        };
+      }
+
       let currentIndex = prev.activeCombatantId
         ? prev.combatants.findIndex((c) => c.id === prev.activeCombatantId)
         : prev.activeCombatantIndex;
       if (currentIndex < 0 || currentIndex >= prev.combatants.length) currentIndex = 0;
 
-      let nextIndex = currentIndex + 1;
-      let nextRound = prev.round;
-      if (nextIndex >= prev.combatants.length) {
-        nextRound += 1;
-        nextIndex = 0;
-      }
+      // Encontra o próximo índice na ordem de iniciativa.
+      // Se skipDefeatedMonsters estiver ativo, monstros derrotados (<= 0 PV) são pulados.
+      // Jogadores com 0 PV NUNCA são pulados para que possam realizar Salvaguardas de Morte.
+      let targetIndex = (currentIndex + 1) % prev.combatants.length;
+      let crossedRoundBoundary = (currentIndex + 1) >= prev.combatants.length;
 
-      // Se configurado para pular monstros derrotados (0 PV), busca a próxima criatura viva.
-      // Heróis (jogadores) NUNCA são pulados automaticamente para poderem fazer Salvaguardas de Morte.
       if (prev.skipDefeatedMonsters) {
-        let attempts = 0;
-        while (
-          attempts < prev.combatants.length &&
-          prev.combatants[nextIndex].type !== 'player' &&
-          prev.combatants[nextIndex].currentHp <= 0
-        ) {
-          attempts++;
-          nextIndex++;
-          if (nextIndex >= prev.combatants.length) {
-            nextRound += 1;
-            nextIndex = 0;
+        let found = false;
+        for (let step = 0; step < prev.combatants.length; step++) {
+          const idx = (currentIndex + 1 + step) % prev.combatants.length;
+          if (step > 0 && idx === 0) {
+            crossedRoundBoundary = true;
           }
+          const candidate = prev.combatants[idx];
+          // Heróis (jogadores) nunca são pulados. Monstros só entram se tiverem PV > 0.
+          if (candidate.type === 'player' || candidate.currentHp > 0) {
+            targetIndex = idx;
+            found = true;
+            break;
+          }
+        }
+        // Se todas as criaturas da lista forem monstros derrotados, avança sequencialmente
+        // sem incrementar rodadas múltiplas.
+        if (!found) {
+          targetIndex = (currentIndex + 1) % prev.combatants.length;
+          crossedRoundBoundary = (currentIndex + 1) >= prev.combatants.length;
         }
       }
 
-      const nextActor = prev.combatants[nextIndex];
+      const nextRound = crossedRoundBoundary ? prev.round + 1 : prev.round;
+      const nextActor = prev.combatants[targetIndex];
+
       let notice = '';
       if (nextActor.type === 'player' && nextActor.currentHp <= 0) {
         notice = ' (0 PV — Salvaguarda contra a Morte pendente!)';
@@ -593,7 +662,7 @@ export function useEncounter() {
       const logMessages = isNewRound
         ? [
             {
-              id: `log-round-${Date.now()}`,
+              id: `log-round-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
               timestamp: Date.now(),
               round: nextRound,
               actor: 'Mestre',
@@ -601,7 +670,7 @@ export function useEncounter() {
               message: `Começou a rodada ${nextRound}.`,
             },
             {
-              id: `log-turn-${Date.now()}`,
+              id: `log-turn-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
               timestamp: Date.now() + 1,
               round: nextRound,
               actor: 'Mestre',
@@ -611,7 +680,7 @@ export function useEncounter() {
           ]
         : [
             {
-              id: `log-turn-${Date.now()}`,
+              id: `log-turn-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
               timestamp: Date.now(),
               round: nextRound,
               actor: 'Mestre',
@@ -624,7 +693,7 @@ export function useEncounter() {
         ...prev,
         round: nextRound,
         activeCombatantId: nextActor.id,
-        activeCombatantIndex: nextIndex,
+        activeCombatantIndex: targetIndex,
         actionLog: [...logMessages, ...(prev.actionLog || [])].slice(0, 50),
       };
     });

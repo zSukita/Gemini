@@ -436,6 +436,7 @@ export function App() {
     currentUserId: character?.id,
     currentUserName: character?.name || user?.displayName || 'Jogador',
     getCurrentTokens: () => tokensRef.current,
+    getMapConfig: () => mapConfigRef.current || undefined,
     onRemoteDiceRoll: (roll) => {
       addRollResult(roll);
       showNotification(`Rolagem remota: ${roll.label} = ${roll.total}`);
@@ -1316,8 +1317,13 @@ export function App() {
     (id: string, x: number, y: number) => {
       moveToken(id, x, y);
       if (isConnected) {
-        // Envia tokens atualizados
-        const updated = tokens.map((t) => (t.id === id ? { ...t, x, y } : t));
+        // Envia tokens atualizados com versão incrementada consistente
+        const target = tokens.find((t) => t.id === id);
+        const nextVersion = (target?.version || 0) + 1;
+        const now = Date.now();
+        const updated = tokens.map((t) =>
+          t.id === id ? { ...t, x, y, version: nextVersion, updatedAt: now } : t
+        );
         broadcastTokenMove(updated, character.name);
       }
     },

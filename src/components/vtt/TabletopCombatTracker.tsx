@@ -62,19 +62,41 @@ export const TabletopCombatTracker: React.FC<TabletopCombatTrackerProps> = ({
             Rastreador de Combate
           </h3>
           {encounter.isRunning && activeCombatant && (
-            <div className="flex items-center gap-1">
+            <div
+              className="flex items-center gap-1"
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+            >
               <span className="text-[10px] text-amber-950 font-bold bg-amber-800/20 px-1.5 py-0.5 rounded border border-amber-800/30">
                 Vez: {activeCombatant.name}
               </span>
               {activeCombatant.currentHp <= 0 && (
-                <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${
-                  activeCombatant.type === 'player'
-                    ? 'bg-rose-900 text-rose-100 border-rose-700 animate-pulse'
-                    : 'bg-slate-700 text-slate-200 border-slate-600'
-                }`}>
-                  {activeCombatant.type === 'player' ? '💀 0 PV (Morte)' : '💀 0 PV'}
+                <span
+                  role="alert"
+                  className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${
+                    activeCombatant.type === 'player'
+                      ? 'bg-rose-900 text-rose-100 border-rose-700 animate-pulse'
+                      : 'bg-slate-700 text-slate-200 border-slate-600'
+                  }`}
+                >
+                  {activeCombatant.type === 'player'
+                    ? '💀 0 PV (Salvaguarda pendente)'
+                    : '💀 0 PV (Derrotado)'}
                 </span>
               )}
+              {activeCombatant.conditions
+                .filter((c) => ['incapacitated', 'paralyzed', 'petrified', 'stunned', 'unconscious'].includes(c))
+                .slice(0, 1)
+                .map((c) => (
+                  <span
+                    key={c}
+                    role="alert"
+                    className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-purple-900 text-purple-100 border border-purple-700"
+                  >
+                    ⚠️ {c}
+                  </span>
+                ))}
               {activeCombatant.type === 'monster' && onAiMonsterAttack && (
                 <button
                   type="button"
@@ -273,7 +295,7 @@ export const TabletopCombatTracker: React.FC<TabletopCombatTrackerProps> = ({
             type="button"
             onClick={onSortInitiative}
             className="rpg-button bg-[#c9b18a] hover:bg-[#ba9f73] text-amber-950 text-[10px] py-1 px-2 rounded shadow-xs"
-            title="Ordenar por Iniciativa (Maior para menor)"
+            title="Ordenar por Iniciativa (Maior para menor, desempate por Destreza, tipo e ID)"
           >
             <ArrowDownUp size={11} />
             <span>Ordenar</span>

@@ -456,7 +456,7 @@ export function LoginScreen({
         </div>
 
         <div style={{ marginTop: 18, fontSize: '0.65rem', color: 'rgba(150,115,50,0.7)', fontFamily: 'Inter,sans-serif', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span>ArcanaSheet — Seus dados protegidos pelo Google Firebase</span>
+          <span>© {new Date().getFullYear()} ArcanaSheet — Todos os direitos reservados</span>
           <span style={{ opacity: 0.5 }}>•</span>
           <button
             type="button"

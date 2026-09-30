@@ -92,7 +92,7 @@ export function sanitizeMonsterData(raw: unknown): Monster | undefined {
   const alignment = typeof obj.alignment === 'string' && obj.alignment.trim() ? obj.alignment.trim().slice(0, 80) : 'Neutro';
   const armorClass =
     typeof obj.armorClass === 'number' && Number.isFinite(obj.armorClass)
-      ? Math.max(0, Math.min(99, Math.floor(obj.armorClass)))
+      ? Math.max(1, Math.min(40, Math.floor(obj.armorClass)))
       : 10;
   const armorType =
     typeof obj.armorType === 'string' && obj.armorType.trim() ? obj.armorType.trim().slice(0, 50) : undefined;
@@ -220,7 +220,7 @@ export function sanitizeActionLog(raw: unknown): CombatLogEntry[] | undefined {
     if (!entry || typeof entry !== 'object') continue;
     const e = entry as Record<string, unknown>;
 
-    const message = typeof e.message === 'string' ? e.message.trim().slice(0, 500) : '';
+    const message = typeof e.message === 'string' ? e.message.trim().slice(0, 250) : '';
     if (!message) continue;
 
     const id = typeof e.id === 'string' && e.id.trim() ? e.id.trim().slice(0, 80) : `log-${Date.now()}-${idx}`;
@@ -325,7 +325,11 @@ export function sanitizeEncounter(data: unknown): Encounter {
     // IDs únicos: Se o ID for duplicado, vazio ou inválido, gera um ID único seguro
     let cId = typeof c.id === 'string' && c.id.trim() ? c.id.trim().slice(0, 80) : `combatant-${Date.now()}-${i}`;
     if (seenCombatantIds.has(cId)) {
-      cId = `${cId}-dup-${i + 1}`;
+      const baseId = cId;
+      let suffix = i + 1;
+      do {
+        cId = `${baseId}-dup-${suffix++}`;
+      } while (seenCombatantIds.has(cId));
     }
     seenCombatantIds.add(cId);
 
@@ -347,7 +351,7 @@ export function sanitizeEncounter(data: unknown): Encounter {
         : 0;
     const armorClass =
       typeof c.armorClass === 'number' && Number.isFinite(c.armorClass)
-        ? Math.max(0, Math.min(99, Math.floor(c.armorClass)))
+        ? Math.max(1, Math.min(40, Math.floor(c.armorClass)))
         : 10;
     const initiative =
       typeof c.initiative === 'number' && Number.isFinite(c.initiative)

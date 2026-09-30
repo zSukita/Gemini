@@ -18,12 +18,6 @@ export interface ValidateRemoteTokensOptions {
    * Se false ou undefined, `senderUserId` é rejeitado como prova de posse.
    */
   isSenderUserIdVerified?: boolean;
-  /**
-   * IDs de tokens explicitamente autorizados pelo Host para a sessão deste peer.
-   * Permite que tokens vinculados a character.id continuem movíveis após reconexões
-   * sem depender de autenticação centralizada forte.
-   */
-  sessionAuthorizedTokenIds?: string[];
   isFullRoomSync?: boolean;
 }
 
@@ -40,9 +34,9 @@ export interface ValidateRemoteTokensOptions {
  *      É o identificador primário confiável para autorizar ações durante a sessão.
  *    - `senderUserId`: Transmitido em metadados arbitrários de conexão. Trata-se de uma declaração
  *      do cliente, NÃO de identidade autenticada, a menos que validada por autoridade externa.
- *    - Tokens persistentes e reconexões: Em vez de confiar em `senderUserId` autodeclarado,
- *      o Host atua como autoridade da sessão e associa tokens legítimos (`character.id`)
- *      ao novo `peerId` ou através de `sessionAuthorizedTokenIds`.
+ *    - Tokens persistentes e reconexões: tokens vinculados a um ID de personagem não são
+ *      automaticamente autorizados a um novo peer. Uma transferência exige autenticação
+ *      externa ou uma concessão explícita por canal confiável; nome e metadados não bastam.
  * 3. Limite das Permissões Locais (Guardrails):
  *    As validações a seguir atuam como proteções essenciais de integridade contra erros de rede,
  *    mensagens fora de ordem, sobrecarga acidental e comportamento padrão da aplicação cliente.
@@ -166,8 +160,6 @@ export function validateRemoteTokens(
       // O jogador deve possuir o token comprovado pelo seu identificador confiável de remetente na sessão:
       // a) senderPeerId: Identificador real da conexão WebRTC verificado pelo transporte durante a sessão ativa;
       // b) isSenderUserIdVerified: Aceita senderUserId SOMENTE se verificado por fonte confiável/autenticada;
-      // c) sessionAuthorizedTokenIds: Tokens que o Host atribuiu a este peer na sessão atual (evita quebra por
-      //    divergência entre ID do personagem, ID do usuário e ID do peer após reconectar).
       // NUNCA aceitar nome de exibição ou senderUserId não autenticado como autorização de posse.
       const isDirectPeerOwner = Boolean(
         existing.ownerId && senderPeerId && existing.ownerId === senderPeerId
@@ -178,12 +170,7 @@ export function validateRemoteTokens(
         existing.ownerId &&
         existing.ownerId === options.senderUserId
       );
-      const isSessionAuthorized = Boolean(
-        options?.sessionAuthorizedTokenIds &&
-        options.sessionAuthorizedTokenIds.includes(existing.id)
-      );
-
-      const hasDirectOwnerMatch = isDirectPeerOwner || isVerifiedUserOwner || isSessionAuthorized;
+      const hasDirectOwnerMatch = isDirectPeerOwner || isVerifiedUserOwner;
 
       // Jogadores não podem mover monstros, NPCs ou tokens que não lhes pertençam
       if (!hasDirectOwnerMatch || existing.type === 'monster' || existing.type === 'npc') {

@@ -262,7 +262,7 @@ describe('multiplayerValidation - validateRemoteTokens', () => {
     expect(hero?.y).toBe(190);
   });
 
-  it('permite reconexão e movimentação de token com character.id divergente via sessionAuthorizedTokenIds', () => {
+  it('rejeita reconexão baseada apenas em character.id e nome não autenticados', () => {
     // Token original criado com o ID do personagem do jogador
     const tokensWithCharId: MapToken[] = [
       {
@@ -278,7 +278,7 @@ describe('multiplayerValidation - validateRemoteTokens', () => {
     ];
 
     // Jogador reconectou com um novo peerId ("peer-reconnected-777"), que diverge de character.id ("char-gimli-99")
-    // O Host mapeou a sessão e incluiu o token em sessionAuthorizedTokenIds
+    // Um nome e um character.id declarados não são concessão confiável de posse.
     const result = validateRemoteTokens(
       incoming,
       tokensWithCharId,
@@ -288,14 +288,13 @@ describe('multiplayerValidation - validateRemoteTokens', () => {
       {
         senderUserId: 'char-gimli-99',
         isSenderUserIdVerified: false,
-        sessionAuthorizedTokenIds: ['token-player-char-gimli-99'],
       }
     );
     const gimli = result.find((t) => t.id === 'token-player-char-gimli-99');
 
-    // Movimento permitido pela autorização da sessão do Host
-    expect(gimli?.x).toBe(175);
-    expect(gimli?.y).toBe(175);
+    // O movimento é rejeitado; uma concessão de reconexão exige fluxo confiável explícito.
+    expect(gimli?.x).toBe(currentTokens[0].x);
+    expect(gimli?.y).toBe(currentTokens[0].y);
     // Campos protegidos mantidos intactos
     expect(gimli?.ownerId).toBe('char-gimli-99');
     expect(gimli?.name).toBe('Gimli');

@@ -18,7 +18,6 @@ export interface UseMultiplayerOptions {
   currentUserName?: string;
   getCurrentTokens?: () => MapToken[];
   getMapConfig?: () => BattleMapConfig | undefined;
-  getPeerUserId?: (peerId: string) => string | undefined;
   onRemoteDiceRoll?: (roll: DiceRollResult) => void;
   onRemoteTokenMove?: (tokens: MapToken[]) => void;
   onRemoteFogUpdate?: (shapes: FogShape[]) => void;
@@ -127,36 +126,7 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
           ? false
           : (msg.senderId === `arcanasheet-room-${currentRoomCode.toLowerCase()}` || msg.senderId === currentRoomCode);
 
-        const connectedPeers = p2pManager.getConnectedPeers();
-        const senderPeer = connectedPeers.find((p) => p.peerId === msg.senderId);
-        const senderUserId = senderPeer?.userId || optionsRef.current?.getPeerUserId?.(msg.senderId);
         const mapConfig = optionsRef.current?.getMapConfig?.();
-
-        // Mapeamento de tokens autorizados na sessão pelo Host:
-        // Identifica com segurança tokens pertencentes ao jogador conectado via WebRTC,
-        // garantindo que personagens com character.id persistam movíveis mesmo após reconexão.
-        const sessionAuthorizedTokenIds: string[] = [];
-        if (senderPeer) {
-          for (const t of currentTokens) {
-            if (t.type !== 'player') continue;
-            if (t.ownerId === msg.senderId) {
-              sessionAuthorizedTokenIds.push(t.id);
-            } else if (
-              senderPeer.userId &&
-              (t.ownerId === senderPeer.userId ||
-                t.combatantId === senderPeer.userId ||
-                t.id === `token-player-${senderPeer.userId}`)
-            ) {
-              sessionAuthorizedTokenIds.push(t.id);
-            } else if (
-              t.name &&
-              senderPeer.name &&
-              t.name.toLowerCase().trim() === senderPeer.name.toLowerCase().trim()
-            ) {
-              sessionAuthorizedTokenIds.push(t.id);
-            }
-          }
-        }
 
         const validated = validateRemoteTokens(
           msg.payload,
@@ -168,10 +138,8 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
             mapWidth: mapConfig?.width,
             mapHeight: mapConfig?.height,
             gridSize: mapConfig?.gridSize,
-            senderUserId,
-            // Em rede P2P direta sem autoridade de certificação, metadados PeerJS não são autenticados
+            // O userId dos metadados PeerJS é autodeclarado e não é prova de identidade.
             isSenderUserIdVerified: false,
-            sessionAuthorizedTokenIds,
           }
         );
         optionsRef.current.onRemoteTokenMove(validated);

@@ -524,6 +524,21 @@ describe('useEncounter hook', () => {
     expect(ids[2]).toBe('same-id-dup-3');
   });
 
+  it('evita colisão entre um ID duplicado e um ID que já contém sufixo de duplicata', () => {
+    const sanitized = sanitizeEncounter({
+      id: 'enc-dup-collision',
+      combatants: [
+        { id: 'same-id', name: 'Goblin A' },
+        { id: 'same-id-dup-3', name: 'Goblin B' },
+        { id: 'same-id', name: 'Goblin C' },
+      ],
+    });
+
+    const ids = sanitized.combatants.map((combatant) => combatant.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toEqual(['same-id', 'same-id-dup-3', 'same-id-dup-4']);
+  });
+
   it('valida e deduplica condições descartando entradas inválidas', () => {
     const dataWithConditions = {
       id: 'enc-cond',
@@ -563,7 +578,7 @@ describe('useEncounter hook', () => {
             id: 'ogre-1',
             name: 'Ogro',
             size: 'TamanhoInvalido',
-            armorClass: 9999, // deve ser limitado a 99
+            armorClass: 9999, // deve ser limitado a 40
             hitPoints: -10,   // deve usar fallback 10
             abilities: {
               str: 100, // deve ser limitado a 30
@@ -589,7 +604,7 @@ describe('useEncounter hook', () => {
     const m = sanitized.combatants[0].monsterData;
     expect(m).toBeDefined();
     expect(m?.size).toBe('Médio');
-    expect(m?.armorClass).toBe(99);
+    expect(m?.armorClass).toBe(40);
     expect(m?.hitPoints).toBe(10);
     expect(m?.abilities.str).toBe(30);
     expect(m?.abilities.dex).toBe(1);
@@ -1145,4 +1160,3 @@ describe('useEncounter hook', () => {
     });
   });
 });
-

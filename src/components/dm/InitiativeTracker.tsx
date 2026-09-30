@@ -59,7 +59,9 @@ export const InitiativeTracker: React.FC<InitiativeTrackerProps> = ({
   onRollMonsterAttack,
   onRollMonsterDamage,
 }) => {
-  const activeCombatant = encounter.combatants[encounter.activeCombatantIndex];
+  const activeCombatant = encounter.activeCombatantId
+    ? encounter.combatants.find((c) => c.id === encounter.activeCombatantId) || encounter.combatants[encounter.activeCombatantIndex]
+    : encounter.combatants[encounter.activeCombatantIndex];
   const activeCharacter = activeCombatant?.playerId ? charactersList.find((ch) => ch.id === activeCombatant.playerId) : undefined;
 
   // Cálculo Oficial de Dificuldade (D&D 5e)
@@ -119,6 +121,26 @@ export const InitiativeTracker: React.FC<InitiativeTrackerProps> = ({
                   <span className="text-slate-500 italic">Nenhum combatente na mesa</span>
                 )}
               </h2>
+              {activeCombatant && (
+                <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                  {activeCombatant.currentHp <= 0 && (
+                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${
+                      activeCombatant.type === 'player'
+                        ? 'bg-rose-950/80 text-rose-300 border-rose-600/70 animate-pulse'
+                        : 'bg-slate-900 text-slate-400 border-slate-700'
+                    }`}>
+                      {activeCombatant.type === 'player' ? '💀 0 PV — Salvaguarda de Morte' : '💀 0 PV — Derrotado'}
+                    </span>
+                  )}
+                  {activeCombatant.conditions
+                    .filter((c) => ['incapacitated', 'paralyzed', 'petrified', 'stunned', 'unconscious'].includes(c))
+                    .map((c) => (
+                      <span key={c} className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-purple-950/80 text-purple-200 border border-purple-600/60">
+                        ⚠️ {c} (Incapaz de agir)
+                      </span>
+                    ))}
+                </div>
+              )}
             </div>
           </div>
 

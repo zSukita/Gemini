@@ -48,7 +48,9 @@ export const TabletopCombatTracker: React.FC<TabletopCombatTrackerProps> = ({
   onOpenBestiary,
   onAiMonsterAttack,
 }) => {
-  const activeCombatant = encounter.combatants[encounter.activeCombatantIndex];
+  const activeCombatant = encounter.activeCombatantId
+    ? encounter.combatants.find((c) => c.id === encounter.activeCombatantId) || encounter.combatants[encounter.activeCombatantIndex]
+    : encounter.combatants[encounter.activeCombatantIndex];
 
   return (
     <div className="tabletop-parchment flex flex-col h-full rounded-xl overflow-hidden shadow-2xl">
@@ -64,6 +66,15 @@ export const TabletopCombatTracker: React.FC<TabletopCombatTrackerProps> = ({
               <span className="text-[10px] text-amber-950 font-bold bg-amber-800/20 px-1.5 py-0.5 rounded border border-amber-800/30">
                 Vez: {activeCombatant.name}
               </span>
+              {activeCombatant.currentHp <= 0 && (
+                <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${
+                  activeCombatant.type === 'player'
+                    ? 'bg-rose-900 text-rose-100 border-rose-700 animate-pulse'
+                    : 'bg-slate-700 text-slate-200 border-slate-600'
+                }`}>
+                  {activeCombatant.type === 'player' ? '💀 0 PV (Morte)' : '💀 0 PV'}
+                </span>
+              )}
               {activeCombatant.type === 'monster' && onAiMonsterAttack && (
                 <button
                   type="button"
@@ -271,7 +282,11 @@ export const TabletopCombatTracker: React.FC<TabletopCombatTrackerProps> = ({
           {onResetEncounter && (
             <button
               type="button"
-              onClick={onResetEncounter}
+              onClick={() => {
+                if (window.confirm('Deseja realmente reiniciar o encontro de combate?')) {
+                  onResetEncounter();
+                }
+              }}
               className="rpg-button bg-[#c9b18a] hover:bg-[#ba9f73] text-amber-950 text-[10px] py-1 px-1.5 rounded shadow-xs"
               title="Resetar Encontro"
             >

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseAiResponse } from './responseParser';
+import { parseAiResponse, validateAiProposedActions } from './responseParser';
 
 describe('parseAiResponse', () => {
   it('should parse suggested actions properly with various prefixes', () => {
@@ -78,5 +78,80 @@ Você abre o baú reforçado de ferro.
     expect(result.lootReward?.coins?.pp).toBe(120);
     expect(result.lootReward?.items).toHaveLength(2);
     expect(result.lootReward?.items?.[0].name).toBe('Poção de Cura');
+  });
+});
+
+describe('validateAiProposedActions', () => {
+  it('should reject attacks with invalid damage formulas or excessive bonus', () => {
+    const invalidAttack = {
+      cleanText: 'Ataque absurdo',
+      monsterAttack: {
+        monsterName: 'Dragão',
+        attackName: 'Sopro',
+        attackBonus: 999,
+        damageFormula: 'invalid-formula-hack()',
+      },
+    };
+
+    const validated = validateAiProposedActions(invalidAttack);
+    // Deve rejeitar a fórmula inválida
+    expect(validated.monsterAttack).toBeUndefined();
+  });
+
+  it('should clamp monster attack bonus to valid range', () => {
+    const raw = {
+      cleanText: 'Ataque pesado',
+      monsterAttack: {
+        monsterName: 'Tarrasque',
+        attackName: 'Mordida',
+        attackBonus: 45,
+        damageFormula: '4d12+10',
+      },
+    };
+
+    const validated = validateAiProposedActions(raw);
+    expect(validated.monsterAttack).toBeDefined();
+    expect(validated.monsterAttack?.attackBonus).toBe(30); // Clamped to max 30
+  });
+
+  it('should clamp monster spawn count and filter empty names', () => {
+    const raw = {
+      cleanText: 'Invocação em massa',
+      monsterSpawns: [
+        { monsterName: 'Zumbi', count: 99 },
+        { monsterName: '', count: 2 },
+      ],
+    };
+
+    const validated = validateAiProposedActions(raw, { maxMonsterSpawnCount: 6 });
+    expect(validated.monsterSpawns).toHaveLength(1);
+    expect(validated.monsterSpawns?.[0].monsterName).toBe('Zumbi');
+    expect(validated.monsterSpawns?.[0].count).toBe(6);
+  });
+
+  it('should clamp map move distance', () => {
+    const raw = {
+      cleanText: 'Teleporte involuntário',
+      mapMoves: [
+        { tokenName: 'Ladino', actionOrTarget: 'corre para longe', distanceSquares: 100 },
+      ],
+    };
+
+    const validated = validateAiProposedActions(raw, { maxMapMoveDistance: 12 });
+    expect(validated.mapMoves?.[0].distanceSquares).toBe(12);
+  });
+
+  it('should clamp requested roll DC to 1..35', () => {
+    const raw = {
+      cleanText: 'Desafio impossível',
+      requestedRoll: {
+        skillOrAbility: 'Atletismo',
+        dc: 100,
+        reason: 'Pular sobre a montanha',
+      },
+    };
+
+    const validated = validateAiProposedActions(raw);
+    expect(validated.requestedRoll?.dc).toBe(35);
   });
 });

@@ -581,6 +581,9 @@ export const TabletopSessionView: React.FC<TabletopSessionViewProps> = ({
               pan={pan}
               activeTool={activeTool}
               encounter={encounter}
+              isHost={isHost}
+              currentUserName={currentUserName || character.name}
+              currentUserId={character.id}
               onSelectToken={(id) => {
                 onSelectToken(id);
                 if (id) {

@@ -2,16 +2,20 @@ export interface MapToken {
   id: string;
   combatantId?: string;
   name: string;
-  x: number; // Coordenada X na grade (em células ou pixels)
+  x: number; // Coordenada X na grade (em pixels)
   y: number; // Coordenada Y na grade
   size: number; // 1 = 1x1 (Médio/Pequeno), 2 = 2x2 (Grande), 3 = 3x3 (Enorme)
   color: string;
   avatarUrl?: string;
   currentHp: number;
   maxHp: number;
+  tempHp?: number;
   type: 'player' | 'monster' | 'npc';
   conditions: string[];
   hasTorch?: boolean;
+  ownerId?: string;
+  version?: number;
+  updatedAt?: number;
 }
 
 export type AoEShapeType = 'circle' | 'cone' | 'line' | 'cube';

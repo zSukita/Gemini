@@ -18,6 +18,9 @@ interface BattleMapProps {
   pan: { x: number; y: number };
   activeTool: 'select' | 'measure' | 'fog-reveal' | 'fog-hide' | 'draw' | 'ping';
   encounter?: Encounter;
+  isHost?: boolean;
+  currentUserId?: string;
+  currentUserName?: string;
   onSelectToken: (id: string | null) => void;
   onMoveToken: (id: string, x: number, y: number) => void;
   onSetZoom: (zoom: number | ((z: number) => number)) => void;
@@ -49,6 +52,9 @@ export const BattleMap: React.FC<BattleMapProps> = ({
   pan,
   activeTool,
   encounter,
+  isHost = true,
+  currentUserId,
+  currentUserName,
   onSelectToken,
   onMoveToken,
   onSetZoom,
@@ -108,10 +114,23 @@ export const BattleMap: React.FC<BattleMapProps> = ({
   const prevHpsRef = useRef<Map<string, number>>(new Map());
 
   // Combatente do Turno Ativo no Encontro D&D 5e
-  const activeTurnCombatant =
-    encounter?.isRunning && encounter.combatants.length > 0
-      ? encounter.combatants[encounter.activeCombatantIndex]
-      : null;
+  const activeTurnCombatant = useMemo(() => {
+    if (!encounter?.isRunning || encounter.combatants.length === 0) return null;
+    if (encounter.activeCombatantId) {
+      const byId = encounter.combatants.find((c) => c.id === encounter.activeCombatantId);
+      if (byId) return byId;
+    }
+    const idx =
+      encounter.activeCombatantIndex >= 0 && encounter.activeCombatantIndex < encounter.combatants.length
+        ? encounter.activeCombatantIndex
+        : 0;
+    return encounter.combatants[idx] || null;
+  }, [
+    encounter?.isRunning,
+    encounter?.combatants,
+    encounter?.activeCombatantId,
+    encounter?.activeCombatantIndex,
+  ]);
   const activeTurnCombatantId = activeTurnCombatant?.id;
   const activeTurnCombatantName = activeTurnCombatant?.name?.toLowerCase();
 
@@ -227,9 +246,11 @@ export const BattleMap: React.FC<BattleMapProps> = ({
       const rect = containerRef.current.getBoundingClientRect();
       const x = (clientX - rect.left - pan.x) / zoom;
       const y = (clientY - rect.top - pan.y) / zoom;
-      return { x: Math.max(0, x), y: Math.max(0, y) };
+      const clampedX = Math.max(0, Math.min(mapConfig.width, x));
+      const clampedY = Math.max(0, Math.min(mapConfig.height, y));
+      return { x: clampedX, y: clampedY };
     },
-    [pan, zoom]
+    [pan, zoom, mapConfig.width, mapConfig.height]
   );
 
   // Início de clique/toque no tabuleiro
@@ -350,7 +371,15 @@ export const BattleMap: React.FC<BattleMapProps> = ({
   };
 
   // Finalização do clique
-  const handlePointerUp = () => {
+  const handlePointerUp = (e?: React.PointerEvent) => {
+    try {
+      if (e?.target && (e.target as HTMLElement).hasPointerCapture?.(e.pointerId)) {
+        (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+      }
+    } catch {
+      // ignore
+    }
+
     if (currentStroke && currentStroke.points.length > 0) {
       onUpdateMapConfig((prev) => ({
         ...prev,
@@ -417,10 +446,26 @@ export const BattleMap: React.FC<BattleMapProps> = ({
     e.stopPropagation();
     if (activeTool !== 'select') return;
 
-    const coords = getMapCoordinates(e.clientX, e.clientY);
     const token = tokens.find((t) => t.id === tokenId);
     if (!token) return;
 
+    // Regra de Controle de Acesso: Jogadores comuns só podem arrastar seus próprios personagens
+    if (!isHost) {
+      const isOwner =
+        (token.ownerId && currentUserId && token.ownerId === currentUserId) ||
+        (currentUserName && token.name.toLowerCase() === currentUserName.toLowerCase());
+      if (!isOwner || token.type === 'monster') {
+        return;
+      }
+    }
+
+    try {
+      (e.target as HTMLElement)?.setPointerCapture?.(e.pointerId);
+    } catch {
+      // ignore
+    }
+
+    const coords = getMapCoordinates(e.clientX, e.clientY);
     setDraggingTokenId(tokenId);
     setDragTokenOrigin({ x: token.x, y: token.y });
     setDragOffset({
@@ -589,6 +634,7 @@ export const BattleMap: React.FC<BattleMapProps> = ({
       <MapControls
         activeTool={activeTool}
         setActiveTool={onSetActiveTool}
+        isHost={isHost}
         ambientLight={mapConfig.ambientLight || 'day'}
         onSetAmbientLight={(light) => onUpdateMapConfig({ ambientLight: light })}
         onAddAoETemplate={handleAddAoETemplate}

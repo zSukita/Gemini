@@ -83,6 +83,7 @@ interface AiDungeonMasterModalProps {
   }) => void;
   onOpenVttWithAdventure?: (history: AiMessage[]) => void;
   onStartSoloAdventureOnMap?: (scenario: AiAdventureScenario, customPrompt?: string) => void;
+  onProposeAiAction?: (action: AiMessage) => void;
 }
 
 type TabType = 'adventure' | 'oracle' | 'settings';
@@ -97,7 +98,9 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
   onBroadcastToRoom,
   onOpenVttWithAdventure,
   onStartSoloAdventureOnMap,
+  onProposeAiAction,
 }) => {
+  const activeRequestIdRef = useRef<number>(0);
   const [activeTab, setActiveTab] = useState<TabType>('adventure');
   const [autoBroadcastToRoom, setAutoBroadcastToRoom] = useState(false);
   
@@ -277,6 +280,7 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
 
   // Iniciar aventura com premissa escolhida
   const handleStartPremise = useCallback(async (premise: StartingPremise) => {
+    activeRequestIdRef.current++;
     setShowPremisePicker(false);
     setIsAiLoading(true);
     setTone(premise.tone);
@@ -325,6 +329,7 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
   // Iniciar com premissa customizada
   const handleStartCustomPremise = useCallback(() => {
     if (!customPremiseText.trim()) return;
+    activeRequestIdRef.current++;
     setShowPremisePicker(false);
     const now = Date.now();
     const introMessage: AiMessage = {
@@ -388,6 +393,7 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
       return;
     }
 
+    const reqId = ++activeRequestIdRef.current;
     const now = Date.now();
     const playerMessage: AiMessage = {
       id: `player_${now}`,
@@ -408,6 +414,15 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
         activeCharacter,
         { provider, apiKey, groqApiKey, tone, customInstructions, includeCharacterStats: includeStats }
       );
+
+      if (reqId !== activeRequestIdRef.current) return;
+
+      const hasMechanicalProposal = Boolean(
+        response.monsterSpawns?.length || response.mapMoves?.length || response.monsterAttack
+      );
+      if (hasMechanicalProposal && onProposeAiAction) {
+        onProposeAiAction(response);
+      }
 
       const finalHistory = [...updatedHistory, response];
       setHistory(finalHistory);
@@ -436,6 +451,7 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
         });
       }
     } catch (err: unknown) {
+      if (reqId !== activeRequestIdRef.current) return;
       const errorMsg = err instanceof Error ? err.message : String(err);
       const systemError: AiMessage = {
         id: `err_${Date.now()}`,
@@ -443,9 +459,11 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
         content: `⚠️ Erro do Mestre IA: ${errorMsg}`,
         timestamp: Date.now(),
       };
-      setHistory([...updatedHistory, systemError]);
+      setHistory((prev) => [...prev, systemError]);
     } finally {
-      setIsAiLoading(false);
+      if (reqId === activeRequestIdRef.current) {
+        setIsAiLoading(false);
+      }
     }
   }, [
     isAiLoading,
@@ -460,6 +478,7 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
     autoVoice,
     onBroadcastToRoom,
     autoBroadcastToRoom,
+    onProposeAiAction,
   ]);
 
   // Rolar teste solicitado pela IA no d20
@@ -537,6 +556,7 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
   // Limpar histórico
   const handleClearHistory = () => {
     if (window.confirm('Deseja realmente reiniciar a aventura atual? O progresso da história será resetado.')) {
+      activeRequestIdRef.current++;
       clearStoredChatHistory();
       setHistory([]);
       setShowPremisePicker(true);
@@ -1487,7 +1507,7 @@ export const AiDungeonMasterModal: React.FC<AiDungeonMasterModalProps> = ({
                   )}
 
                   <p className="text-[11px] text-slate-400 leading-normal">
-                    🔒 <strong>Privacidade Total</strong>: Sua chave é armazenada com segurança apenas no seu navegador local (<code className="text-amber-300">localStorage</code>) e nunca é enviada para nenhum servidor intermediário.
+                    🔒 <strong>Armazenamento Local</strong>: Sua chave fica salva no seu navegador (<code className="text-amber-300">localStorage</code>) e é enviada diretamente aos servidores do provedor de IA selecionado (Google ou Groq) para gerar as respostas. Ela não passa por servidores do ArcanaSheet.
                   </p>
                 </div>
               )}

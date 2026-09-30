@@ -240,3 +240,177 @@ export function parseAiResponse(rawText: string): {
     lootReward,
   };
 }
+
+export interface AiValidationContext {
+  existingCombatants?: Array<{ name: string; type: string; id: string }>;
+  existingTokens?: Array<{ name: string; id: string }>;
+  combatIsRunning?: boolean;
+  knownCombatantNames?: string[];
+  maxMonsterSpawnCount?: number;
+  maxMapMoveDistance?: number;
+}
+
+/**
+ * Valida rigorosamente todos os dados de ações mecânicas vindos da IA.
+ * Rejeita valores arbitrários, bônus desmedidos, fórmulas inválidas e duplicatas.
+ */
+export function validateAiProposedActions(
+  parsed: ReturnType<typeof parseAiResponse>,
+  context?: AiValidationContext
+): ReturnType<typeof parseAiResponse> {
+  const cleanText = (parsed.cleanText || '').slice(0, 8000).trim();
+
+  const suggestedActions = parsed.suggestedActions
+    ?.map((a) => a.slice(0, 100).trim())
+    .filter((a) => a.length > 0)
+    .slice(0, 3);
+
+  let requestedRoll: RequestedRoll | undefined = undefined;
+  if (parsed.requestedRoll?.skillOrAbility) {
+    const skillOrAbility = parsed.requestedRoll.skillOrAbility.slice(0, 50).trim();
+    const dc =
+      typeof parsed.requestedRoll.dc === 'number' && Number.isFinite(parsed.requestedRoll.dc)
+        ? Math.max(1, Math.min(35, Math.floor(parsed.requestedRoll.dc)))
+        : undefined;
+    const reason = (parsed.requestedRoll.reason || 'Para superar o desafio').slice(0, 120).trim();
+    if (skillOrAbility) {
+      requestedRoll = { skillOrAbility, dc, reason };
+    }
+  }
+
+  let monsterSpawns: MonsterSpawnAction[] | undefined = undefined;
+  if (parsed.monsterSpawns && parsed.monsterSpawns.length > 0) {
+    const validSpawns: MonsterSpawnAction[] = [];
+    const currentMonsters =
+      context?.existingCombatants?.filter((c) => c.type === 'monster' || c.type === 'npc') || [];
+    const maxCount = context?.maxMonsterSpawnCount ?? 10;
+
+    for (const spawn of parsed.monsterSpawns) {
+      const monsterName = (spawn.monsterName || '').slice(0, 50).trim();
+      if (!monsterName) continue;
+      const count = Math.max(1, Math.min(maxCount, Math.floor(spawn.count || 1)));
+
+      if (context?.combatIsRunning) {
+        const rawWanted = monsterName
+          .toLowerCase()
+          .replace(/\s*\([^)]*\)/g, '')
+          .replace(/\s*\d+$/, '')
+          .trim();
+        const alreadyInCombat = currentMonsters.some((c) => {
+          const cName = c.name
+            .toLowerCase()
+            .replace(/\s*\([^)]*\)/g, '')
+            .replace(/\s*\d+$/, '')
+            .trim();
+          return cName === rawWanted || cName.includes(rawWanted) || rawWanted.includes(cName);
+        });
+        if (alreadyInCombat) continue;
+      }
+      validSpawns.push({ monsterName, count });
+    }
+    if (validSpawns.length > 0) {
+      monsterSpawns = validSpawns.slice(0, 5);
+    }
+  }
+
+  let mapMoves: MapMoveAction[] | undefined = undefined;
+  if (parsed.mapMoves && parsed.mapMoves.length > 0) {
+    const validMoves: MapMoveAction[] = [];
+    const maxDist = context?.maxMapMoveDistance ?? 12;
+    for (const move of parsed.mapMoves) {
+      const tokenName = (move.tokenName || '').slice(0, 50).trim();
+      const actionOrTarget = (move.actionOrTarget || 'avança').slice(0, 100).trim();
+      const distanceSquares =
+        typeof move.distanceSquares === 'number' && Number.isFinite(move.distanceSquares)
+          ? Math.max(0, Math.min(maxDist, Math.floor(move.distanceSquares)))
+          : 4;
+      if (tokenName) {
+        validMoves.push({ tokenName, actionOrTarget, distanceSquares });
+      }
+    }
+    if (validMoves.length > 0) {
+      mapMoves = validMoves.slice(0, 5);
+    }
+  }
+
+  let monsterAttack: MonsterAttackAction | undefined = undefined;
+  if (parsed.monsterAttack?.monsterName && parsed.monsterAttack?.attackName) {
+    const monsterName = parsed.monsterAttack.monsterName.slice(0, 50).trim();
+    const attackName = parsed.monsterAttack.attackName.slice(0, 50).trim();
+    const attackBonus = Math.max(
+      -10,
+      Math.min(30, Math.floor(parsed.monsterAttack.attackBonus || 0))
+    );
+    const rawFormula = (parsed.monsterAttack.damageFormula || '').trim();
+    if (/^\d+d\d+(\s*[+-]\s*\d+)?$/i.test(rawFormula)) {
+      const target = parsed.monsterAttack.target
+        ? parsed.monsterAttack.target.slice(0, 50).trim()
+        : undefined;
+      monsterAttack = {
+        monsterName,
+        attackName,
+        attackBonus,
+        damageFormula: rawFormula,
+        target,
+        description: parsed.monsterAttack.description
+          ? parsed.monsterAttack.description.slice(0, 150).trim()
+          : undefined,
+      };
+    }
+  }
+
+  let lootReward: AiLootReward | undefined = undefined;
+  if (parsed.lootReward) {
+    const coins: NonNullable<AiLootReward['coins']> = {};
+    if (parsed.lootReward.coins) {
+      const { cp, sp, ep, gp, pp } = parsed.lootReward.coins;
+      if (typeof cp === 'number' && cp > 0) coins.cp = Math.min(100000, Math.floor(cp));
+      if (typeof sp === 'number' && sp > 0) coins.sp = Math.min(100000, Math.floor(sp));
+      if (typeof ep === 'number' && ep > 0) coins.ep = Math.min(100000, Math.floor(ep));
+      if (typeof gp === 'number' && gp > 0) coins.gp = Math.min(100000, Math.floor(gp));
+      if (typeof pp === 'number' && pp > 0) coins.pp = Math.min(100000, Math.floor(pp));
+    }
+    const items: AiLootItem[] = [];
+    if (Array.isArray(parsed.lootReward.items)) {
+      for (const it of parsed.lootReward.items.slice(0, 10)) {
+        const name = (it.name || '').slice(0, 80).trim();
+        const quantity = Math.max(1, Math.min(100, Math.floor(it.quantity || 1)));
+        if (name) items.push({ name, quantity });
+      }
+    }
+    if (Object.keys(coins).length > 0 || items.length > 0) {
+      lootReward = {
+        coins: Object.keys(coins).length > 0 ? coins : undefined,
+        items: items.length > 0 ? items : undefined,
+        rawText: parsed.lootReward.rawText?.slice(0, 200),
+      };
+    }
+  }
+
+  let handoutProposal: HandoutProposal | undefined = undefined;
+  if (parsed.handoutProposal?.title && parsed.handoutProposal?.content) {
+    handoutProposal = {
+      title: parsed.handoutProposal.title.slice(0, 80).trim(),
+      authorOrOrigin: parsed.handoutProposal.authorOrOrigin?.slice(0, 60).trim(),
+      content: parsed.handoutProposal.content.slice(0, 2000).trim(),
+    };
+  }
+
+  return {
+    cleanText,
+    suggestedActions: suggestedActions && suggestedActions.length > 0 ? suggestedActions : undefined,
+    requestedRoll,
+    handoutProposal,
+    monsterAttack,
+    monsterSpawns,
+    mapMoves,
+    defeatedMonsters: parsed.defeatedMonsters?.map((m) => m.slice(0, 50).trim()).filter(Boolean),
+    monsterDamage: parsed.monsterDamage
+      ?.map((d) => ({
+        monsterName: d.monsterName.slice(0, 50).trim(),
+        damage: Math.max(0, Math.min(500, Math.floor(d.damage))),
+      }))
+      .filter((d) => d.monsterName && d.damage > 0),
+    lootReward,
+  };
+}

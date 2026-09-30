@@ -81,9 +81,11 @@ export interface Encounter {
   id: string;
   name: string;
   round: number;
+  activeCombatantId?: string;
   activeCombatantIndex: number;
   combatants: Combatant[];
   isRunning: boolean;
+  skipDefeatedMonsters?: boolean;
   actionLog?: CombatLogEntry[];
   lastHpChange?: { combatantId: string; currentHp: number; tempHp: number; name: string; actor: string };
 }

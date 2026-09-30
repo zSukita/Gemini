@@ -169,6 +169,7 @@ export interface AppModalsProps {
   onSaveNpcToJournal: (npc: CampaignNpc) => void;
   onOpenVttWithAdventure: (history: AiMessage[]) => void;
   onStartSoloAdventureOnMap: (scenario: AiAdventureScenario, customPrompt?: string) => void;
+  onProposeAiAction?: (action: AiMessage) => void;
 
   // Bestiary
   isBestiaryOpen: boolean;
@@ -277,6 +278,7 @@ export const AppModals: React.FC<AppModalsProps> = (props) => {
     onSaveNpcToJournal,
     onOpenVttWithAdventure,
     onStartSoloAdventureOnMap,
+    onProposeAiAction,
     isBestiaryOpen,
     setIsBestiaryOpen,
     onAddMonsterCombatant,
@@ -517,6 +519,7 @@ export const AppModals: React.FC<AppModalsProps> = (props) => {
         }}
         onOpenVttWithAdventure={onOpenVttWithAdventure}
         onStartSoloAdventureOnMap={onStartSoloAdventureOnMap}
+        onProposeAiAction={onProposeAiAction}
       />
 
       {/* Modal do Bestiário de Monstros */}

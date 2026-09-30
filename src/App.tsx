@@ -433,6 +433,9 @@ export function App() {
     broadcastRoomSync,
     sendChatMessage,
   } = useMultiplayer({
+    currentUserId: character?.id,
+    currentUserName: character?.name || user?.displayName || 'Jogador',
+    getCurrentTokens: () => tokensRef.current,
     onRemoteDiceRoll: (roll) => {
       addRollResult(roll);
       showNotification(`Rolagem remota: ${roll.label} = ${roll.total}`);
@@ -2311,7 +2314,10 @@ export function App() {
       else { showNotification(`Revise a direção do movimento de ${move.tokenName}; movimento ignorado.`); continue; }
       const width = mapConfigRef.current?.width || 1200;
       const height = mapConfigRef.current?.height || 800;
-      x = Math.max(0, Math.min(width, x)); y = Math.max(0, Math.min(height, y));
+      const gridSize = mapConfigRef.current?.gridSize || 50;
+      const tokenPixelSize = (token.size || 1) * gridSize;
+      x = Math.max(0, Math.min(width - tokenPixelSize, x));
+      y = Math.max(0, Math.min(height - tokenPixelSize, y));
       moveToken(token.id, x, y);
       const updated = tokensRef.current.map((item) => item.id === token.id ? { ...item, x, y } : item);
       if (isConnected) broadcastTokenMove(updated, character.name);
@@ -2732,6 +2738,7 @@ export function App() {
         onSaveNpcToJournal={handleSaveNpcToJournal}
         onOpenVttWithAdventure={handleOpenVttFromAiDm}
         onStartSoloAdventureOnMap={handleStartSoloAdventureOnMap}
+        onProposeAiAction={setPendingAiAction}
         isBestiaryOpen={isBestiaryOpen}
         setIsBestiaryOpen={setIsBestiaryOpen}
         onAddMonsterCombatant={addMonsterCombatant}

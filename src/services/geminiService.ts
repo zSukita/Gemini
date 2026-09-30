@@ -26,8 +26,18 @@ import {
   getStoredCampaignSummary,
   saveStoredCampaignSummary,
 } from './ai/aiConfigStorage';
-import { buildSystemPrompt } from './ai/promptBuilder';
-import { parseAiResponse } from './ai/responseParser';
+import { buildSystemPrompt, compactConversationHistory } from './ai/promptBuilder';
+import { parseAiResponse, validateAiProposedActions, type AiValidationContext } from './ai/responseParser';
+
+function sanitizeErrorMessage(msg: string, keys: (string | undefined)[]): string {
+  let res = msg;
+  for (const k of keys) {
+    if (k && k.length > 5) {
+      res = res.split(k).join('***');
+    }
+  }
+  return res;
+}
 
 
 /**
@@ -38,7 +48,8 @@ async function callGroqChat(
   model: string = DEFAULT_GROQ_MODEL,
   systemInstruction: string,
   history: AiMessage[],
-  userAction: string
+  userAction: string,
+  validationContext?: AiValidationContext
 ): Promise<AiMessage> {
   const storedModel = getStoredGroqModel();
   const safeModel =
@@ -58,15 +69,13 @@ async function callGroqChat(
     ])
   );
 
+  const compacted = compactConversationHistory(history, 10);
   const messages = [
     { role: 'system', content: systemInstruction },
-    ...history
-      .filter((m) => m.role === 'narrator' || m.role === 'player')
-      .slice(-10)
-      .map((m) => ({
-        role: m.role === 'narrator' ? 'assistant' : 'user',
-        content: m.content,
-      })),
+    ...compacted.map((m) => ({
+      role: m.role === 'narrator' ? 'assistant' : 'user',
+      content: m.content,
+    })),
     { role: 'user', content: userAction },
   ];
 
@@ -74,10 +83,9 @@ async function callGroqChat(
 
   for (let attempt = 0; attempt < 2; attempt++) {
     for (const m of candidateModels) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20000);
-
         const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -94,16 +102,14 @@ async function callGroqChat(
           signal: controller.signal,
         });
 
-        clearTimeout(timeoutId);
-
         if (!response.ok) {
           const errText = await response.text();
-          throw new Error(`Groq HTTP ${response.status}: ${errText}`);
+          throw new Error(`Groq HTTP ${response.status}: ${sanitizeErrorMessage(errText, [apiKey])}`);
         }
 
         const data = await response.json();
         const rawText = data.choices?.[0]?.message?.content || 'O Mestre aguarda em silêncio...';
-        const parsed = parseAiResponse(rawText);
+        const parsed = validateAiProposedActions(parseAiResponse(rawText), validationContext);
 
         saveStoredGroqModel(m);
 
@@ -125,6 +131,8 @@ async function callGroqChat(
       } catch (err: unknown) {
         lastErr = err;
         console.warn(`[Groq] Erro com modelo ${m}:`, err);
+      } finally {
+        clearTimeout(timeoutId);
       }
     }
 
@@ -153,13 +161,14 @@ async function callGroqChat(
 async function callPollinationsChat(
   systemInstruction: string,
   history: AiMessage[],
-  userAction: string
+  userAction: string,
+  validationContext?: AiValidationContext
 ): Promise<AiMessage> {
+  const compactHistory = compactConversationHistory(history, 10);
   const messages = [
     { role: 'system', content: systemInstruction },
-    ...history
+    ...compactHistory
       .filter((m) => m.role === 'narrator' || m.role === 'player')
-      .slice(-10)
       .map((m) => ({
         role: m.role === 'narrator' ? 'assistant' : 'user',
         content: m.content,
@@ -167,10 +176,11 @@ async function callPollinationsChat(
     { role: 'user', content: userAction },
   ];
 
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 25000);
+  let rawText = '';
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 25000);
 
+  try {
     const response = await fetch('https://text.pollinations.ai/openai/chat/completions', {
       method: 'POST',
       headers: {
@@ -185,60 +195,51 @@ async function callPollinationsChat(
       signal: controller.signal,
     });
 
-    clearTimeout(timeoutId);
-
     if (response.ok) {
       const data = await response.json();
-      const rawText = data.choices?.[0]?.message?.content || 'O Mestre aguarda em silêncio...';
-      const parsed = parseAiResponse(rawText);
-
-      return {
-        id: `ai_poll_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        role: 'narrator',
-        content: parsed.cleanText,
-        timestamp: Date.now(),
-        suggestedActions: parsed.suggestedActions,
-        requestedRoll: parsed.requestedRoll,
-        handoutProposal: parsed.handoutProposal,
-        monsterAttack: parsed.monsterAttack,
-        monsterSpawns: parsed.monsterSpawns,
-        mapMoves: parsed.mapMoves,
-        defeatedMonsters: parsed.defeatedMonsters,
-        monsterDamage: parsed.monsterDamage,
-        lootReward: parsed.lootReward,
-      };
+      rawText = data.choices?.[0]?.message?.content || 'O Mestre aguarda em silêncio...';
+    } else {
+      throw new Error(`Pollinations HTTP ${response.status}`);
     }
   } catch (err) {
     console.warn('[Pollinations] Erro no endpoint OpenAI, tentando endpoint direto...', err);
+    // Fallback para endpoint direto de texto
+    const combinedHistory = messages
+      .map((m) => `${m.role === 'system' ? 'Instruções' : m.role === 'assistant' ? 'Mestre' : 'Jogador'}: ${m.content}`)
+      .join('\n');
+
+    try {
+      const fallbackRes = await fetch(`https://text.pollinations.ai/${encodeURIComponent(combinedHistory)}`, {
+        signal: controller.signal,
+      });
+      if (!fallbackRes.ok) {
+        throw new Error('Falha no Modo Livre (Pollinations). Tente novamente em instantes.');
+      }
+      rawText = await fallbackRes.text();
+    } catch {
+      throw new Error('Falha no Modo Livre (Pollinations). Tente novamente em instantes.');
+    }
+  } finally {
+    clearTimeout(timeoutId);
   }
 
-  // Fallback para endpoint direto de texto
-  const combinedHistory = messages
-    .map((m) => `${m.role === 'system' ? 'Instruções' : m.role === 'assistant' ? 'Mestre' : 'Jogador'}: ${m.content}`)
-    .join('\n');
-
-  const fallbackRes = await fetch(`https://text.pollinations.ai/${encodeURIComponent(combinedHistory)}`);
-  if (!fallbackRes.ok) {
-    throw new Error('Falha no Modo Livre (Pollinations). Tente novamente em instantes.');
-  }
-
-  const textReply = await fallbackRes.text();
-  const parsed = parseAiResponse(textReply);
+  const parsed = parseAiResponse(rawText || 'O Mestre aguarda em silêncio...');
+  const validated = validateAiProposedActions(parsed, validationContext);
 
   return {
     id: `ai_poll_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     role: 'narrator',
-    content: parsed.cleanText,
+    content: validated.cleanText,
     timestamp: Date.now(),
-    suggestedActions: parsed.suggestedActions,
-    requestedRoll: parsed.requestedRoll,
-    handoutProposal: parsed.handoutProposal,
-    monsterAttack: parsed.monsterAttack,
-    monsterSpawns: parsed.monsterSpawns,
-    mapMoves: parsed.mapMoves,
-    defeatedMonsters: parsed.defeatedMonsters,
-    monsterDamage: parsed.monsterDamage,
-    lootReward: parsed.lootReward,
+    suggestedActions: validated.suggestedActions,
+    requestedRoll: validated.requestedRoll,
+    handoutProposal: validated.handoutProposal,
+    monsterAttack: validated.monsterAttack,
+    monsterSpawns: validated.monsterSpawns,
+    mapMoves: validated.mapMoves,
+    defeatedMonsters: validated.defeatedMonsters,
+    monsterDamage: validated.monsterDamage,
+    lootReward: validated.lootReward,
   };
 }
 
@@ -250,11 +251,12 @@ async function callGeminiEngine(
   preferredModelInput: string = DEFAULT_GEMINI_MODEL,
   systemInstruction: string,
   history: AiMessage[],
-  userAction: string
+  userAction: string,
+  validationContext?: AiValidationContext
 ): Promise<AiMessage> {
-  const conversationTurns = history
+  const compactHistory = compactConversationHistory(history, 10);
+  const conversationTurns = compactHistory
     .filter(m => m.role === 'narrator' || m.role === 'player')
-    .slice(-10)
     .map(m => ({
       role: m.role === 'narrator' ? 'model' : 'user',
       parts: [{ text: m.content }],
@@ -295,25 +297,26 @@ async function callGeminiEngine(
 
       const rawReply = response.text || 'O Mestre contempla a situação em silêncio... (Nenhuma resposta gerada)';
       const parsed = parseAiResponse(rawReply);
+      const validated = validateAiProposedActions(parsed, validationContext);
 
       return {
         id: `ai_gemini_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         role: 'narrator',
-        content: parsed.cleanText,
+        content: validated.cleanText,
         timestamp: Date.now(),
-        suggestedActions: parsed.suggestedActions,
-        requestedRoll: parsed.requestedRoll,
-        handoutProposal: parsed.handoutProposal,
-        monsterAttack: parsed.monsterAttack,
-        monsterSpawns: parsed.monsterSpawns,
-        mapMoves: parsed.mapMoves,
-        defeatedMonsters: parsed.defeatedMonsters,
-        monsterDamage: parsed.monsterDamage,
-        lootReward: parsed.lootReward,
+        suggestedActions: validated.suggestedActions,
+        requestedRoll: validated.requestedRoll,
+        handoutProposal: validated.handoutProposal,
+        monsterAttack: validated.monsterAttack,
+        monsterSpawns: validated.monsterSpawns,
+        mapMoves: validated.mapMoves,
+        defeatedMonsters: validated.defeatedMonsters,
+        monsterDamage: validated.monsterDamage,
+        lootReward: validated.lootReward,
       };
     } catch (err: unknown) {
       lastError = err;
-      const errorMsg = err instanceof Error ? err.message : String(err);
+      const errorMsg = sanitizeErrorMessage(err instanceof Error ? err.message : String(err), [apiKey]);
       console.warn(`[Gemini] Falha temporária com modelo ${modelToTry}: ${errorMsg}. Tentando modelo reserva...`);
       if (errorMsg.includes('503') || errorMsg.includes('429') || errorMsg.includes('UNAVAILABLE')) {
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -323,11 +326,11 @@ async function callGeminiEngine(
 
   // Fallback REST com gemini-3.5-flash-lite
   try {
-    return await callGeminiRestFallback(apiKey, 'gemini-3.5-flash-lite', systemInstruction, conversationTurns);
+    return await callGeminiRestFallback(apiKey, 'gemini-3.5-flash-lite', systemInstruction, conversationTurns, validationContext);
   } catch {
-    const rawMsg = lastError instanceof Error ? lastError.message : String(lastError);
+    const rawMsg = sanitizeErrorMessage(lastError instanceof Error ? lastError.message : String(lastError), [apiKey]);
     if (rawMsg.includes('503') || rawMsg.includes('overload') || rawMsg.includes('UNAVAILABLE') || rawMsg.includes('demand')) {
-      throw new Error('Os servidores de IA do Google estão com alta demanda temporária (Erro 503). Por favor, aguarde alguns segundos ou alterne para o Groq (Llama 3.3).');
+      throw new Error('Os servidores de IA do Google estão com alta demanda temporária (Erro 503). Por favor, aguarde alguns segundos ou alterne para o Groq.');
     }
     if (rawMsg.includes('429') || rawMsg.includes('RESOURCE_EXHAUSTED') || rawMsg.includes('quota')) {
       throw new Error('Limite de mensagens da chave gratuita do Gemini atingido (Erro 429). Alterne para o Groq ou aguarde 30 segundos.');
@@ -367,23 +370,29 @@ export async function sendToAiDungeonMaster(
     fullConfig.encounterContext
   );
 
+  const validationContext: AiValidationContext = {
+    knownCombatantNames: fullConfig.encounterContext?.combatants.map(c => c.name) || (character ? [character.name] : []),
+    maxMonsterSpawnCount: 8,
+    maxMapMoveDistance: 20,
+  };
+
   // 1. Provedor GROQ (Llama 3.3 70B - Ultra Rápido)
   if (provider === 'groq') {
     if (!groqKey) {
       if (geminiKey) {
-        return await callGeminiEngine(geminiKey, DEFAULT_GEMINI_MODEL, systemInstruction, history, userAction);
+        return await callGeminiEngine(geminiKey, DEFAULT_GEMINI_MODEL, systemInstruction, history, userAction, validationContext);
       }
-      return await callPollinationsChat(systemInstruction, history, userAction);
+      return await callPollinationsChat(systemInstruction, history, userAction, validationContext);
     }
     try {
-      return await callGroqChat(groqKey, fullConfig.model || DEFAULT_GROQ_MODEL, systemInstruction, history, userAction);
+      return await callGroqChat(groqKey, fullConfig.model || DEFAULT_GROQ_MODEL, systemInstruction, history, userAction, validationContext);
     } catch (err: unknown) {
       console.warn('[Groq] Falha na chamada principal:', err);
       // Se houver chave Gemini como fallback secundário, tenta Gemini
       if (geminiKey) {
         try {
           console.info('[Groq Fallback] Acionando Google Gemini como reserva...');
-          return await callGeminiEngine(geminiKey, DEFAULT_GEMINI_MODEL, systemInstruction, history, userAction);
+          return await callGeminiEngine(geminiKey, DEFAULT_GEMINI_MODEL, systemInstruction, history, userAction, validationContext);
         } catch (geminiErr: unknown) {
           console.warn('[Gemini Fallback] Também falhou:', geminiErr);
         }
@@ -391,7 +400,7 @@ export async function sendToAiDungeonMaster(
       // Último recurso: Modo Livre (Pollinations) sem chave
       try {
         console.info('[Groq Fallback] Acionando Modo Livre (Pollinations) para manter a partida ativa...');
-        return await callPollinationsChat(systemInstruction, history, userAction);
+        return await callPollinationsChat(systemInstruction, history, userAction, validationContext);
       } catch {
         throw err;
       }
@@ -401,19 +410,19 @@ export async function sendToAiDungeonMaster(
   // 2. Provedor MODO LIVRE (Pollinations - Sem Chave)
   if (provider === 'pollinations') {
     try {
-      return await callPollinationsChat(systemInstruction, history, userAction);
+      return await callPollinationsChat(systemInstruction, history, userAction, validationContext);
     } catch (err: unknown) {
       console.warn('[Pollinations] Falha na chamada:', err);
       if (groqKey) {
         try {
-          return await callGroqChat(groqKey, DEFAULT_GROQ_MODEL, systemInstruction, history, userAction);
+          return await callGroqChat(groqKey, DEFAULT_GROQ_MODEL, systemInstruction, history, userAction, validationContext);
         } catch {
           // ignore and try next
         }
       }
       if (geminiKey) {
         try {
-          return await callGeminiEngine(geminiKey, DEFAULT_GEMINI_MODEL, systemInstruction, history, userAction);
+          return await callGeminiEngine(geminiKey, DEFAULT_GEMINI_MODEL, systemInstruction, history, userAction, validationContext);
         } catch {
           // ignore
         }
@@ -425,18 +434,18 @@ export async function sendToAiDungeonMaster(
   // 3. Provedor GOOGLE GEMINI (Nativo)
   if (!geminiKey) {
     if (groqKey) {
-      return await callGroqChat(groqKey, DEFAULT_GROQ_MODEL, systemInstruction, history, userAction);
+      return await callGroqChat(groqKey, DEFAULT_GROQ_MODEL, systemInstruction, history, userAction, validationContext);
     }
-    return await callPollinationsChat(systemInstruction, history, userAction);
+    return await callPollinationsChat(systemInstruction, history, userAction, validationContext);
   }
 
   try {
-    return await callGeminiEngine(geminiKey, fullConfig.model, systemInstruction, history, userAction);
+    return await callGeminiEngine(geminiKey, fullConfig.model, systemInstruction, history, userAction, validationContext);
   } catch (err: unknown) {
     if (groqKey) {
       try {
         console.info('[Gemini Fallback] Google indisponível, acionando Groq como backup transparente...');
-        return await callGroqChat(groqKey, DEFAULT_GROQ_MODEL, systemInstruction, history, userAction);
+        return await callGroqChat(groqKey, DEFAULT_GROQ_MODEL, systemInstruction, history, userAction, validationContext);
       } catch (groqErr: unknown) {
         console.warn('[Groq Backup] Também falhou:', groqErr);
       }
@@ -444,7 +453,7 @@ export async function sendToAiDungeonMaster(
     // Último recurso: Modo Livre (Pollinations) sem chave
     try {
       console.info('[Gemini Fallback] Acionando Modo Livre (Pollinations) para manter a partida ativa...');
-      return await callPollinationsChat(systemInstruction, history, userAction);
+      return await callPollinationsChat(systemInstruction, history, userAction, validationContext);
     } catch {
       throw err;
     }
@@ -458,9 +467,10 @@ async function callGeminiRestFallback(
   apiKey: string,
   model: string,
   systemInstruction: string,
-  turns: Array<{ role: string; parts: Array<{ text: string }> }>
+  turns: Array<{ role: string; parts: Array<{ text: string }> }>,
+  validationContext?: AiValidationContext
 ): Promise<AiMessage> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
   
   const payload = {
     systemInstruction: {
@@ -473,36 +483,49 @@ async function callGeminiRestFallback(
     }
   };
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 25000);
 
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`HTTP ${res.status}: ${errText}`);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey.trim(),
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      const sanitized = sanitizeErrorMessage(errText, [apiKey]);
+      throw new Error(`HTTP ${res.status}: ${sanitized}`);
+    }
+
+    const data = await res.json();
+    const rawReply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'O Mestre não respondeu.';
+    const parsed = parseAiResponse(rawReply);
+    const validated = validateAiProposedActions(parsed, validationContext);
+
+    return {
+      id: `ai_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      role: 'narrator',
+      content: validated.cleanText,
+      timestamp: Date.now(),
+      suggestedActions: validated.suggestedActions,
+      requestedRoll: validated.requestedRoll,
+      handoutProposal: validated.handoutProposal,
+      monsterAttack: validated.monsterAttack,
+      monsterSpawns: validated.monsterSpawns,
+      mapMoves: validated.mapMoves,
+      defeatedMonsters: validated.defeatedMonsters,
+      monsterDamage: validated.monsterDamage,
+      lootReward: validated.lootReward,
+    };
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  const data = await res.json();
-  const rawReply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'O Mestre não respondeu.';
-  const parsed = parseAiResponse(rawReply);
-
-  return {
-    id: `ai_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-    role: 'narrator',
-    content: parsed.cleanText,
-    timestamp: Date.now(),
-    suggestedActions: parsed.suggestedActions,
-    requestedRoll: parsed.requestedRoll,
-    handoutProposal: parsed.handoutProposal,
-    monsterAttack: parsed.monsterAttack,
-    monsterSpawns: parsed.monsterSpawns,
-    mapMoves: parsed.mapMoves,
-    defeatedMonsters: parsed.defeatedMonsters,
-    monsterDamage: parsed.monsterDamage,
-    lootReward: parsed.lootReward,
-  };
 }
 
 /**
@@ -725,7 +748,7 @@ export async function testGeminiApiKey(apiKey: string, model: string = DEFAULT_G
   if (lastErrMsg.includes('503') || lastErrMsg.includes('overload') || lastErrMsg.includes('UNAVAILABLE')) {
     return { success: false, message: 'Chave aceita, porém os servidores do Google estão temporariamente com alta demanda (Erro 503). Recomendamos selecionar a opção "Groq" no menu de IA.' };
   }
-  return { success: false, message: `Erro ao testar chave: ${lastErrMsg}` };
+  return { success: false, message: `Erro ao testar chave: ${sanitizeErrorMessage(lastErrMsg, [apiKey])}` };
 }
 
 /**

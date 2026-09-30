@@ -6,10 +6,16 @@ import type { ChatMessage, ChatMessageType } from '../types/chat';
 import type { MonsterSpawnAction, MapMoveAction, AiLootReward } from '../types/aiDm';
 import { getLocalDirectMessages, saveLocalDirectMessages, type DirectMessage, type GameInvite } from '../firebase/presenceAndFriends';
 import type { Encounter } from '../types/combat';
+import {
+  validateRemoteTokens,
+  validateRemoteFog,
+  validateRemoteMapConfig,
+} from '../utils/multiplayerValidation';
 
 export interface UseMultiplayerOptions {
   currentUserId?: string;
   currentUserName?: string;
+  getCurrentTokens?: () => MapToken[];
   onRemoteDiceRoll?: (roll: DiceRollResult) => void;
   onRemoteTokenMove?: (tokens: MapToken[]) => void;
   onRemoteFogUpdate?: (shapes: FogShape[]) => void;
@@ -49,11 +55,38 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
     const unsubMessages = p2pManager.onMessage((msg: P2PMessage) => {
       if (msg.type === 'ROOM_SYNC') {
         const payload = msg.payload as any;
+        const currentIsHost = p2pManager.getIsHost();
+        const currentRoomCode = p2pManager.getRoomCode();
+
+        // O Host nunca aceita sobrescrita de sala vinda de um peer
+        if (currentIsHost) {
+          return;
+        }
+
+        // Jogador só aceita sincronização vinda do Host da sala
+        const isSenderHost =
+          msg.senderId === `arcanasheet-room-${currentRoomCode.toLowerCase()}` ||
+          msg.senderId === currentRoomCode;
+        if (!isSenderHost) {
+          return;
+        }
+
+        const safeSync: any = {};
+        if (payload?.mapConfig) {
+          safeSync.mapConfig = validateRemoteMapConfig(payload.mapConfig);
+        }
+        if (payload?.tokens) {
+          safeSync.tokens = validateRemoteTokens(payload.tokens, [], msg.senderName, true, msg.senderId);
+        }
+        if (payload?.encounter) {
+          safeSync.encounter = payload.encounter;
+        }
         if (payload?.chatLog && Array.isArray(payload.chatLog)) {
           setChatLog(payload.chatLog);
+          safeSync.chatLog = payload.chatLog;
         }
         if (optionsRef.current?.onRemoteRoomSync) {
-          optionsRef.current.onRemoteRoomSync(payload);
+          optionsRef.current.onRemoteRoomSync(safeSync);
         }
       }
       if (msg.type === 'REQUEST_ROOM_STATE' && optionsRef.current?.onRequestRoomState) {
@@ -67,13 +100,60 @@ export function useMultiplayer(options?: UseMultiplayerOptions) {
         optionsRef.current.onRemoteDiceRoll(msg.payload as DiceRollResult);
       }
       if (msg.type === 'TOKEN_MOVE' && optionsRef.current?.onRemoteTokenMove) {
-        optionsRef.current.onRemoteTokenMove(msg.payload as MapToken[]);
+        const currentTokens = optionsRef.current?.getCurrentTokens ? optionsRef.current.getCurrentTokens() : [];
+        const currentIsHost = p2pManager.getIsHost();
+        const currentRoomCode = p2pManager.getRoomCode();
+
+        const isSenderHost = currentIsHost
+          ? false
+          : (msg.senderId === `arcanasheet-room-${currentRoomCode.toLowerCase()}` || msg.senderId === currentRoomCode);
+
+        const validated = validateRemoteTokens(
+          msg.payload,
+          currentTokens,
+          msg.senderName,
+          isSenderHost,
+          msg.senderId
+        );
+        optionsRef.current.onRemoteTokenMove(validated);
       }
       if (msg.type === 'FOG_UPDATE' && optionsRef.current?.onRemoteFogUpdate) {
-        optionsRef.current.onRemoteFogUpdate(msg.payload as FogShape[]);
+        const currentIsHost = p2pManager.getIsHost();
+        const currentRoomCode = p2pManager.getRoomCode();
+
+        // Host possui autoridade total sobre névoa: descarta requisições de jogadores
+        if (currentIsHost) {
+          return;
+        }
+
+        const isSenderHost =
+          msg.senderId === `arcanasheet-room-${currentRoomCode.toLowerCase()}` ||
+          msg.senderId === currentRoomCode;
+        if (!isSenderHost) {
+          return;
+        }
+
+        const validatedShapes = validateRemoteFog(msg.payload);
+        optionsRef.current.onRemoteFogUpdate(validatedShapes);
       }
       if (msg.type === 'MAP_CONFIG' && optionsRef.current?.onRemoteMapConfig) {
-        optionsRef.current.onRemoteMapConfig(msg.payload as Partial<BattleMapConfig>);
+        const currentIsHost = p2pManager.getIsHost();
+        const currentRoomCode = p2pManager.getRoomCode();
+
+        // Host possui autoridade total sobre configuração do mapa: descarta de jogadores
+        if (currentIsHost) {
+          return;
+        }
+
+        const isSenderHost =
+          msg.senderId === `arcanasheet-room-${currentRoomCode.toLowerCase()}` ||
+          msg.senderId === currentRoomCode;
+        if (!isSenderHost) {
+          return;
+        }
+
+        const validatedConfig = validateRemoteMapConfig(msg.payload);
+        optionsRef.current.onRemoteMapConfig(validatedConfig);
       }
       if (msg.type === 'DIRECT_MESSAGE') {
         const dm = msg.payload as any;

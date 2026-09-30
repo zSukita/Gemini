@@ -63,11 +63,13 @@ interface MapControlsProps {
   onClearAoETemplates?: () => void;
   hasAoETemplates?: boolean;
   onOpenTokenMaker?: () => void;
+  isHost?: boolean;
 }
 
 export const MapControls: React.FC<MapControlsProps> = ({
   activeTool,
   setActiveTool,
+  isHost = true,
   drawColor = '#f59e0b',
   onChangeDrawColor,
   drawWidth = 4,
@@ -176,13 +178,16 @@ export const MapControls: React.FC<MapControlsProps> = ({
 
           <button
             type="button"
+            disabled={!isHost}
             onClick={() => setActiveTool('fog-reveal')}
             className={`p-1.5 sm:px-2 sm:py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition ${
               activeTool === 'fog-reveal'
                 ? 'bg-emerald-600 text-white font-bold shadow'
+                : !isHost
+                ? 'text-slate-600 cursor-not-allowed opacity-50'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
-            title="Revelar Área da Névoa de Guerra"
+            title={!isHost ? 'Apenas o Mestre pode alterar a névoa' : 'Revelar Área da Névoa de Guerra'}
           >
             <Eye size={14} />
             <span className="hidden xl:inline">Revelar</span>
@@ -190,13 +195,16 @@ export const MapControls: React.FC<MapControlsProps> = ({
 
           <button
             type="button"
+            disabled={!isHost}
             onClick={() => setActiveTool('fog-hide')}
             className={`p-1.5 sm:px-2 sm:py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition ${
               activeTool === 'fog-hide'
                 ? 'bg-rose-600 text-white font-bold shadow'
+                : !isHost
+                ? 'text-slate-600 cursor-not-allowed opacity-50'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
-            title="Ocultar Área com Névoa"
+            title={!isHost ? 'Apenas o Mestre pode alterar a névoa' : 'Ocultar Área com Névoa'}
           >
             <EyeOff size={14} />
             <span className="hidden xl:inline">Ocultar</span>
@@ -551,9 +559,14 @@ export const MapControls: React.FC<MapControlsProps> = ({
               {onOpenGallery && (
                 <button
                   type="button"
+                  disabled={!isHost}
                   onClick={onOpenGallery}
-                  className="rpg-button bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-[11px] py-0.5 px-2 shadow flex items-center gap-1"
-                  title="Galeria de Mapas de Batalha HD"
+                  className={`rpg-button text-slate-950 font-bold text-[11px] py-0.5 px-2 shadow flex items-center gap-1 ${
+                    !isHost
+                      ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50'
+                      : 'bg-amber-600 hover:bg-amber-500'
+                  }`}
+                  title={!isHost ? 'Apenas o Mestre pode selecionar mapas da galeria' : 'Galeria de Mapas de Batalha HD'}
                 >
                   <Compass size={12} />
                   <span>Galeria</span>
@@ -561,11 +574,15 @@ export const MapControls: React.FC<MapControlsProps> = ({
               )}
 
               <select
+                disabled={!isHost}
                 onChange={(e) => {
                   const preset = DEFAULT_MAP_PRESETS.find((p) => p.id === e.target.value);
                   if (preset) onSelectMapPreset(preset);
                 }}
-                className="rpg-input py-0.5 text-[11px] max-w-[140px] truncate"
+                className={`rpg-input py-0.5 text-[11px] max-w-[140px] truncate ${
+                  !isHost ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+                title={!isHost ? 'Apenas o Mestre pode alterar o mapa da mesa' : undefined}
               >
                 <option value="">Mapas Prontos...</option>
                 {DEFAULT_MAP_PRESETS.map((p) => (
@@ -585,11 +602,16 @@ export const MapControls: React.FC<MapControlsProps> = ({
 
               <button
                 type="button"
+                disabled={!isHost}
                 onClick={() => fileInputRef.current?.click()}
-                className="rpg-button bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] py-0.5 px-2 flex items-center gap-1"
-                title="Carregar imagem de mapa personalizada (.png, .jpg, .webp)"
+                className={`rpg-button text-[11px] py-0.5 px-2 flex items-center gap-1 ${
+                  !isHost
+                    ? 'bg-slate-900 text-slate-600 cursor-not-allowed opacity-50'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                }`}
+                title={!isHost ? 'Apenas o Mestre pode enviar imagens de mapa' : 'Carregar imagem de mapa personalizada (.png, .jpg, .webp)'}
               >
-                <Upload size={12} className="text-amber-400" />
+                <Upload size={12} className={!isHost ? 'text-slate-600' : 'text-amber-400'} />
                 <span>Upload</span>
               </button>
             </div>

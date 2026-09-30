@@ -3,6 +3,8 @@ import type { SyncMessage } from '../types/combat';
 const CHANNEL_NAME = 'arcanasheet_rpg_sync';
 
 let channel: BroadcastChannel | null = null;
+const subscribers = new Set<(msg: SyncMessage) => void>();
+let isListening = false;
 
 function getChannel(): BroadcastChannel | null {
   if (typeof window === 'undefined') return null;
@@ -16,10 +18,49 @@ function getChannel(): BroadcastChannel | null {
   return channel;
 }
 
+function ensureListening(): void {
+  if (isListening) return;
+  isListening = true;
+
+  const ch = getChannel();
+  if (ch) {
+    ch.addEventListener('message', (event: MessageEvent<SyncMessage>) => {
+      if (event.data && event.data.type) {
+        subscribers.forEach((cb) => {
+          try {
+            cb(event.data);
+          } catch (e) {
+            console.error('[syncChannel] Erro em listener:', e);
+          }
+        });
+      }
+    });
+  }
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('storage', (event: StorageEvent) => {
+      if (event.key === 'arcanasheet_last_sync_event' && event.newValue) {
+        try {
+          const parsed = JSON.parse(event.newValue) as SyncMessage;
+          subscribers.forEach((cb) => {
+            try {
+              cb(parsed);
+            } catch (e) {
+              console.error('[syncChannel] Erro em listener de storage:', e);
+            }
+          });
+        } catch {
+          // ignore
+        }
+      }
+    });
+  }
+}
+
 /**
  * Envia uma mensagem para outras abas/janelas do app em tempo real
  */
-export function broadcastSyncMessage(message: Omit<SyncMessage, 'timestamp'>) {
+export function broadcastSyncMessage(message: Omit<SyncMessage, 'timestamp'>): void {
   const fullMessage: SyncMessage = {
     ...message,
     timestamp: Date.now(),
@@ -39,37 +80,14 @@ export function broadcastSyncMessage(message: Omit<SyncMessage, 'timestamp'>) {
 }
 
 /**
- * Registra um ouvinte para mensagens sincronizadas
+ * Registra um ouvinte para mensagens sincronizadas através de um multiplexador
+ * único para evitar vazamento de memória de EventTarget / BroadcastChannel.
  */
 export function subscribeToSync(callback: (msg: SyncMessage) => void): () => void {
-  const ch = getChannel();
-
-  const handleBroadcast = (event: MessageEvent<SyncMessage>) => {
-    if (event.data && event.data.type) {
-      callback(event.data);
-    }
-  };
-
-  const handleStorage = (event: StorageEvent) => {
-    if (event.key === 'arcanasheet_last_sync_event' && event.newValue) {
-      try {
-        const parsed = JSON.parse(event.newValue) as SyncMessage;
-        callback(parsed);
-      } catch {
-        // ignore
-      }
-    }
-  };
-
-  if (ch) {
-    ch.addEventListener('message', handleBroadcast);
-  }
-  window.addEventListener('storage', handleStorage);
+  ensureListening();
+  subscribers.add(callback);
 
   return () => {
-    if (ch) {
-      ch.removeEventListener('message', handleBroadcast);
-    }
-    window.removeEventListener('storage', handleStorage);
+    subscribers.delete(callback);
   };
 }

@@ -14,6 +14,7 @@ export function registerServiceWorker(): void {
               installingWorker.onstatechange = () => {
                 if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
                   console.info('[PWA] Nova versão do ArcanaSheet disponível! Atualizando em segundo plano...');
+                  window.dispatchEvent(new CustomEvent('arcanasheet_pwa_update_available'));
                 }
               };
             }

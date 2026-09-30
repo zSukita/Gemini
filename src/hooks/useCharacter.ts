@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type {
   Character,
   AbilityKey,
@@ -19,23 +19,31 @@ import {
   loadCharactersFromCloud,
   saveCharactersToCloud,
   syncOnChange,
+  cancelPendingSync,
 } from '../firebase/characterSync';
-import { safeSetItem, safeSetJson } from '../utils/safeStorage';
+import { safeSetItem, safeSetJson, safeGetItem } from '../utils/safeStorage';
+import {
+  getUserStorageKey,
+  migrateLegacyKeysToUser,
+  BASE_STORAGE_KEYS,
+} from '../utils/accountStorage';
+import { sanitizeCharacter, parseAndValidateCharacterJson } from '../utils/characterSanitizer';
 import { applyCharacterDamage, applyCharacterHealing, isCharacterDead } from '../utils/deathSaves';
-
-const STORAGE_KEY_ACTIVE = 'arcanasheet_active_character_id';
-const STORAGE_KEY_CHARACTERS = 'arcanasheet_characters_list';
 
 export function useCharacter(userId?: string | null) {
   const [isCloudLoaded, setIsCloudLoaded] = useState<boolean>(!userId);
+  const loadedUserIdRef = useRef<string | null>(userId || null);
+  const loadRequestIdRef = useRef<number>(0);
+
+  // Inicializa estado lendo cache local sanitizado do usuário ou convidado
   const [characters, setCharacters] = useState<Character[]>(() => {
     try {
-      const storageKey = userId ? `arcanasheet_characters_${userId}` : STORAGE_KEY_CHARACTERS;
-      const saved = localStorage.getItem(storageKey);
+      const storageKey = getUserStorageKey(BASE_STORAGE_KEYS.CHARACTERS, userId);
+      const saved = safeGetItem(storageKey);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          return parsed.map((c) => sanitizeCharacter(c));
         }
       }
     } catch (e) {
@@ -46,9 +54,9 @@ export function useCharacter(userId?: string | null) {
 
   const [activeId, setActiveId] = useState<string>(() => {
     try {
-      const activeKey = userId ? `arcanasheet_active_${userId}` : STORAGE_KEY_ACTIVE;
-      const savedId = localStorage.getItem(activeKey);
-      if (savedId) return savedId;
+      const activeKey = getUserStorageKey(BASE_STORAGE_KEYS.ACTIVE_CHARACTER, userId);
+      const savedId = safeGetItem(activeKey);
+      if (savedId && characters.some((c) => c.id === savedId)) return savedId;
     } catch {
       // ignore
     }
@@ -58,44 +66,100 @@ export function useCharacter(userId?: string | null) {
   const activeCharacter: Character =
     characters.find((c) => c.id === activeId) || characters[0] || createBlankCharacter();
 
-  // Carregar personagens da nuvem quando o usuário faz login
+  // Carregar personagens da nuvem quando o usuário faz login ou troca de conta
   useEffect(() => {
+    // 1. Cancela timers e sincronizações pendentes da conta anterior
+    cancelPendingSync();
+
+    // 2. Incrementa requestId para invalidar respostas assíncronas anteriores (race conditions)
+    const currentRequestId = ++loadRequestIdRef.current;
+
     if (!userId) {
+      // Modo Convidado / Logout
+      setIsCloudLoaded(false);
+      const guestKey = BASE_STORAGE_KEYS.CHARACTERS;
+      const guestActiveKey = BASE_STORAGE_KEYS.ACTIVE_CHARACTER;
+      try {
+        const raw = safeGetItem(guestKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const sanitized = parsed.map((c) => sanitizeCharacter(c));
+            setCharacters(sanitized);
+            const savedActive = safeGetItem(guestActiveKey);
+            setActiveId(
+              savedActive && sanitized.some((c) => c.id === savedActive)
+                ? savedActive
+                : sanitized[0].id
+            );
+            loadedUserIdRef.current = null;
+            setIsCloudLoaded(true);
+            return;
+          }
+        }
+      } catch {
+        // fallback
+      }
+      const blank = createBlankCharacter();
+      setCharacters([blank]);
+      setActiveId(blank.id);
+      loadedUserIdRef.current = null;
       setIsCloudLoaded(true);
       return;
     }
 
+    // Usuário autenticado
     setIsCloudLoaded(false);
-    let isMounted = true;
-    const userStorageKey = `arcanasheet_characters_${userId}`;
-    const userActiveKey = `arcanasheet_active_${userId}`;
+
+    // 3. Executa migração segura das chaves legadas se for a primeira vez deste usuário
+    migrateLegacyKeysToUser(userId);
+
+    const userStorageKey = getUserStorageKey(BASE_STORAGE_KEYS.CHARACTERS, userId);
+    const userActiveKey = getUserStorageKey(BASE_STORAGE_KEYS.ACTIVE_CHARACTER, userId);
+
+    let localCachedCharacters: Character[] | null = null;
+    let localCachedActiveId: string | null = null;
 
     // Tenta carregar cache local específico deste usuário
     try {
-      const cached = localStorage.getItem(userStorageKey);
+      const cached = safeGetItem(userStorageKey);
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          setCharacters(parsed);
-          const cachedActive = localStorage.getItem(userActiveKey);
-          if (cachedActive) setActiveId(cachedActive);
+          localCachedCharacters = parsed.map((c) => sanitizeCharacter(c));
+          localCachedActiveId = safeGetItem(userActiveKey);
+          setCharacters(localCachedCharacters);
+          if (localCachedActiveId && localCachedCharacters.some((c) => c.id === localCachedActiveId)) {
+            setActiveId(localCachedActiveId);
+          } else {
+            setActiveId(localCachedCharacters[0].id);
+          }
         }
       }
     } catch {
       // ignore
     }
 
-    // Carregar da nuvem (Firestore)
+    // 4. Carregar da nuvem (Firestore)
     loadCharactersFromCloud(userId)
       .then((cloudData) => {
-        if (!isMounted) return;
+        // Ignora resposta se o usuário já trocou de conta ou se outro request foi iniciado
+        if (loadRequestIdRef.current !== currentRequestId) return;
+
         if (cloudData && cloudData.characters && cloudData.characters.length > 0) {
           setCharacters(cloudData.characters);
-          if (cloudData.activeId) {
+          if (cloudData.activeId && cloudData.characters.some((c) => c.id === cloudData.activeId)) {
             setActiveId(cloudData.activeId);
+          } else {
+            setActiveId(cloudData.characters[0].id);
           }
+        } else if (localCachedCharacters && localCachedCharacters.length > 0) {
+          // Nuvem vazia mas cache local existia: preserva cache local e espelha para nuvem
+          saveCharactersToCloud(userId, localCachedCharacters, localCachedActiveId || localCachedCharacters[0].id).catch(
+            (err) => console.error('Erro ao sincronizar cache local inicial para nuvem:', err)
+          );
         } else {
-          // Conta nova sem personagens na nuvem: inicia com ficha em branco para o jogador criar o personagem dele
+          // Conta nova sem personagens na nuvem nem cache: cria ficha em branco
           const blank = createBlankCharacter();
           setCharacters([blank]);
           setActiveId(blank.id);
@@ -103,34 +167,46 @@ export function useCharacter(userId?: string | null) {
             console.error('Erro ao salvar personagem em branco inicial:', err)
           );
         }
+
+        loadedUserIdRef.current = userId;
         setIsCloudLoaded(true);
       })
       .catch((err) => {
         console.error('Erro ao carregar personagens da nuvem:', err);
-        if (isMounted) setIsCloudLoaded(true);
+        if (loadRequestIdRef.current !== currentRequestId) return;
+        // Falha de rede: se tinha cache local, mantém; senão usa padrão
+        loadedUserIdRef.current = userId;
+        setIsCloudLoaded(true);
       });
 
     return () => {
-      isMounted = false;
+      cancelPendingSync(userId);
     };
   }, [userId]);
 
-  // Salvar sempre que a lista de personagens mudar e avisar o Mestre
+  // Salvar sempre que a lista de personagens mudar, com proteção estrita contra salvamento em conta errada
   useEffect(() => {
+    // CRÍTICO: Não persista dados no cache ou Firestore até que o carregamento da conta atual tenha terminado!
+    if (!isCloudLoaded) return;
+
+    // Garante que o estado de personagens atual corresponde exatamente à conta em foco
+    const expectedUserId = userId || null;
+    if (loadedUserIdRef.current !== expectedUserId) return;
+
     try {
-      const storageKey = userId ? `arcanasheet_characters_${userId}` : STORAGE_KEY_CHARACTERS;
-      const activeKey = userId ? `arcanasheet_active_${userId}` : STORAGE_KEY_ACTIVE;
+      const storageKey = getUserStorageKey(BASE_STORAGE_KEYS.CHARACTERS, userId);
+      const activeKey = getUserStorageKey(BASE_STORAGE_KEYS.ACTIVE_CHARACTER, userId);
 
       safeSetJson(storageKey, characters);
       safeSetItem(activeKey, activeId);
 
-      // Sincroniza com a nuvem (Firestore) com debounce se estiver logado
+      // Sincroniza com a nuvem (Firestore) com debounce por usuário
       if (userId) {
         syncOnChange(userId, characters, activeId);
       }
 
-      // Transmite estado atualizado do jogador para o DM Screen
-      if (activeCharacter) {
+      // Transmite estado atualizado do jogador para o DM Screen somente se conta carregada
+      if (activeCharacter && activeCharacter.id) {
         broadcastSyncMessage({
           type: 'PLAYER_UPDATE',
           payload: {
@@ -144,9 +220,9 @@ export function useCharacter(userId?: string | null) {
         });
       }
     } catch (e) {
-      console.error('Erro ao salvar no localStorage', e);
+      console.error('Erro ao salvar personagens no localStorage:', e);
     }
-  }, [characters, activeId, activeCharacter, userId]);
+  }, [characters, activeId, activeCharacter, userId, isCloudLoaded]);
 
   // Ouvir alterações vindas do Painel do Mestre (ex: Mestre aplicou dano ou cura no combate)
   useEffect(() => {
@@ -564,19 +640,18 @@ export function useCharacter(userId?: string | null) {
   };
 
   const importCharacter = (jsonString: string): boolean => {
-    try {
-      const parsed = JSON.parse(jsonString) as Character;
-      if (!parsed.name || !parsed.abilities) {
-        throw new Error('Formato de ficha inválido');
-      }
-      parsed.id = `char-imported-${Date.now()}`;
-      setCharacters((prev) => [...prev, parsed]);
-      setActiveId(parsed.id);
-      return true;
-    } catch (e) {
-      console.error('Falha ao importar personagem', e);
+    const result = parseAndValidateCharacterJson(jsonString);
+    if (!result.success || !result.character) {
+      console.error('[useCharacter] Falha ao importar personagem:', result.error);
       return false;
     }
+    const imported: Character = {
+      ...result.character,
+      id: `char-imported-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    };
+    setCharacters((prev) => [...prev, imported]);
+    setActiveId(imported.id);
+    return true;
   };
 
   const exportActiveCharacter = (): string => {

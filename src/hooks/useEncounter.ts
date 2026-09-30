@@ -4,8 +4,10 @@ import type { Character, AbilityKey } from '../types/dnd5e';
 import { getAbilityModifier } from '../utils/calculations';
 import { rollDie } from '../utils/diceRoller';
 import { broadcastSyncMessage, subscribeToSync } from '../utils/syncChannel';
+import { getUserStorageKey, BASE_STORAGE_KEYS } from '../utils/accountStorage';
+import { safeSetJson, safeGetJson } from '../utils/safeStorage';
 
-export const STORAGE_KEY_ENCOUNTER = 'arcanasheet_encounter_state';
+export const STORAGE_KEY_ENCOUNTER = BASE_STORAGE_KEYS.ENCOUNTER;
 
 export const VALID_CONDITIONS: ConditionKey[] = [
   'blinded',
@@ -482,27 +484,32 @@ export function sortCombatantsByInitiativeOrder(combatants: Combatant[]): Combat
   });
 }
 
-export function useEncounter() {
+export function useEncounter(userId?: string | null) {
   const [encounter, setEncounter] = useState<Encounter>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_ENCOUNTER);
-      if (saved) {
-        return sanitizeEncounter(JSON.parse(saved));
-      }
-    } catch {
-      // ignore
-    }
-    return DEFAULT_ENCOUNTER;
+    const key = getUserStorageKey(STORAGE_KEY_ENCOUNTER, userId);
+    return safeGetJson<Encounter>(
+      key,
+      DEFAULT_ENCOUNTER,
+      (val) => Boolean(val && typeof val === 'object' && !Array.isArray(val))
+    );
   });
 
-  // Salvar no localStorage sempre que o encontro for alterado
+  // Recarrega encontro isolado quando a conta ativa mudar
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_ENCOUNTER, JSON.stringify(encounter));
-    } catch {
-      // ignore
-    }
-  }, [encounter]);
+    const key = getUserStorageKey(STORAGE_KEY_ENCOUNTER, userId);
+    const loaded = safeGetJson<Encounter>(
+      key,
+      DEFAULT_ENCOUNTER,
+      (val) => Boolean(val && typeof val === 'object' && !Array.isArray(val))
+    );
+    setEncounter(sanitizeEncounter(loaded));
+  }, [userId]);
+
+  // Salvar no localStorage isolado sempre que o encontro for alterado
+  useEffect(() => {
+    const key = getUserStorageKey(STORAGE_KEY_ENCOUNTER, userId);
+    safeSetJson(key, encounter);
+  }, [encounter, userId]);
 
   // Ouvir atualizações da ficha do jogador em tempo real
   useEffect(() => {

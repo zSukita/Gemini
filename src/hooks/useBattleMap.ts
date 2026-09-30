@@ -5,9 +5,11 @@ import type { Character } from '../types/dnd5e';
 import { DEFAULT_MAP_PRESETS, type DefaultMapPreset } from '../data/defaultMaps';
 import { SRD_CLASSES } from '../data/srdClasses';
 import { snapCoordinateToGrid } from '../utils/mapRenderer';
+import { getUserStorageKey, BASE_STORAGE_KEYS } from '../utils/accountStorage';
+import { safeSetJson, safeGetJson } from '../utils/safeStorage';
 
-const STORAGE_KEY_MAP = 'arcanasheet_battlemap_config';
-const STORAGE_KEY_TOKENS = 'arcanasheet_battlemap_tokens';
+const STORAGE_KEY_MAP = BASE_STORAGE_KEYS.BATTLEMAP_CONFIG;
+const STORAGE_KEY_TOKENS = BASE_STORAGE_KEYS.BATTLEMAP_TOKENS;
 
 /**
  * Valida e recupera com segurança as configurações do mapa de batalha salvas ou recebidas.
@@ -171,27 +173,28 @@ export function sanitizeTokens(
 export function useBattleMap(
   encounter?: Encounter,
   character?: Character | null,
-  connectedPeers?: PeerUser[]
+  connectedPeers?: PeerUser[],
+  userId?: string | null
 ) {
   const [mapConfig, setMapConfig] = useState<BattleMapConfig>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_MAP);
-      if (saved) return sanitizeBattleMapConfig(JSON.parse(saved));
-    } catch {
-      // ignore
-    }
-    return sanitizeBattleMapConfig(null);
+    const key = getUserStorageKey(STORAGE_KEY_MAP, userId);
+    const saved = safeGetJson<unknown>(key, null);
+    return sanitizeBattleMapConfig(saved);
   });
 
   const [tokens, setTokens] = useState<MapToken[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_TOKENS);
-      if (saved) return sanitizeTokens(JSON.parse(saved));
-    } catch {
-      // ignore
-    }
-    return [];
+    const key = getUserStorageKey(STORAGE_KEY_TOKENS, userId);
+    const saved = safeGetJson<unknown>(key, []);
+    return sanitizeTokens(saved);
   });
+
+  // Recarrega mapa e tokens isolados quando a conta ativa mudar
+  useEffect(() => {
+    const mapKey = getUserStorageKey(STORAGE_KEY_MAP, userId);
+    const tokensKey = getUserStorageKey(STORAGE_KEY_TOKENS, userId);
+    setMapConfig(sanitizeBattleMapConfig(safeGetJson<unknown>(mapKey, null)));
+    setTokens(sanitizeTokens(safeGetJson<unknown>(tokensKey, [])));
+  }, [userId]);
 
   const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -200,19 +203,17 @@ export function useBattleMap(
     'select' | 'measure' | 'fog-reveal' | 'fog-hide' | 'draw' | 'ping'
   >('select');
 
-  // Salvar alterações locais com debounce de 250ms para evitar sobrecarga de I/O em arrastos
+  // Salvar alterações locais com debounce de 250ms em chave isolada por usuário
   useEffect(() => {
     const timer = setTimeout(() => {
-      try {
-        localStorage.setItem(STORAGE_KEY_MAP, JSON.stringify(mapConfig));
-        localStorage.setItem(STORAGE_KEY_TOKENS, JSON.stringify(tokens));
-      } catch {
-        // ignore
-      }
+      const mapKey = getUserStorageKey(STORAGE_KEY_MAP, userId);
+      const tokensKey = getUserStorageKey(STORAGE_KEY_TOKENS, userId);
+      safeSetJson(mapKey, mapConfig);
+      safeSetJson(tokensKey, tokens);
     }, 250);
 
     return () => clearTimeout(timer);
-  }, [mapConfig, tokens]);
+  }, [mapConfig, tokens, userId]);
 
   // Sincronizar tokens automaticamente com o Encontro de Combate
   useEffect(() => {

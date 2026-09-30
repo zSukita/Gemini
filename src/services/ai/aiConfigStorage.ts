@@ -1,5 +1,6 @@
 import type { AiDmConfig, AiMessage, AiProvider } from '../../types/aiDm';
-import { safeSetItem, safeSetJson, safeGetJson } from '../../utils/safeStorage';
+import { safeSetItem, safeSetJson, safeGetJson, safeRemoveItem } from '../../utils/safeStorage';
+import { getUserStorageKey } from '../../utils/accountStorage';
 
 export const API_KEY_STORAGE_KEY = 'arcanasheet_gemini_api_key';
 export const GROQ_API_KEY_STORAGE_KEY = 'arcanasheet_groq_api_key';
@@ -148,10 +149,11 @@ export function saveStoredApiKey(key: string): void {
   }
 }
 
-export function getStoredCampaignSummary(): string {
+export function getStoredCampaignSummary(userId?: string | null): string {
   try {
+    const key = getUserStorageKey(CAMPAIGN_SUMMARY_STORAGE_KEY, userId);
     if (typeof localStorage !== 'undefined') {
-      return localStorage.getItem(CAMPAIGN_SUMMARY_STORAGE_KEY) || '';
+      return localStorage.getItem(key) || '';
     }
   } catch {
     // fallback
@@ -159,14 +161,16 @@ export function getStoredCampaignSummary(): string {
   return '';
 }
 
-export function saveStoredCampaignSummary(summary: string): void {
-  safeSetItem(CAMPAIGN_SUMMARY_STORAGE_KEY, summary.trim());
+export function saveStoredCampaignSummary(summary: string, userId?: string | null): void {
+  const key = getUserStorageKey(CAMPAIGN_SUMMARY_STORAGE_KEY, userId);
+  safeSetItem(key, summary.trim());
 }
 
-export function getStoredAiConfig(): AiDmConfig {
+export function getStoredAiConfig(userId?: string | null): AiDmConfig {
   try {
+    const configKey = getUserStorageKey(CONFIG_STORAGE_KEY, userId);
     if (typeof localStorage !== 'undefined') {
-      const raw = localStorage.getItem(CONFIG_STORAGE_KEY);
+      const raw = localStorage.getItem(configKey);
       const provider = getStoredAiProvider();
       const groqKey = getStoredGroqApiKey();
       const geminiKey = getStoredApiKey();
@@ -193,7 +197,7 @@ export function getStoredAiConfig(): AiDmConfig {
 
         if (isInvalidOrDeprecated && (activeProvider === 'gemini' || isGeminiModel) && typeof localStorage !== 'undefined') {
           try {
-            localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify({ ...parsed, model: DEFAULT_GEMINI_MODEL }));
+            localStorage.setItem(configKey, JSON.stringify({ ...parsed, model: DEFAULT_GEMINI_MODEL }));
           } catch {
             // ignore
           }
@@ -206,7 +210,7 @@ export function getStoredAiConfig(): AiDmConfig {
           apiKey: geminiKey,
           groqApiKey: groqKey,
           model,
-          campaignSummary: parsed.campaignSummary ?? getStoredCampaignSummary(),
+          campaignSummary: parsed.campaignSummary ?? getStoredCampaignSummary(userId),
         };
       }
     }
@@ -221,8 +225,9 @@ export function getStoredAiConfig(): AiDmConfig {
   };
 }
 
-export function saveStoredAiConfig(config: AiDmConfig): void {
+export function saveStoredAiConfig(config: AiDmConfig, userId?: string | null): void {
   try {
+    const configKey = getUserStorageKey(CONFIG_STORAGE_KEY, userId);
     const { apiKey, groqApiKey, provider, ...rest } = config;
     if (apiKey !== undefined) {
       saveStoredApiKey(apiKey);
@@ -234,26 +239,25 @@ export function saveStoredAiConfig(config: AiDmConfig): void {
       saveStoredAiProvider(provider);
     }
     if (config.campaignSummary !== undefined) {
-      saveStoredCampaignSummary(config.campaignSummary);
+      saveStoredCampaignSummary(config.campaignSummary, userId);
     }
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify({ ...rest, provider }));
-    }
+    safeSetJson(configKey, { ...rest, provider });
   } catch (err) {
     console.error('Falha ao salvar configurações do Mestre IA', err);
   }
 }
 
-export function getStoredChatHistory(): AiMessage[] {
-  return safeGetJson<AiMessage[]>(CHAT_HISTORY_STORAGE_KEY, []);
+export function getStoredChatHistory(userId?: string | null): AiMessage[] {
+  const key = getUserStorageKey(CHAT_HISTORY_STORAGE_KEY, userId);
+  return safeGetJson<AiMessage[]>(key, []);
 }
 
-export function saveStoredChatHistory(history: AiMessage[]): void {
-  safeSetJson(CHAT_HISTORY_STORAGE_KEY, history);
+export function saveStoredChatHistory(history: AiMessage[], userId?: string | null): void {
+  const key = getUserStorageKey(CHAT_HISTORY_STORAGE_KEY, userId);
+  safeSetJson(key, history);
 }
 
-export function clearStoredChatHistory(): void {
-  if (typeof localStorage !== 'undefined') {
-    localStorage.removeItem(CHAT_HISTORY_STORAGE_KEY);
-  }
+export function clearStoredChatHistory(userId?: string | null): void {
+  const key = getUserStorageKey(CHAT_HISTORY_STORAGE_KEY, userId);
+  safeRemoveItem(key);
 }

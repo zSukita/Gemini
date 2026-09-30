@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu } = require('electron');
+const { app, BrowserWindow, Menu, shell } = require('electron');
 const path = require('path');
 
 let mainWindow = null;
@@ -20,6 +20,34 @@ function createWindow() {
 
   const isDev = !app.isPackaged && process.env.NODE_ENV !== 'production';
 
+  // Impedir abertura arbitrária de janelas filhas e delegar links externos ao navegador padrão
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('https:') || url.startsWith('http:')) {
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
+
+  // Impedir navegação para origens externas não esperadas na janela do app
+  mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+    try {
+      const parsedUrl = new URL(navigationUrl);
+      if (isDev) {
+        if (parsedUrl.origin !== 'http://localhost:5173') {
+          event.preventDefault();
+          shell.openExternal(navigationUrl);
+        }
+      } else {
+        if (parsedUrl.protocol !== 'file:') {
+          event.preventDefault();
+          shell.openExternal(navigationUrl);
+        }
+      }
+    } catch {
+      event.preventDefault();
+    }
+  });
+
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
     console.error('Falha no carregamento da janela:', errorCode, errorDescription);
   });
@@ -33,6 +61,21 @@ function createWindow() {
   }
 
   // Custom menu
+  const viewSubmenu = [
+    { label: 'Alternar Tela Cheia', role: 'togglefullscreen' },
+    { label: 'Zoom +', role: 'zoomIn' },
+    { label: 'Zoom -', role: 'zoomOut' },
+    { label: 'Zoom Padrão', role: 'resetZoom' },
+  ];
+
+  // Restringe ferramentas de desenvolvedor exclusivamente ao ambiente de desenvolvimento
+  if (isDev) {
+    viewSubmenu.push(
+      { type: 'separator' },
+      { label: 'Ferramentas do Desenvolvedor', role: 'toggleDevTools' }
+    );
+  }
+
   const menuTemplate = [
     {
       label: 'Jogo',
@@ -45,14 +88,7 @@ function createWindow() {
     },
     {
       label: 'Exibir',
-      submenu: [
-        { label: 'Alternar Tela Cheia', role: 'togglefullscreen' },
-        { label: 'Zoom +', role: 'zoomIn' },
-        { label: 'Zoom -', role: 'zoomOut' },
-        { label: 'Zoom Padrão', role: 'resetZoom' },
-        { type: 'separator' },
-        { label: 'Ferramentas do Desenvolvedor', role: 'toggleDevTools' },
-      ],
+      submenu: viewSubmenu,
     },
   ];
 

@@ -251,15 +251,20 @@ export const CampaignModal: React.FC<CampaignModalProps> = ({
 
   const handleDeleteCampaign = async () => {
     if (!activeCampaignId) return;
-    if (!window.confirm('Tem certeza que deseja encerrar e excluir esta campanha para todos?')) return;
+    const confirmed = window.confirm(
+      'Tem certeza que deseja encerrar e excluir esta campanha permanentemente?\n\n' +
+      'Atenção: Todos os handouts compartilhados, convites pendentes e o código de acesso na nuvem serão excluídos. Esta ação não pode ser desfeita.'
+    );
+    if (!confirmed) return;
 
     try {
-      await deleteCampaign(activeCampaignId, campaign?.code);
+      await deleteCampaign(activeCampaignId, campaign?.code, userId);
       setActiveCampaignId(null);
       setCampaign(null);
-      showNotification('Campanha encerrada.');
-    } catch {
-      showNotification('Erro ao encerrar campanha.');
+      showNotification('Campanha encerrada com sucesso.');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao encerrar campanha.';
+      showNotification(msg);
     }
   };
 

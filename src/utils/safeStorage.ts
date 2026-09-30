@@ -19,6 +19,7 @@ export function isLocalStorageAvailable(): boolean {
 /**
  * Salva com segurança um valor em texto no localStorage.
  * Trata QuotaExceededError limpando chaves temporárias dispensáveis se necessário.
+ * Notifica a aplicação via evento se a gravação falhar permanentemente.
  */
 export function safeSetItem(key: string, value: string): boolean {
   if (typeof localStorage === 'undefined') return false;
@@ -42,6 +43,13 @@ export function safeSetItem(key: string, value: string): boolean {
         return true;
       } catch (retryErr) {
         console.error('[SafeStorage] Não foi possível salvar mesmo após limpeza:', retryErr);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('arcanasheet_storage_quota_exceeded', {
+              detail: { key, message: 'Armazenamento local cheio. Não foi possível salvar dados.' },
+            })
+          );
+        }
         return false;
       }
     }
@@ -90,17 +98,47 @@ export function safeSetJson<T>(key: string, data: T): boolean {
 }
 
 /**
- * Lê e desserializa um objeto JSON com fallback seguro
+ * Lê e desserializa um objeto JSON com validação opcional de esquema e fallback seguro
  */
-export function safeGetJson<T>(key: string, fallback: T): T {
+export function safeGetJson<T>(
+  key: string,
+  fallback: T,
+  validator?: (val: unknown) => boolean,
+): T {
   const raw = safeGetItem(key);
   if (!raw) return fallback;
 
   try {
-    return JSON.parse(raw) as T;
+    const parsed = JSON.parse(raw);
+    if (validator && !validator(parsed)) {
+      console.warn(`[SafeStorage] Validação de esquema falhou para chave "${key}", retornando fallback.`);
+      return fallback;
+    }
+    return parsed as T;
   } catch (err) {
     console.warn(`[SafeStorage] Falha ao desserializar JSON de "${key}", retornando fallback:`, err);
     return fallback;
+  }
+}
+
+/**
+ * Remove apenas os dados da conta especificada (terminados em _userId),
+ * preservando todas as demais contas e configurações globais.
+ */
+export function clearUserSpecificData(userId: string): void {
+  if (!userId || typeof localStorage === 'undefined') return;
+  const suffix = `_${userId}`;
+  const keysToRemove: string[] = [];
+
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.endsWith(suffix)) {
+      keysToRemove.push(key);
+    }
+  }
+
+  for (const k of keysToRemove) {
+    safeRemoveItem(k);
   }
 }
 

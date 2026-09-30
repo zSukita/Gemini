@@ -6,9 +6,29 @@ import {
 } from 'firebase/firestore';
 import { db } from './config';
 import type { Character } from '../types/dnd5e';
+import { sanitizeCharacter } from '../utils/characterSanitizer';
 
-/** Debounce timer ref */
-let saveTimer: ReturnType<typeof setTimeout> | null = null;
+/** Map de timers de debounce específicos por usuário */
+const saveTimersByUser = new Map<string, ReturnType<typeof setTimeout>>();
+
+/**
+ * Cancela qualquer sincronização pendente para um usuário específico
+ * ou para todos os usuários (útil no logout ou na troca rápida de conta).
+ */
+export function cancelPendingSync(userId?: string): void {
+  if (userId) {
+    const timer = saveTimersByUser.get(userId);
+    if (timer) {
+      clearTimeout(timer);
+      saveTimersByUser.delete(userId);
+    }
+  } else {
+    for (const timer of saveTimersByUser.values()) {
+      clearTimeout(timer);
+    }
+    saveTimersByUser.clear();
+  }
+}
 
 /**
  * Salva a lista de personagens e o ID ativo no Firestore.
@@ -18,7 +38,7 @@ export async function saveCharactersToCloud(
   characters: Character[],
   activeId: string,
 ): Promise<void> {
-  if (!db) return;
+  if (!db || !userId) return;
   const ref = doc(db, 'users', userId);
   await setDoc(
     ref,
@@ -32,21 +52,31 @@ export async function saveCharactersToCloud(
 }
 
 /**
- * Carrega os personagens do Firestore.
- * Retorna null se não houver dados salvos.
+ * Carrega os personagens do Firestore com sanitização estrita.
+ * Retorna null se não houver dados salvos ou se o Firestore estiver indisponível.
  */
 export async function loadCharactersFromCloud(
   userId: string,
 ): Promise<{ characters: Character[]; activeId: string } | null> {
-  if (!db) return null;
+  if (!db || !userId) return null;
   const ref = doc(db, 'users', userId);
   const snap = await getDoc(ref);
   if (!snap.exists()) return null;
   const data = snap.data();
-  if (!data.characters || !Array.isArray(data.characters)) return null;
+  if (!data || !data.characters || !Array.isArray(data.characters)) return null;
+
+  // Aplica o sanitizador em cada ficha retornada da nuvem
+  const sanitized = data.characters.map((c: unknown) => sanitizeCharacter(c));
+  if (sanitized.length === 0) return null;
+
+  const validActiveId =
+    typeof data.activeId === 'string' && sanitized.some((c) => c.id === data.activeId)
+      ? data.activeId
+      : sanitized[0].id;
+
   return {
-    characters: data.characters as Character[],
-    activeId: (data.activeId as string) || data.characters[0]?.id || '',
+    characters: sanitized,
+    activeId: validActiveId,
   };
 }
 
@@ -58,7 +88,7 @@ export async function saveUserProfile(
   displayName: string,
   email: string,
 ): Promise<void> {
-  if (!db) return;
+  if (!db || !userId) return;
   const ref = doc(db, 'users', userId);
   await setDoc(
     ref,
@@ -71,8 +101,8 @@ export async function saveUserProfile(
 }
 
 /**
- * Sync debounced — chama saveCharactersToCloud com um atraso
- * para não fazer escritas excessivas no Firestore.
+ * Sync debounced específico por usuário — chama saveCharactersToCloud com um atraso.
+ * Cancela apenas o timer anterior do próprio usuário, sem interferir em outros.
  */
 export function syncOnChange(
   userId: string,
@@ -80,10 +110,19 @@ export function syncOnChange(
   activeId: string,
   delayMs = 2000,
 ): void {
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
+  if (!userId) return;
+
+  const existingTimer = saveTimersByUser.get(userId);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+  }
+
+  const timer = setTimeout(() => {
+    saveTimersByUser.delete(userId);
     saveCharactersToCloud(userId, characters, activeId).catch((err) =>
-      console.error('Erro ao sincronizar com a nuvem:', err),
+      console.error(`[characterSync] Erro ao sincronizar conta ${userId} com a nuvem:`, err),
     );
   }, delayMs);
+
+  saveTimersByUser.set(userId, timer);
 }

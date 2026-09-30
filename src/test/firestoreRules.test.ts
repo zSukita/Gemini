@@ -25,10 +25,13 @@ describe('Firestore Security Rules - Campanhas e Índices', () => {
     try {
       await fetch('http://127.0.0.1:8080/');
     } catch {
-      console.warn(
+      const msg =
         '\n[FirestoreRulesTest] ⚠️  Emulador do Firestore offline na porta 8080.\n' +
-        'Para executar estes testes no emulador, use: npm run test:rules\n'
-      );
+        'Para executar estes testes no emulador, use: npm run test:rules\n';
+      if (process.env.REQUIRE_RULES_EMULATOR === 'true') {
+        throw new Error(msg);
+      }
+      console.warn(msg);
       return;
     }
 

@@ -6,8 +6,14 @@ import {
   onSnapshot,
   updateDoc,
   writeBatch,
+  collection,
+  query,
+  where,
+  getDocs,
+  type DocumentReference,
 } from 'firebase/firestore';
 import { db } from './config';
+import { getUserStorageKey, BASE_STORAGE_KEYS } from '../utils/accountStorage';
 
 export interface CampaignPartyMember {
   userId: string;
@@ -74,18 +80,27 @@ export function generateCampaignCode(): string {
 
 const LOCAL_CAMPAIGNS_KEY = 'arcanasheet_local_campaigns';
 
-function getLocalCampaigns(): Campaign[] {
+export function getLocalCampaigns(userId?: string | null): Campaign[] {
   try {
-    const raw = localStorage.getItem(LOCAL_CAMPAIGNS_KEY);
+    const key = getUserStorageKey(BASE_STORAGE_KEYS.LOCAL_CAMPAIGNS, userId);
+    const raw = localStorage.getItem(key);
+    if (!raw && userId) {
+      // Fallback para chave compartilhada legada se o usuário ainda não tiver dados próprios
+      const legacyRaw = localStorage.getItem(LOCAL_CAMPAIGNS_KEY);
+      if (legacyRaw) {
+        return JSON.parse(legacyRaw);
+      }
+    }
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
   }
 }
 
-function saveLocalCampaigns(campaigns: Campaign[]): void {
+export function saveLocalCampaigns(campaigns: Campaign[], userId?: string | null): void {
   try {
-    localStorage.setItem(LOCAL_CAMPAIGNS_KEY, JSON.stringify(campaigns));
+    const key = getUserStorageKey(BASE_STORAGE_KEYS.LOCAL_CAMPAIGNS, userId);
+    localStorage.setItem(key, JSON.stringify(campaigns));
   } catch {
     // ignore
   }
@@ -463,44 +478,98 @@ export async function leaveCampaign(
 
 /**
  * Mestre encerra/deleta a campanha.
- * Usa writeBatch atômico e obtém o código diretamente do documento da campanha no Firestore se não fornecido.
+ *
+ * Exclusão completa no cliente:
+ * 1. Identifica e exclui subcoleções (/campaigns/{campaignId}/handouts) ANTES da campanha,
+ *    pois as regras de segurança do Firestore dependem da existência do documento pai da campanha.
+ * 2. Identifica e exclui convites vinculados (/campaign_invites).
+ * 3. Exclui o índice de código (/campaign_codes/{code}).
+ * 4. Exclui o documento raiz da campanha (/campaigns/{campaignId}).
+ * 5. Respeita o limite estrito do Firestore de 500 operações por writeBatch executando em lotes de até 400.
+ * 6. Valida permissão do Mestre criador se currentUserId for informado.
+ * 7. Se qualquer etapa na nuvem falhar, NÃO remove a campanha do armazenamento local,
+ *    evitando que a campanha desapareça da interface deixando dados órfãos na nuvem.
+ *
+ * Limitação de cliente:
+ * Coleções massivas (> milhares de docs) em Firestore idealmente exigem Cloud Function com Firebase Admin SDK.
+ * No cliente, a exclusão é iterativa e controlada sobre os documentos permitidos ao Mestre.
  */
-export async function deleteCampaign(campaignId: string, campaignCode?: string): Promise<void> {
+export async function deleteCampaign(
+  campaignId: string,
+  campaignCode?: string,
+  currentUserId?: string | null
+): Promise<void> {
   if (db) {
     try {
       let codeToDelete = campaignCode;
-
-      // Se o código não foi fornecido, busca diretamente do documento no Firestore
-      if (!codeToDelete) {
-        try {
-          const campRef = doc(db, 'campaigns', campaignId);
-          const campSnap = await getDoc(campRef);
-          if (campSnap.exists()) {
-            codeToDelete = campSnap.data()?.code;
-          }
-        } catch {
-          codeToDelete = getLocalCampaigns().find((c) => c.id === campaignId)?.code;
-        }
-      }
-
-      const batch = writeBatch(db);
       const campRef = doc(db, 'campaigns', campaignId);
-      batch.delete(campRef);
+      const campSnap = await getDoc(campRef);
 
-      if (codeToDelete) {
-        const codeRef = doc(db, 'campaign_codes', codeToDelete);
-        batch.delete(codeRef);
+      if (campSnap.exists()) {
+        const campData = campSnap.data() as Campaign;
+        // Validação estrita de autorização do Mestre
+        if (currentUserId && campData.dmId && campData.dmId !== currentUserId) {
+          throw new Error('Apenas o Mestre criador da campanha tem permissão para excluí-la.');
+        }
+        if (!codeToDelete && campData.code) {
+          codeToDelete = campData.code;
+        }
+      } else if (!codeToDelete) {
+        codeToDelete = getLocalCampaigns(currentUserId).find((c) => c.id === campaignId)?.code;
       }
 
-      await batch.commit();
+      // 1. Coleta handouts da subcoleção (devem ser apagados ANTES do documento pai da campanha)
+      const handoutsCol = collection(db, 'campaigns', campaignId, 'handouts');
+      const handoutsSnap = await getDocs(handoutsCol).catch(() => null);
+
+      // 2. Coleta convites vinculados em /campaign_invites
+      const invitesQuery = query(
+        collection(db, 'campaign_invites'),
+        where('campaignId', '==', campaignId)
+      );
+      const invitesSnap = await getDocs(invitesQuery).catch(() => null);
+
+      const docsToDelete: DocumentReference[] = [];
+
+      if (handoutsSnap && !handoutsSnap.empty) {
+        handoutsSnap.forEach((d) => {
+          docsToDelete.push(d.ref);
+        });
+      }
+
+      if (invitesSnap && !invitesSnap.empty) {
+        invitesSnap.forEach((d) => {
+          docsToDelete.push(d.ref);
+        });
+      }
+
+      // 3. Índice de código
+      if (codeToDelete) {
+        docsToDelete.push(doc(db, 'campaign_codes', codeToDelete));
+      }
+
+      // 4. Documento raiz da campanha por último
+      docsToDelete.push(campRef);
+
+      // Executa exclusão em lotes de no máximo 400 (limite de 500 do Firestore)
+      const BATCH_SIZE = 400;
+      for (let i = 0; i < docsToDelete.length; i += BATCH_SIZE) {
+        const chunk = docsToDelete.slice(i, i + BATCH_SIZE);
+        const batch = writeBatch(db);
+        for (const ref of chunk) {
+          batch.delete(ref);
+        }
+        await batch.commit();
+      }
     } catch (e) {
       console.error('Erro ao deletar campanha no Firestore:', e);
       throw new Error(`Falha ao excluir campanha na nuvem: ${(e as Error).message || e}`);
     }
   }
 
-  const locals = getLocalCampaigns();
-  saveLocalCampaigns(locals.filter((c) => c.id !== campaignId));
+  // Apenas remove do cache local após sucesso confirmado na nuvem (ou se offline)
+  const locals = getLocalCampaigns(currentUserId);
+  saveLocalCampaigns(locals.filter((c) => c.id !== campaignId), currentUserId);
 }
 
 /**

@@ -52,6 +52,7 @@ import {
   broadcastHandoutToCampaign,
   subscribeToCampaign,
 } from './firebase/campaignSync';
+import { cancelPendingSync } from './firebase/characterSync';
 import { DEFAULT_MAP_PRESETS, type DefaultMapPreset } from './data/defaultMaps';
 import { SRD_MONSTERS } from './data/srdMonsters';
 import { SRD_CLASSES } from './data/srdClasses';
@@ -143,7 +144,7 @@ export function App() {
     updateCombatantInitiative,
     undoLastHpChange,
     recordCombatAction,
-  } = useEncounter();
+  } = useEncounter(user?.uid);
 
   // Estados de interface
   const [currentMode, setCurrentMode] = useState<AppMode>('player');
@@ -607,7 +608,7 @@ export function App() {
     addFogShape,
     resetFog,
     revealAllFog,
-  } = useBattleMap(encounter, character, connectedPeers);
+  } = useBattleMap(encounter, character, connectedPeers, user?.uid);
 
   setTokensRef.current = setTokens;
   setMapConfigRef.current = setMapConfig;
@@ -836,7 +837,7 @@ export function App() {
         setIsAiResponding(false);
       }
     },
-    [chatLog, character, sendChatMessage, addMonsterCombatant, moveToken, isConnected, broadcastTokenMove, handleHpDelta]
+    [chatLog, character, sendChatMessage, encounter]
   );
 
   triggerAiDmRef.current = triggerAiDm;
@@ -1585,8 +1586,6 @@ export function App() {
       updateCharacter,
       setAdvantageMode,
       recordCombatAction,
-      isSecretRoll,
-      character.name,
     ]
   );
 
@@ -2264,10 +2263,22 @@ export function App() {
   );
 
   const handleLogout = useCallback(() => {
+    cancelPendingSync(user?.uid);
     logout();
     hasAutoOpenedWizardRef.current = false;
     showNotification('Você saiu da conta.');
-  }, [logout, showNotification]);
+  }, [logout, showNotification, user?.uid]);
+
+  // Listener para quota de armazenamento local excedida
+  useEffect(() => {
+    const handleQuotaExceeded = () => {
+      showNotification('Aviso: Armazenamento local do navegador está cheio. Algumas alterações podem não ser salvas offline.');
+    };
+    window.addEventListener('arcanasheet_storage_quota_exceeded', handleQuotaExceeded);
+    return () => {
+      window.removeEventListener('arcanasheet_storage_quota_exceeded', handleQuotaExceeded);
+    };
+  }, [showNotification]);
 
   const handleApproveAiActions = useCallback(async (proposal: AiMessage) => {
     setPendingAiAction(null);

@@ -7,7 +7,23 @@ export interface ValidateRemoteTokensOptions {
   mapWidth?: number;
   mapHeight?: number;
   gridSize?: number;
+  /**
+   * Identificador de usuário autodeclarado pelo cliente em metadados.
+   * Em redes P2P sem autoridade central, este valor NÃO é considerado prova
+   * de identidade autenticada, a menos que acompanhado de `isSenderUserIdVerified: true`.
+   */
   senderUserId?: string;
+  /**
+   * Indica se `senderUserId` foi verificado por uma fonte de autenticação confiável.
+   * Se false ou undefined, `senderUserId` é rejeitado como prova de posse.
+   */
+  isSenderUserIdVerified?: boolean;
+  /**
+   * IDs de tokens explicitamente autorizados pelo Host para a sessão deste peer.
+   * Permite que tokens vinculados a character.id continuem movíveis após reconexões
+   * sem depender de autenticação centralizada forte.
+   */
+  sessionAuthorizedTokenIds?: string[];
   isFullRoomSync?: boolean;
 }
 
@@ -19,18 +35,21 @@ export interface ValidateRemoteTokensOptions {
  *    Em uma rede P2P direta sem autoridade centralizada, as conexões são intermediadas
  *    apenas por servidores de sinalização (signaling), sem inspeção ou assinatura de pacotes.
  *    O Host da sala é um cliente no navegador como qualquer outro.
- * 2. Limite das Permissões Locais (Guardrails):
+ * 2. Identidade de Remetente (Transporte vs. Metadados):
+ *    - `senderPeerId`: Verificado no nível de transporte WebRTC pelo ID da conexão de dados ativa.
+ *      É o identificador primário confiável para autorizar ações durante a sessão.
+ *    - `senderUserId`: Transmitido em metadados arbitrários de conexão. Trata-se de uma declaração
+ *      do cliente, NÃO de identidade autenticada, a menos que validada por autoridade externa.
+ *    - Tokens persistentes e reconexões: Em vez de confiar em `senderUserId` autodeclarado,
+ *      o Host atua como autoridade da sessão e associa tokens legítimos (`character.id`)
+ *      ao novo `peerId` ou através de `sessionAuthorizedTokenIds`.
+ * 3. Limite das Permissões Locais (Guardrails):
  *    As validações a seguir atuam como proteções essenciais de integridade contra erros de rede,
  *    mensagens fora de ordem, sobrecarga acidental e comportamento padrão da aplicação cliente.
- *    Entretanto, NÃO devem ser interpretadas como segurança criptográfica absoluta ou inviolável
- *    contra um participante malicioso que execute código modificado no console do navegador.
- * 3. Identidade e Códigos de Sala:
- *    A identidade do remetente é baseada no peerId atribuído na conexão PeerJS. Códigos de sala
- *    e metadados em trânsito não possuem chaves assimétricas atestadas por autoridade de certificação.
  * 4. Requisitos para Autoridade Central (caso necessária no futuro):
- *    Se for indispensável garantir controle de acesso contra clientes modificados, o sistema
- *    precisará de um backend autoritativo central (ex: Node/Go/Cloud Functions) com autenticação
- *    de sessão (JWT), resolução de ações no servidor (server-side state engine) e diffs canônicos.
+ *    Se for indispensável garantir controle de acesso contra clientes modificados maliciosos,
+ *    o sistema precisará de um backend autoritativo central (ex: Node/Go/Cloud Functions) com
+ *    autenticação de sessão (JWT), resolução de ações no servidor (server-side state engine) e diffs canônicos.
  */
 export function validateRemoteTokens(
   incoming: unknown,
@@ -143,13 +162,28 @@ export function validateRemoteTokens(
         continue;
       }
 
-      // 3. Autenticação estrita de posse do token:
-      // O jogador deve possuir o token comprovado pelo seu identificador confiável de remetente (senderPeerId ou senderUserId).
-      // NUNCA aceitar apenas o nome de exibição como autenticação (nomes podem duplicar ou ser fraudados).
-      const hasDirectOwnerMatch = Boolean(
-        (existing.ownerId && senderPeerId && existing.ownerId === senderPeerId) ||
-        (existing.ownerId && options?.senderUserId && existing.ownerId === options.senderUserId)
+      // 3. Autenticação e autorização estrita de posse do token:
+      // O jogador deve possuir o token comprovado pelo seu identificador confiável de remetente na sessão:
+      // a) senderPeerId: Identificador real da conexão WebRTC verificado pelo transporte durante a sessão ativa;
+      // b) isSenderUserIdVerified: Aceita senderUserId SOMENTE se verificado por fonte confiável/autenticada;
+      // c) sessionAuthorizedTokenIds: Tokens que o Host atribuiu a este peer na sessão atual (evita quebra por
+      //    divergência entre ID do personagem, ID do usuário e ID do peer após reconectar).
+      // NUNCA aceitar nome de exibição ou senderUserId não autenticado como autorização de posse.
+      const isDirectPeerOwner = Boolean(
+        existing.ownerId && senderPeerId && existing.ownerId === senderPeerId
       );
+      const isVerifiedUserOwner = Boolean(
+        options?.isSenderUserIdVerified &&
+        options?.senderUserId &&
+        existing.ownerId &&
+        existing.ownerId === options.senderUserId
+      );
+      const isSessionAuthorized = Boolean(
+        options?.sessionAuthorizedTokenIds &&
+        options.sessionAuthorizedTokenIds.includes(existing.id)
+      );
+
+      const hasDirectOwnerMatch = isDirectPeerOwner || isVerifiedUserOwner || isSessionAuthorized;
 
       // Jogadores não podem mover monstros, NPCs ou tokens que não lhes pertençam
       if (!hasDirectOwnerMatch || existing.type === 'monster' || existing.type === 'npc') {

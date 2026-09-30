@@ -4,6 +4,9 @@ import { renderHook, act } from '@testing-library/react';
 import {
   useEncounter,
   sanitizeEncounter,
+  sanitizeMonsterData,
+  sanitizeActionLog,
+  sanitizeLastHpChange,
   sortCombatantsByInitiativeOrder,
 } from './useEncounter';
 import type { Combatant } from '../types/combat';
@@ -499,6 +502,226 @@ describe('useEncounter hook', () => {
     expect(sanitized.activeCombatantId).toBe('c-1');
     expect(sanitized.activeCombatantIndex).toBe(0);
   });
+
+  it('garante que IDs duplicados de combatentes sejam tornados estritamente únicos', () => {
+    const dataWithDuplicates = {
+      id: 'enc-dup',
+      round: 1,
+      combatants: [
+        { id: 'same-id', name: 'Goblin Alpha', currentHp: 10, maxHp: 10 },
+        { id: 'same-id', name: 'Goblin Beta', currentHp: 10, maxHp: 10 },
+        { id: 'same-id', name: 'Goblin Gamma', currentHp: 10, maxHp: 10 },
+      ],
+    };
+
+    const sanitized = sanitizeEncounter(dataWithDuplicates);
+    expect(sanitized.combatants).toHaveLength(3);
+    const ids = sanitized.combatants.map((c) => c.id);
+    const uniqueIds = new Set(ids);
+    expect(uniqueIds.size).toBe(3);
+    expect(ids[0]).toBe('same-id');
+    expect(ids[1]).toBe('same-id-dup-2');
+    expect(ids[2]).toBe('same-id-dup-3');
+  });
+
+  it('valida e deduplica condições descartando entradas inválidas', () => {
+    const dataWithConditions = {
+      id: 'enc-cond',
+      round: 1,
+      combatants: [
+        {
+          id: 'c-cond-1',
+          name: 'Hero',
+          currentHp: 20,
+          maxHp: 20,
+          conditions: ['poisoned', 'prone', 'poisoned', 'invalid_hack', 'blinded', 'prone'],
+        },
+      ],
+    };
+
+    const sanitized = sanitizeEncounter(dataWithConditions);
+    const conditions = sanitized.combatants[0].conditions;
+    expect(conditions).toHaveLength(3);
+    expect(conditions).toContain('poisoned');
+    expect(conditions).toContain('prone');
+    expect(conditions).toContain('blinded');
+    expect(conditions).not.toContain('invalid_hack');
+  });
+
+  it('valida profundamente monsterData e aplica valores padrão seguros quando corrompido', () => {
+    const dataWithMonster = {
+      id: 'enc-monster',
+      round: 1,
+      combatants: [
+        {
+          id: 'c-m1',
+          name: 'Ogro Corrompido',
+          type: 'monster',
+          currentHp: 50,
+          maxHp: 50,
+          monsterData: {
+            id: 'ogre-1',
+            name: 'Ogro',
+            size: 'TamanhoInvalido',
+            armorClass: 9999, // deve ser limitado a 99
+            hitPoints: -10,   // deve usar fallback 10
+            abilities: {
+              str: 100, // deve ser limitado a 30
+              dex: -5,  // deve ser limitado a 1
+              con: 'invalido', // fallback 10
+            },
+            actions: [
+              {
+                name: 'Clava Gigante',
+                type: 'tipo_invalido', // fallback 'melee'
+                attackBonus: 1000,     // limitado a 50
+                damageFormula: '2d8+4',
+                description: 'Ataque pesado com clava.',
+              },
+              null, // deve ser ignorado
+            ],
+          },
+        },
+      ],
+    };
+
+    const sanitized = sanitizeEncounter(dataWithMonster);
+    const m = sanitized.combatants[0].monsterData;
+    expect(m).toBeDefined();
+    expect(m?.size).toBe('Médio');
+    expect(m?.armorClass).toBe(99);
+    expect(m?.hitPoints).toBe(10);
+    expect(m?.abilities.str).toBe(30);
+    expect(m?.abilities.dex).toBe(1);
+    expect(m?.abilities.con).toBe(10);
+    expect(m?.actions).toHaveLength(1);
+    expect(m?.actions[0].type).toBe('melee');
+    expect(m?.actions[0].attackBonus).toBe(50);
+  });
+
+  it('valida actionLog descartando mensagens vazias e tipos de ação inválidos', () => {
+    const dataWithLog = {
+      id: 'enc-log',
+      round: 2,
+      actionLog: [
+        { id: 'l1', timestamp: 1000, round: 1, actor: 'Eldrin', message: 'Atacou com espada', kind: 'attack' },
+        { id: 'l2', message: '', kind: 'hp' }, // Vazio: deve ser descartado
+        { id: 'l3', timestamp: 2000, round: 2, actor: 'Thorin', message: 'Curou 10 PV', kind: 'invalido' }, // kind fallback para roll
+        null, // deve ser descartado
+      ],
+      combatants: [{ id: 'c1', name: 'Hero', currentHp: 10, maxHp: 10 }],
+    };
+
+    const sanitized = sanitizeEncounter(dataWithLog);
+    expect(sanitized.actionLog).toHaveLength(2);
+    expect(sanitized.actionLog?.[0].id).toBe('l1');
+    expect(sanitized.actionLog?.[0].kind).toBe('attack');
+    expect(sanitized.actionLog?.[1].id).toBe('l3');
+    expect(sanitized.actionLog?.[1].kind).toBe('roll');
+  });
+
+  it('valida lastHpChange contra combatente existente e descarta quando combatente não existir', () => {
+    // Caso 1: combatente existe na lista
+    const validHpChangeData = {
+      id: 'enc-hp-1',
+      round: 1,
+      combatants: [{ id: 'hero-1', name: 'Eldrin', currentHp: 15, maxHp: 20 }],
+      lastHpChange: {
+        combatantId: 'hero-1',
+        currentHp: 15,
+        tempHp: 0,
+        name: 'Eldrin',
+        actor: 'Mestre',
+      },
+    };
+
+    const sanitizedValid = sanitizeEncounter(validHpChangeData);
+    expect(sanitizedValid.lastHpChange).toBeDefined();
+    expect(sanitizedValid.lastHpChange?.combatantId).toBe('hero-1');
+    expect(sanitizedValid.lastHpChange?.currentHp).toBe(15);
+
+    // Caso 2: combatente NÃO existe na lista -> lastHpChange deve ser descartado com segurança
+    const invalidHpChangeData = {
+      id: 'enc-hp-2',
+      round: 1,
+      combatants: [{ id: 'hero-1', name: 'Eldrin', currentHp: 15, maxHp: 20 }],
+      lastHpChange: {
+        combatantId: 'combatente-inexistente-ghost',
+        currentHp: 5,
+        tempHp: 0,
+        name: 'Fantasma',
+        actor: 'Inimigo',
+      },
+    };
+
+    const sanitizedInvalid = sanitizeEncounter(invalidHpChangeData);
+    expect(sanitizedInvalid.lastHpChange).toBeUndefined();
+  });
+
+  it('garante coerência entre activeCombatantId e activeCombatantIndex quando combatente é removido', () => {
+    const dataWithRemovedActive = {
+      id: 'enc-idx',
+      round: 2,
+      activeCombatantId: 'removed-combatant-999',
+      activeCombatantIndex: 5,
+      combatants: [
+        { id: 'c-1', name: 'Alpha', currentHp: 10, maxHp: 10 },
+        { id: 'c-2', name: 'Beta', currentHp: 10, maxHp: 10 },
+      ],
+    };
+
+    const sanitized = sanitizeEncounter(dataWithRemovedActive);
+    // Deve reajustar activeCombatantIndex para dentro dos limites [0, 1] e apontar activeCombatantId para o combatente correto
+    expect(sanitized.activeCombatantIndex).toBe(1);
+    expect(sanitized.activeCombatantId).toBe('c-2');
+  });
+
+  it('aplica limites de segurança contra payloads excessivos de combatentes e logs de ação', () => {
+    const hugeCombatants = Array.from({ length: 150 }, (_, i) => ({
+      id: `c-excessive-${i}`,
+      name: `Monstro ${i}`,
+      currentHp: 10,
+      maxHp: 10,
+    }));
+
+    const hugeLogs = Array.from({ length: 80 }, (_, i) => ({
+      id: `log-${i}`,
+      timestamp: Date.now(),
+      round: 1,
+      actor: 'Actor',
+      message: `Ação ${i}`,
+      kind: 'roll',
+    }));
+
+    const sanitized = sanitizeEncounter({
+      id: 'enc-huge',
+      round: 1,
+      combatants: hugeCombatants,
+      actionLog: hugeLogs,
+    });
+
+    expect(sanitized.combatants.length).toBeLessThanOrEqual(100);
+  });
+
+  describe('funções utilitárias de sanitização profunda', () => {
+    it('sanitizeMonsterData retorna undefined para entradas nulas ou não-objeto', () => {
+      expect(sanitizeMonsterData(null)).toBeUndefined();
+      expect(sanitizeMonsterData('invalid')).toBeUndefined();
+      expect(sanitizeMonsterData(123)).toBeUndefined();
+    });
+
+    it('sanitizeActionLog retorna undefined para entradas não-array', () => {
+      expect(sanitizeActionLog(null)).toBeUndefined();
+      expect(sanitizeActionLog({})).toBeUndefined();
+    });
+
+    it('sanitizeLastHpChange retorna undefined para entradas nulas ou valores inválidos', () => {
+      expect(sanitizeLastHpChange(null, [])).toBeUndefined();
+      expect(sanitizeLastHpChange({ combatantId: '' }, [])).toBeUndefined();
+      expect(sanitizeLastHpChange({ combatantId: 'c1', currentHp: 'invalido' }, [{ id: 'c1' } as any])).toBeUndefined();
+    });
+  });
+
   describe('sortCombatantsByInitiativeOrder', () => {
     it('ordena por total de iniciativa decrescente (Critério 1)', () => {
       const combatants: Combatant[] = [

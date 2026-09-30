@@ -519,6 +519,7 @@ export function App() {
             const updated = [...prev.combatants];
             updated[existingIdx] = {
               ...updated[existingIdx],
+              playerId: peerId || updated[existingIdx].playerId,
               name: peer.name,
               avatarUrl: peer.avatarUrl || updated[existingIdx].avatarUrl,
               currentHp: peer.currentHp ?? updated[existingIdx].currentHp,

@@ -207,7 +207,7 @@ describe('multiplayerValidation - validateRemoteTokens', () => {
     expect(thorin?.y).toBe(200);
   });
 
-  it('permite autenticar propriedade via senderUserId persistente quando configurado', () => {
+  it('rejeita movimentação quando senderUserId é autodeclarado/falsificado sem verificação confiável', () => {
     const tokensWithUserId: MapToken[] = [
       {
         ...currentTokens[0],
@@ -219,19 +219,86 @@ describe('multiplayerValidation - validateRemoteTokens', () => {
       { id: 'token-hero-1', x: 190, y: 190, version: 6 },
     ];
 
-    // PeerId mudou após reconexão, mas senderUserId é o mesmo
+    // Peer malicioso ou desconhecido tenta enviar senderUserId sem verificação
+    const result = validateRemoteTokens(
+      incoming,
+      tokensWithUserId,
+      'Impostor',
+      false,
+      'evil-peer-id',
+      { senderUserId: 'user-auth-uuid-42', isSenderUserIdVerified: false }
+    );
+    const hero = result.find((t) => t.id === 'token-hero-1');
+
+    // Movimento REJEITADO: posição original deve ser mantida
+    expect(hero?.x).toBe(100);
+    expect(hero?.y).toBe(100);
+  });
+
+  it('permite autenticar propriedade via senderUserId persistente apenas quando explicitamente verificado', () => {
+    const tokensWithUserId: MapToken[] = [
+      {
+        ...currentTokens[0],
+        ownerId: 'user-auth-uuid-42',
+      },
+    ];
+
+    const incoming = [
+      { id: 'token-hero-1', x: 190, y: 190, version: 6 },
+    ];
+
+    // PeerId mudou após reconexão, e senderUserId foi verificado por autoridade confiável
     const result = validateRemoteTokens(
       incoming,
       tokensWithUserId,
       'Eldrin',
       false,
       'new-volatile-peer-id',
-      { senderUserId: 'user-auth-uuid-42' }
+      { senderUserId: 'user-auth-uuid-42', isSenderUserIdVerified: true }
     );
     const hero = result.find((t) => t.id === 'token-hero-1');
 
     expect(hero?.x).toBe(190);
     expect(hero?.y).toBe(190);
+  });
+
+  it('permite reconexão e movimentação de token com character.id divergente via sessionAuthorizedTokenIds', () => {
+    // Token original criado com o ID do personagem do jogador
+    const tokensWithCharId: MapToken[] = [
+      {
+        ...currentTokens[0],
+        id: 'token-player-char-gimli-99',
+        ownerId: 'char-gimli-99',
+        name: 'Gimli',
+      },
+    ];
+
+    const incoming = [
+      { id: 'token-player-char-gimli-99', x: 175, y: 175, version: 6 },
+    ];
+
+    // Jogador reconectou com um novo peerId ("peer-reconnected-777"), que diverge de character.id ("char-gimli-99")
+    // O Host mapeou a sessão e incluiu o token em sessionAuthorizedTokenIds
+    const result = validateRemoteTokens(
+      incoming,
+      tokensWithCharId,
+      'Gimli',
+      false,
+      'peer-reconnected-777',
+      {
+        senderUserId: 'char-gimli-99',
+        isSenderUserIdVerified: false,
+        sessionAuthorizedTokenIds: ['token-player-char-gimli-99'],
+      }
+    );
+    const gimli = result.find((t) => t.id === 'token-player-char-gimli-99');
+
+    // Movimento permitido pela autorização da sessão do Host
+    expect(gimli?.x).toBe(175);
+    expect(gimli?.y).toBe(175);
+    // Campos protegidos mantidos intactos
+    expect(gimli?.ownerId).toBe('char-gimli-99');
+    expect(gimli?.name).toBe('Gimli');
   });
 
   it('garante que uma mensagem parcial contendo apenas o token movido NÃO apague os outros tokens do mapa', () => {

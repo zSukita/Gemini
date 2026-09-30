@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Combatant, ConditionKey, Encounter, Monster } from '../types/combat';
-import type { Character } from '../types/dnd5e';
+import type { Combatant, ConditionKey, Encounter, Monster, MonsterAction, MonsterTrait, CombatLogEntry } from '../types/combat';
+import type { Character, AbilityKey } from '../types/dnd5e';
 import { getAbilityModifier } from '../utils/calculations';
 import { rollDie } from '../utils/diceRoller';
 import { broadcastSyncMessage, subscribeToSync } from '../utils/syncChannel';
@@ -43,72 +43,345 @@ export const DEFAULT_ENCOUNTER: Encounter = {
   skipDefeatedMonsters: false,
 };
 
+export const MAX_ENCOUNTER_COMBATANTS = 100;
+export const MAX_ACTION_LOG_ENTRIES = 50;
+
+export const VALID_ACTION_LOG_KINDS: CombatLogEntry['kind'][] = [
+  'turn',
+  'hp',
+  'condition',
+  'initiative',
+  'roll',
+  'attack',
+];
+
+export const VALID_MONSTER_SIZES: Monster['size'][] = [
+  'Miúdo',
+  'Pequeno',
+  'Médio',
+  'Grande',
+  'Enorme',
+  'Imenso',
+  'Gargantuesco',
+];
+
+export const VALID_MONSTER_ACTION_TYPES: MonsterAction['type'][] = [
+  'melee',
+  'ranged',
+  'spell',
+  'special',
+];
+
 /**
- * Valida e migra com segurança dados antigos ou corrompidos do encontro salvos no navegador.
+ * Valida e sanitiza profundamente dados de monstros (MonsterData),
+ * garantindo propriedades tipadas, limites seguros e valores padrão.
+ */
+export function sanitizeMonsterData(raw: unknown): Monster | undefined {
+  if (!raw || typeof raw !== 'object') {
+    return undefined;
+  }
+  const obj = raw as Record<string, unknown>;
+
+  const id = typeof obj.id === 'string' && obj.id.trim() ? obj.id.trim().slice(0, 80) : `monster-${Date.now()}`;
+  const name = typeof obj.name === 'string' && obj.name.trim() ? obj.name.trim().slice(0, 100) : 'Monstro';
+  const size: Monster['size'] =
+    typeof obj.size === 'string' && VALID_MONSTER_SIZES.includes(obj.size as Monster['size'])
+      ? (obj.size as Monster['size'])
+      : 'Médio';
+  const type = typeof obj.type === 'string' && obj.type.trim() ? obj.type.trim().slice(0, 80) : 'Monstro';
+  const alignment = typeof obj.alignment === 'string' && obj.alignment.trim() ? obj.alignment.trim().slice(0, 80) : 'Neutro';
+  const armorClass =
+    typeof obj.armorClass === 'number' && Number.isFinite(obj.armorClass)
+      ? Math.max(0, Math.min(99, Math.floor(obj.armorClass)))
+      : 10;
+  const armorType =
+    typeof obj.armorType === 'string' && obj.armorType.trim() ? obj.armorType.trim().slice(0, 50) : undefined;
+  const hitPoints =
+    typeof obj.hitPoints === 'number' && Number.isFinite(obj.hitPoints) && obj.hitPoints > 0
+      ? Math.min(99999, Math.floor(obj.hitPoints))
+      : 10;
+  const hitDice = typeof obj.hitDice === 'string' && obj.hitDice.trim() ? obj.hitDice.trim().slice(0, 30) : '1d8';
+  const speed = typeof obj.speed === 'string' && obj.speed.trim() ? obj.speed.trim().slice(0, 80) : '9m';
+
+  const rawAbilities = (obj.abilities && typeof obj.abilities === 'object' ? obj.abilities : {}) as Record<string, unknown>;
+  const abilities: Record<AbilityKey, number> = {
+    str: typeof rawAbilities.str === 'number' && Number.isFinite(rawAbilities.str) ? Math.max(1, Math.min(30, Math.floor(rawAbilities.str))) : 10,
+    dex: typeof rawAbilities.dex === 'number' && Number.isFinite(rawAbilities.dex) ? Math.max(1, Math.min(30, Math.floor(rawAbilities.dex))) : 10,
+    con: typeof rawAbilities.con === 'number' && Number.isFinite(rawAbilities.con) ? Math.max(1, Math.min(30, Math.floor(rawAbilities.con))) : 10,
+    int: typeof rawAbilities.int === 'number' && Number.isFinite(rawAbilities.int) ? Math.max(1, Math.min(30, Math.floor(rawAbilities.int))) : 10,
+    wis: typeof rawAbilities.wis === 'number' && Number.isFinite(rawAbilities.wis) ? Math.max(1, Math.min(30, Math.floor(rawAbilities.wis))) : 10,
+    cha: typeof rawAbilities.cha === 'number' && Number.isFinite(rawAbilities.cha) ? Math.max(1, Math.min(30, Math.floor(rawAbilities.cha))) : 10,
+  };
+
+  const challengeRating =
+    typeof obj.challengeRating === 'string' && obj.challengeRating.trim() ? obj.challengeRating.trim().slice(0, 10) : '1';
+  const xp = typeof obj.xp === 'number' && Number.isFinite(obj.xp) && obj.xp >= 0 ? Math.min(1000000, Math.floor(obj.xp)) : 10;
+  const senses = typeof obj.senses === 'string' ? obj.senses.slice(0, 200) : '';
+  const languages = typeof obj.languages === 'string' ? obj.languages.slice(0, 200) : '';
+
+  let avatarUrl: string | undefined = undefined;
+  if (typeof obj.avatarUrl === 'string' && obj.avatarUrl.length <= 2000) {
+    if (/^(https?:\/\/|data:image\/)/i.test(obj.avatarUrl)) {
+      avatarUrl = obj.avatarUrl;
+    }
+  }
+
+  const rawTraits = Array.isArray(obj.traits) ? obj.traits.slice(0, 20) : [];
+  const traits: MonsterTrait[] = [];
+  for (const t of rawTraits) {
+    if (!t || typeof t !== 'object') continue;
+    const tName = typeof (t as any).name === 'string' ? (t as any).name.slice(0, 80).trim() : '';
+    const tDesc = typeof (t as any).description === 'string' ? (t as any).description.slice(0, 1000).trim() : '';
+    if (tName || tDesc) {
+      traits.push({ name: tName || 'Traço', description: tDesc });
+    }
+  }
+
+  const sanitizeActions = (actionsRaw: unknown, maxCount = 20): MonsterAction[] => {
+    if (!Array.isArray(actionsRaw)) return [];
+    const list: MonsterAction[] = [];
+    for (const a of actionsRaw.slice(0, maxCount)) {
+      if (!a || typeof a !== 'object') continue;
+      const aName = typeof (a as any).name === 'string' ? (a as any).name.slice(0, 80).trim() : 'Ação';
+      const aType: MonsterAction['type'] =
+        typeof (a as any).type === 'string' && VALID_MONSTER_ACTION_TYPES.includes((a as any).type)
+          ? (a as any).type
+          : 'melee';
+      const aDesc = typeof (a as any).description === 'string' ? (a as any).description.slice(0, 1000).trim() : '';
+      const aBonus =
+        typeof (a as any).attackBonus === 'number' && Number.isFinite((a as any).attackBonus)
+          ? Math.max(-20, Math.min(50, Math.floor((a as any).attackBonus)))
+          : undefined;
+      const aFormula =
+        typeof (a as any).damageFormula === 'string' && (a as any).damageFormula.trim()
+          ? (a as any).damageFormula.trim().slice(0, 40)
+          : undefined;
+      const aDmgType =
+        typeof (a as any).damageType === 'string' && (a as any).damageType.trim()
+          ? (a as any).damageType.trim().slice(0, 40)
+          : undefined;
+      const aRange =
+        typeof (a as any).range === 'string' && (a as any).range.trim()
+          ? (a as any).range.trim().slice(0, 40)
+          : undefined;
+
+      list.push({
+        name: aName,
+        type: aType,
+        description: aDesc,
+        attackBonus: aBonus,
+        damageFormula: aFormula,
+        damageType: aDmgType,
+        range: aRange,
+      });
+    }
+    return list;
+  };
+
+  const actions = sanitizeActions(obj.actions, 20);
+  const reactions = obj.reactions ? sanitizeActions(obj.reactions, 10) : undefined;
+  const legendaryActions = obj.legendaryActions ? sanitizeActions(obj.legendaryActions, 10) : undefined;
+
+  return {
+    id,
+    name,
+    size,
+    type,
+    alignment,
+    armorClass,
+    armorType,
+    hitPoints,
+    hitDice,
+    speed,
+    abilities,
+    challengeRating,
+    xp,
+    senses,
+    languages,
+    avatarUrl,
+    traits: traits.length > 0 ? traits : undefined,
+    actions,
+    reactions: reactions && reactions.length > 0 ? reactions : undefined,
+    legendaryActions: legendaryActions && legendaryActions.length > 0 ? legendaryActions : undefined,
+  };
+}
+
+/**
+ * Valida individualmente entradas do histórico de combate (actionLog).
+ */
+export function sanitizeActionLog(raw: unknown): CombatLogEntry[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+
+  const validEntries: CombatLogEntry[] = [];
+  const safeList = raw.slice(0, MAX_ACTION_LOG_ENTRIES);
+
+  for (let idx = 0; idx < safeList.length; idx++) {
+    const entry = safeList[idx];
+    if (!entry || typeof entry !== 'object') continue;
+    const e = entry as Record<string, unknown>;
+
+    const message = typeof e.message === 'string' ? e.message.trim().slice(0, 500) : '';
+    if (!message) continue;
+
+    const id = typeof e.id === 'string' && e.id.trim() ? e.id.trim().slice(0, 80) : `log-${Date.now()}-${idx}`;
+    const timestamp =
+      typeof e.timestamp === 'number' && Number.isFinite(e.timestamp) && e.timestamp > 0
+        ? e.timestamp
+        : Date.now();
+    const round =
+      typeof e.round === 'number' && Number.isFinite(e.round) && e.round >= 1
+        ? Math.min(10000, Math.floor(e.round))
+        : 1;
+    const actor = typeof e.actor === 'string' && e.actor.trim() ? e.actor.trim().slice(0, 100) : 'Desconhecido';
+    const kind: CombatLogEntry['kind'] =
+      typeof e.kind === 'string' && VALID_ACTION_LOG_KINDS.includes(e.kind as CombatLogEntry['kind'])
+        ? (e.kind as CombatLogEntry['kind'])
+        : 'roll';
+
+    validEntries.push({
+      id,
+      timestamp,
+      round,
+      actor,
+      message,
+      kind,
+    });
+  }
+
+  return validEntries.length > 0 ? validEntries : undefined;
+}
+
+/**
+ * Valida lastHpChange contra os combatentes sanitizados, conferindo tipos, limites e integridade.
+ */
+export function sanitizeLastHpChange(
+  raw: unknown,
+  combatants: Combatant[]
+): Encounter['lastHpChange'] | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const obj = raw as Record<string, unknown>;
+
+  if (typeof obj.combatantId !== 'string' || !obj.combatantId.trim()) return undefined;
+  const combatantId = obj.combatantId.trim();
+
+  // Valide lastHpChange contra um combatente existente na lista
+  const targetCombatant = combatants.find((c) => c.id === combatantId);
+  if (!targetCombatant) {
+    return undefined; // Descarte se o combatente não existe na lista sanitizada
+  }
+
+  if (typeof obj.currentHp !== 'number' || !Number.isFinite(obj.currentHp)) return undefined;
+  if (typeof obj.tempHp !== 'number' || !Number.isFinite(obj.tempHp)) return undefined;
+
+  const currentHp = Math.max(0, Math.min(targetCombatant.maxHp, Math.floor(obj.currentHp)));
+  const tempHp = Math.max(0, Math.min(99999, Math.floor(obj.tempHp)));
+  const name =
+    typeof obj.name === 'string' && obj.name.trim()
+      ? obj.name.trim().slice(0, 100)
+      : targetCombatant.name;
+  const actor =
+    typeof obj.actor === 'string' && obj.actor.trim()
+      ? obj.actor.trim().slice(0, 100)
+      : 'Desconhecido';
+
+  return {
+    combatantId,
+    currentHp,
+    tempHp,
+    name,
+    actor,
+  };
+}
+
+/**
+ * Valida profundamente e migra com segurança todo o estado de Encounter.
+ * Garante IDs únicos, limites coerentes em PV/CA/Iniciativa, sanitização
+ * de condições, monsterData, actionLog, lastHpChange e coerência de índices.
  */
 export function sanitizeEncounter(data: unknown): Encounter {
   if (!data || typeof data !== 'object') {
-    return { ...DEFAULT_ENCOUNTER };
+    return { ...DEFAULT_ENCOUNTER, combatants: [] };
   }
   const obj = data as Record<string, unknown>;
 
-  const id = typeof obj.id === 'string' && obj.id.trim() ? obj.id.trim() : DEFAULT_ENCOUNTER.id;
-  const name = typeof obj.name === 'string' && obj.name.trim() ? obj.name.trim() : DEFAULT_ENCOUNTER.name;
+  const id = typeof obj.id === 'string' && obj.id.trim() ? obj.id.trim().slice(0, 80) : DEFAULT_ENCOUNTER.id;
+  const name = typeof obj.name === 'string' && obj.name.trim() ? obj.name.trim().slice(0, 100) : DEFAULT_ENCOUNTER.name;
   const round =
     typeof obj.round === 'number' && Number.isFinite(obj.round) && obj.round >= 1
-      ? Math.floor(obj.round)
+      ? Math.min(10000, Math.floor(obj.round))
       : 1;
   const isRunning = Boolean(obj.isRunning);
   const skipDefeatedMonsters = typeof obj.skipDefeatedMonsters === 'boolean' ? obj.skipDefeatedMonsters : false;
 
-  const rawCombatants = Array.isArray(obj.combatants) ? obj.combatants : [];
+  const rawCombatants = Array.isArray(obj.combatants) ? obj.combatants.slice(0, MAX_ENCOUNTER_COMBATANTS) : [];
   const combatants: Combatant[] = [];
+  const seenCombatantIds = new Set<string>();
 
   for (let i = 0; i < rawCombatants.length; i++) {
     const raw = rawCombatants[i];
     if (!raw || typeof raw !== 'object') continue;
     const c = raw as Record<string, unknown>;
 
-    const cId = typeof c.id === 'string' && c.id.trim() ? c.id.trim() : `combatant-${Date.now()}-${i}`;
-    const cName = typeof c.name === 'string' && c.name.trim() ? c.name.trim() : `Combatente ${i + 1}`;
+    // IDs únicos: Se o ID for duplicado, vazio ou inválido, gera um ID único seguro
+    let cId = typeof c.id === 'string' && c.id.trim() ? c.id.trim().slice(0, 80) : `combatant-${Date.now()}-${i}`;
+    if (seenCombatantIds.has(cId)) {
+      cId = `${cId}-dup-${i + 1}`;
+    }
+    seenCombatantIds.add(cId);
+
+    const cName = typeof c.name === 'string' && c.name.trim() ? c.name.trim().slice(0, 100) : `Combatente ${i + 1}`;
     const cType: 'player' | 'monster' | 'npc' =
       c.type === 'player' || c.type === 'monster' || c.type === 'npc' ? c.type : 'monster';
+
     const maxHp =
       typeof c.maxHp === 'number' && Number.isFinite(c.maxHp) && c.maxHp > 0
-        ? Math.floor(c.maxHp)
+        ? Math.min(99999, Math.floor(c.maxHp))
         : 10;
     const currentHp =
       typeof c.currentHp === 'number' && Number.isFinite(c.currentHp)
         ? Math.max(0, Math.min(maxHp, Math.floor(c.currentHp)))
         : maxHp;
     const tempHp =
-      typeof c.tempHp === 'number' && Number.isFinite(c.tempHp)
-        ? Math.max(0, Math.floor(c.tempHp))
+      typeof c.tempHp === 'number' && Number.isFinite(c.tempHp) && c.tempHp >= 0
+        ? Math.min(99999, Math.floor(c.tempHp))
         : 0;
     const armorClass =
       typeof c.armorClass === 'number' && Number.isFinite(c.armorClass)
-        ? Math.max(0, Math.floor(c.armorClass))
+        ? Math.max(0, Math.min(99, Math.floor(c.armorClass)))
         : 10;
     const initiative =
       typeof c.initiative === 'number' && Number.isFinite(c.initiative)
-        ? Math.floor(c.initiative)
+        ? Math.max(-50, Math.min(100, Math.floor(c.initiative)))
         : 10;
-    const avatarUrl = typeof c.avatarUrl === 'string' ? c.avatarUrl : undefined;
-    const playerId = typeof c.playerId === 'string' && c.playerId.trim() ? c.playerId.trim() : undefined;
-    const notes = typeof c.notes === 'string' ? c.notes : undefined;
 
+    let avatarUrl: string | undefined = undefined;
+    if (typeof c.avatarUrl === 'string' && c.avatarUrl.length <= 2000) {
+      if (/^(https?:\/\/|data:image\/)/i.test(c.avatarUrl)) {
+        avatarUrl = c.avatarUrl;
+      }
+    }
+
+    const playerId = typeof c.playerId === 'string' && c.playerId.trim() ? c.playerId.trim().slice(0, 80) : undefined;
+    const notes = typeof c.notes === 'string' ? c.notes.slice(0, 2000) : undefined;
+
+    // Condições: validar contra VALID_CONDITIONS e descartar duplicatas/inválidas
     const rawConditions = Array.isArray(c.conditions) ? c.conditions : [];
-    const conditions = rawConditions.filter((cond): cond is ConditionKey =>
-      typeof cond === 'string' && VALID_CONDITIONS.includes(cond as ConditionKey)
-    );
+    const conditionSet = new Set<ConditionKey>();
+    for (const cond of rawConditions) {
+      if (typeof cond === 'string' && VALID_CONDITIONS.includes(cond as ConditionKey)) {
+        conditionSet.add(cond as ConditionKey);
+      }
+    }
+    const conditions = Array.from(conditionSet);
 
-    const monsterData =
-      c.monsterData && typeof c.monsterData === 'object' ? (c.monsterData as Monster) : undefined;
+    // Validação profunda de monsterData (não apenas cast)
+    const monsterData = sanitizeMonsterData(c.monsterData);
+
     const dexterity =
       typeof c.dexterity === 'number' && Number.isFinite(c.dexterity)
-        ? Math.floor(c.dexterity)
+        ? Math.max(1, Math.min(30, Math.floor(c.dexterity)))
         : typeof monsterData?.abilities?.dex === 'number' && Number.isFinite(monsterData.abilities.dex)
-        ? Math.floor(monsterData.abilities.dex)
+        ? Math.max(1, Math.min(30, Math.floor(monsterData.abilities.dex)))
         : undefined;
 
     combatants.push({
@@ -129,8 +402,9 @@ export function sanitizeEncounter(data: unknown): Encounter {
     });
   }
 
+  // Coerência estrita de activeCombatantId e activeCombatantIndex
   let activeCombatantId: string | undefined =
-    typeof obj.activeCombatantId === 'string' && obj.activeCombatantId ? obj.activeCombatantId : undefined;
+    typeof obj.activeCombatantId === 'string' && obj.activeCombatantId ? obj.activeCombatantId.trim() : undefined;
   let activeCombatantIndex =
     typeof obj.activeCombatantIndex === 'number' && Number.isFinite(obj.activeCombatantIndex)
       ? Math.floor(obj.activeCombatantIndex)
@@ -154,6 +428,9 @@ export function sanitizeEncounter(data: unknown): Encounter {
     activeCombatantId = undefined;
   }
 
+  const actionLog = sanitizeActionLog(obj.actionLog);
+  const lastHpChange = sanitizeLastHpChange(obj.lastHpChange, combatants);
+
   return {
     id,
     name,
@@ -163,13 +440,8 @@ export function sanitizeEncounter(data: unknown): Encounter {
     combatants,
     isRunning,
     skipDefeatedMonsters,
-    actionLog: Array.isArray(obj.actionLog)
-      ? (obj.actionLog as Encounter['actionLog'])?.slice(0, 50)
-      : undefined,
-    lastHpChange:
-      obj.lastHpChange && typeof obj.lastHpChange === 'object'
-        ? (obj.lastHpChange as Encounter['lastHpChange'])
-        : undefined,
+    actionLog,
+    lastHpChange,
   };
 }
 
@@ -251,11 +523,23 @@ export function useEncounter() {
               c.playerId === payload.playerId
                 ? {
                     ...c,
-                    name: payload.name || c.name,
-                    currentHp: payload.currentHp,
-                    maxHp: payload.maxHp,
-                    tempHp: payload.tempHp,
-                    armorClass: payload.armorClass,
+                    name: typeof payload.name === 'string' && payload.name.trim() ? payload.name.trim().slice(0, 100) : c.name,
+                    maxHp:
+                      typeof payload.maxHp === 'number' && Number.isFinite(payload.maxHp) && payload.maxHp > 0
+                        ? Math.min(99999, Math.floor(payload.maxHp))
+                        : c.maxHp,
+                    currentHp:
+                      typeof payload.currentHp === 'number' && Number.isFinite(payload.currentHp)
+                        ? Math.max(0, Math.min(payload.maxHp || c.maxHp, Math.floor(payload.currentHp)))
+                        : Math.min(c.currentHp, c.maxHp),
+                    tempHp:
+                      typeof payload.tempHp === 'number' && Number.isFinite(payload.tempHp) && payload.tempHp >= 0
+                        ? Math.min(99999, Math.floor(payload.tempHp))
+                        : c.tempHp,
+                    armorClass:
+                      typeof payload.armorClass === 'number' && Number.isFinite(payload.armorClass)
+                        ? Math.max(0, Math.min(99, Math.floor(payload.armorClass)))
+                        : c.armorClass,
                   }
                 : c
             ),
@@ -272,7 +556,9 @@ export function useEncounter() {
         setEncounter((prev) => ({
           ...prev,
           combatants: prev.combatants.map((c) =>
-            c.playerId === payload.playerId ? { ...c, initiative: payload.initiative } : c
+            c.playerId === payload.playerId && typeof payload.initiative === 'number' && Number.isFinite(payload.initiative)
+              ? { ...c, initiative: Math.max(-50, Math.min(100, Math.floor(payload.initiative))) }
+              : c
           ),
         }));
       }

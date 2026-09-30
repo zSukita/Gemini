@@ -397,16 +397,8 @@ export function useBattleMap(
       }
 
       // 2. Colegas conectados na sala via P2P (connectedPeers)
-      // Remover tokens de peers desconectados (aqueles cujo id começa com "token-peer-" e o peerId não está mais em connectedPeers)
-      const currentPeerIds = new Set((connectedPeers || []).map((p) => p.peerId));
-      updated = updated.filter((t) => {
-        if (t.id.startsWith('token-peer-')) {
-          const peerId = t.id.replace('token-peer-', '');
-          return currentPeerIds.has(peerId);
-        }
-        return true;
-      });
-
+      // Preservamos tokens de personagens na mesa mesmo em desconexões transitórias para que
+      // reconexões não apaguem a posição nem o progresso do combate.
       if (connectedPeers && connectedPeers.length > 0) {
         const localHero = updated.find(
           (t) => t.type === 'player' && t.name.toLowerCase() === (character?.name || '').toLowerCase()
@@ -420,6 +412,10 @@ export function useBattleMap(
           const peerIndex = updated.findIndex(
             (t) =>
               t.id === `token-peer-${peer.peerId}` ||
+              (peer.userId &&
+                (t.ownerId === peer.userId ||
+                  t.combatantId === peer.userId ||
+                  t.id === `token-player-${peer.userId}`)) ||
               (t.type === 'player' && t.name.toLowerCase() === peer.name.toLowerCase())
           );
 
@@ -427,6 +423,7 @@ export function useBattleMap(
             const t = updated[peerIndex];
             updated[peerIndex] = {
               ...t,
+              id: t.id.startsWith('token-peer-') ? `token-peer-${peer.peerId}` : t.id,
               ownerId: peer.peerId,
               avatarUrl: peer.avatarUrl || t.avatarUrl,
               currentHp: peer.currentHp ?? t.currentHp,
